@@ -88,10 +88,18 @@ public class Position
     public decimal CurrentPrice { get; set; }
     
     [Column(TypeName = "decimal(18,4)")]
-    public decimal UnrealizedPnL => (CurrentPrice - AveragePrice) * Quantity;
-    
+    public decimal UnrealizedPnL
+    {
+        get
+        {
+            var direction = Side.Equals("sell", StringComparison.OrdinalIgnoreCase) ? -1 : 1;
+            return (CurrentPrice - AveragePrice) * Quantity * direction;
+        }
+    }
+
     public double UnrealizedPnLPercent => AveragePrice > 0
         ? (double)((CurrentPrice - AveragePrice) / AveragePrice) * 100.0
+            * (Side.Equals("sell", StringComparison.OrdinalIgnoreCase) ? -1 : 1)
         : 0.0;
     
     public DateTime LastUpdated { get; set; } = DateTime.UtcNow;
@@ -150,6 +158,33 @@ public class ClaudeAnalysisRequest
     public Position? CurrentPosition { get; set; }
     public decimal AvailableCash { get; set; }
     public decimal PortfolioValue { get; set; }
+    /// <summary>Technische Indikatoren (RSI, EMA, MACD, ATR, Bollinger Bands).</summary>
+    public TechnicalIndicators? Indicators { get; set; }
+}
+
+/// <summary>Berechnete technische Indikatoren fuer ein Symbol.</summary>
+public class TechnicalIndicators
+{
+    // RSI
+    public decimal? RSI14 { get; set; }
+
+    // EMA
+    public decimal? EMA20 { get; set; }
+    public decimal? EMA50 { get; set; }
+    public decimal? EMA200 { get; set; }
+
+    // MACD
+    public decimal? MACDLine { get; set; }
+    public decimal? MACDSignal { get; set; }
+    public decimal? MACDHistogram { get; set; }
+
+    // ATR
+    public decimal? ATR14 { get; set; }
+
+    // Bollinger Bands
+    public decimal? BollingerUpper { get; set; }
+    public decimal? BollingerMiddle { get; set; }
+    public decimal? BollingerLower { get; set; }
 }
 
 public class ClaudeTradeRecommendation
@@ -231,6 +266,10 @@ public class RiskSettings
     public bool KillSwitchEnabled { get; set; } = true;
     public decimal MaxDailyLossAbsolute { get; set; } = 500m;
 
+    // ── Phase 2: Session-Filter ──────────────────────────────────────
+    /// <summary>Trading nur waehrend bestimmter Sessions erlauben. Leer = immer aktiv.</summary>
+    public List<string> AllowedSessions { get; set; } = new();
+
     // ── Phase 1: Gewinnschutz ────────────────────────────────────────
     /// <summary>Trailing Stop in Pips. 0 = deaktiviert. Zieht SL nach wenn Gewinn > Distanz.</summary>
     public double TrailingStopPips { get; set; } = 0;
@@ -299,6 +338,16 @@ public static class PipCalculator
         // Fallback: Standard Forex
         return 100_000m * pipSize;
     }
+}
+
+/// <summary>OHLC-Candle fuer technische Indikatoren.</summary>
+public class OhlcCandle
+{
+    public decimal Open { get; set; }
+    public decimal High { get; set; }
+    public decimal Low { get; set; }
+    public decimal Close { get; set; }
+    public long Time { get; set; }
 }
 
 /// <summary>Ergebnis von IBrokerService.PlaceOrderAsync (OrderId/PositionId für DB-Mapping).</summary>
@@ -514,8 +563,19 @@ public class DashboardViewModel
     public bool IsEngineRunning { get; set; }
     public bool IsKillSwitchActive { get; set; }
     public bool IsTradeLockerConnected { get; set; }
+    public bool IsMarketOpen { get; set; }
+    public string MarketStatus { get; set; } = string.Empty;
     public List<Position> Positions { get; set; } = new();
     public List<Trade> RecentTrades { get; set; } = new();
     public List<TradingLog> RecentLogs { get; set; } = new();
     public List<DailyPnL> PnLHistory { get; set; } = new();
+    public List<UpcomingEventViewModel> UpcomingEvents { get; set; } = new();
+}
+
+public class UpcomingEventViewModel
+{
+    public string Title { get; set; } = string.Empty;
+    public DateTime EventTime { get; set; }
+    public string Impact { get; set; } = string.Empty;
+    public string Currency { get; set; } = string.Empty;
 }

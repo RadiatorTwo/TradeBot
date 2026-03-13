@@ -41,6 +41,11 @@ builder.Services.AddHttpClient(TradeLockerService.HttpClientName, (sp, client) =
 builder.Services.AddSingleton<TradeLockerService>();
 builder.Services.AddSingleton<IBrokerService>(sp => sp.GetRequiredService<TradeLockerService>());
 builder.Services.AddSingleton<IRiskManager, RiskManager>();
+builder.Services.AddSingleton<TechnicalAnalysisService>();
+builder.Services.AddSingleton<TradingSessionService>();
+builder.Services.AddSingleton<MarketHoursService>();
+builder.Services.AddSingleton<EconomicCalendarService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<EconomicCalendarService>());
 
 // ── Trading Engine (Background Service) ────────────────────────────────
 builder.Services.AddSingleton<TradingEngine>();
@@ -107,12 +112,14 @@ app.MapPost("/api/killswitch/reset", (IRiskManager risk) =>
     return Results.Ok(new { status = "reset" });
 });
 
-app.MapGet("/api/status", (TradingEngine engine, IBrokerService broker, IRiskManager risk) =>
+app.MapGet("/api/status", (TradingEngine engine, IBrokerService broker, IRiskManager risk, MarketHoursService marketHours) =>
     Results.Ok(new
     {
         engineRunning = engine.IsRunning,
         brokerConnected = broker.IsConnected,
-        killSwitchActive = risk.IsKillSwitchActive
+        killSwitchActive = risk.IsKillSwitchActive,
+        marketOpen = marketHours.IsMarketOpen(),
+        marketStatus = marketHours.GetMarketStatus()
     }));
 
 // ── CSV-Export für Trade-Historie ────────────────────────────────────────

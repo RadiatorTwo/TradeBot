@@ -12,6 +12,8 @@ public class IndexModel : PageModel
     private readonly TradingEngine _engine;
     private readonly IBrokerService _broker;
     private readonly IRiskManager _risk;
+    private readonly MarketHoursService _marketHours;
+    private readonly EconomicCalendarService _calendar;
 
     public DashboardViewModel Dashboard { get; set; } = new();
 
@@ -19,12 +21,16 @@ public class IndexModel : PageModel
         TradingDbContext db,
         TradingEngine engine,
         IBrokerService broker,
-        IRiskManager risk)
+        IRiskManager risk,
+        MarketHoursService marketHours,
+        EconomicCalendarService calendar)
     {
         _db = db;
         _engine = engine;
         _broker = broker;
         _risk = risk;
+        _marketHours = marketHours;
+        _calendar = calendar;
     }
 
     public async Task OnGetAsync()
@@ -62,6 +68,16 @@ public class IndexModel : PageModel
             IsEngineRunning = _engine.IsRunning,
             IsKillSwitchActive = _risk.IsKillSwitchActive,
             IsTradeLockerConnected = _broker.IsConnected,
+            IsMarketOpen = _marketHours.IsMarketOpen(),
+            MarketStatus = _marketHours.GetMarketStatus(),
+            UpcomingEvents = _calendar.GetUpcomingHighImpactEvents(5)
+                .Select(e => new UpcomingEventViewModel
+                {
+                    Title = e.Title,
+                    EventTime = e.EventTime,
+                    Impact = e.Impact.ToString(),
+                    Currency = e.Currency
+                }).ToList(),
             Positions = positions,
             RecentTrades = recentTrades,
             RecentLogs = recentLogs,

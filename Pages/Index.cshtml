@@ -28,6 +28,15 @@
     {
         <span class="badge badge-red">Kill Switch Aktiv</span>
     }
+
+    @if (vm.IsMarketOpen)
+    {
+        <span class="badge badge-green">Markt @vm.MarketStatus</span>
+    }
+    else
+    {
+        <span class="badge badge-red">Markt @vm.MarketStatus</span>
+    }
 </div>
 
 <!-- Stats -->
@@ -71,6 +80,33 @@
     }
     <button class="btn btn-outline" onclick="location.reload()">Aktualisieren</button>
 </div>
+
+<!-- Naechste High-Impact Events -->
+@if (vm.UpcomingEvents.Any())
+{
+    <div class="section">
+        <h2>Naechste High-Impact Events</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Zeit (UTC)</th>
+                    <th>Waehrung</th>
+                    <th>Event</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var evt in vm.UpcomingEvents)
+                {
+                    <tr>
+                        <td>@evt.EventTime.ToString("dd.MM. HH:mm")</td>
+                        <td><strong>@evt.Currency</strong></td>
+                        <td>@evt.Title</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
 
 <!-- Positionen -->
 <div class="section">

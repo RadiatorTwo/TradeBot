@@ -811,11 +811,71 @@ public class TradeLockerService : IBrokerService
 
     public async Task<List<decimal>> GetPriceHistoryAsync(string symbol, string resolution, int count, CancellationToken ct = default)
     {
+        var candles = await GetCandlesAsync(symbol, resolution, count, ct);
+        if (candles.Count > 0)
+            return candles.Select(c => c.Close).ToList();
+
+        // Fallback auf alte Methode
         if (!_isConnected) return new List<decimal>();
         var id = ResolveSymbolToInstrumentId(symbol);
         if (id == null) return new List<decimal>();
         var prices = await GetPriceHistoryInternalAsync(id.Value, resolution, Math.Max(count, 50), ct);
         return prices.TakeLast(count).ToList();
+    }
+
+    public async Task<List<OhlcCandle>> GetCandlesAsync(string symbol, string resolution, int count, CancellationToken ct = default)
+    {
+        if (!_isConnected) return new List<OhlcCandle>();
+        var id = ResolveSymbolToInstrumentId(symbol);
+        if (id == null) return new List<OhlcCandle>();
+
+        var candles = await GetCandlesInternalAsync(id.Value, resolution, Math.Max(count, 50), ct);
+        return candles.TakeLast(count).ToList();
+    }
+
+    private async Task<List<OhlcCandle>> GetCandlesInternalAsync(int tradableInstrumentId, string resolution, int lookbackCandles, CancellationToken ct)
+    {
+        await ThrottleAsync(ct);
+        var result = new List<OhlcCandle>();
+        try
+        {
+            var to = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var resolutionMs = resolution switch
+            {
+                "1D" => 24 * 60 * 60 * 1000L,
+                "4H" => 4 * 60 * 60 * 1000L,
+                "1H" => 60 * 60 * 1000L,
+                "15" or "15m" => 15 * 60 * 1000L,
+                _ => 60 * 60 * 1000L
+            };
+            var from = to - (lookbackCandles * resolutionMs);
+            var routeId = GetInfoRouteId(tradableInstrumentId);
+            if (routeId == null) return result;
+
+            var url = $"trade/history?tradableInstrumentId={tradableInstrumentId}&routeId={routeId}&resolution={resolution}&from={from}&to={to}";
+            using var client = GetHttpClient();
+            var response = await client.GetAsync(url, ct);
+            if (!response.IsSuccessStatusCode) return result;
+
+            var body = await response.Content.ReadAsStringAsync(ct);
+            var parsed = ParseCandles(body);
+            if (parsed != null && parsed.Count > 0)
+            {
+                result.AddRange(parsed.OrderBy(c => c.Time).TakeLast(lookbackCandles).Select(c => new OhlcCandle
+                {
+                    Open = c.Open,
+                    High = c.High,
+                    Low = c.Low,
+                    Close = c.Close,
+                    Time = c.Time
+                }));
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "GetCandlesInternal failed for instrument {Id} ({Res})", tradableInstrumentId, resolution);
+        }
+        return result;
     }
 
     public async Task<decimal> GetAccountCashAsync(CancellationToken ct = default)

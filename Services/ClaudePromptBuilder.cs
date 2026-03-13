@@ -73,6 +73,73 @@ public static class ClaudePromptBuilder
             sb.AppendLine();
         }
 
+        if (req.Indicators != null)
+        {
+            sb.AppendLine("## Technische Indikatoren");
+            sb.AppendLine();
+
+            if (req.Indicators.RSI14.HasValue)
+                sb.AppendLine($"**RSI(14):** {req.Indicators.RSI14:F2} {GetRSISignal(req.Indicators.RSI14.Value)}");
+
+            if (req.Indicators.EMA20.HasValue || req.Indicators.EMA50.HasValue || req.Indicators.EMA200.HasValue)
+            {
+                sb.AppendLine("**EMA:**");
+                if (req.Indicators.EMA20.HasValue)
+                    sb.AppendLine($"  - EMA(20): {req.Indicators.EMA20:F4}");
+                if (req.Indicators.EMA50.HasValue)
+                    sb.AppendLine($"  - EMA(50): {req.Indicators.EMA50:F4}");
+                if (req.Indicators.EMA200.HasValue)
+                    sb.AppendLine($"  - EMA(200): {req.Indicators.EMA200:F4}");
+
+                // EMA-Kreuzungen beschreiben
+                if (req.Indicators.EMA20.HasValue && req.Indicators.EMA50.HasValue)
+                {
+                    var emaSignal = req.Indicators.EMA20.Value > req.Indicators.EMA50.Value
+                        ? "EMA20 > EMA50 (bullisch)"
+                        : "EMA20 < EMA50 (bärisch)";
+                    sb.AppendLine($"  - Signal: {emaSignal}");
+                }
+            }
+
+            if (req.Indicators.MACDLine.HasValue)
+            {
+                sb.AppendLine($"**MACD(12,26,9):**");
+                sb.AppendLine($"  - Linie: {req.Indicators.MACDLine:F6}");
+                if (req.Indicators.MACDSignal.HasValue)
+                    sb.AppendLine($"  - Signal: {req.Indicators.MACDSignal:F6}");
+                if (req.Indicators.MACDHistogram.HasValue)
+                {
+                    var histSignal = req.Indicators.MACDHistogram.Value > 0 ? "bullisch" : "bärisch";
+                    sb.AppendLine($"  - Histogramm: {req.Indicators.MACDHistogram:F6} ({histSignal})");
+                }
+            }
+
+            if (req.Indicators.ATR14.HasValue)
+                sb.AppendLine($"**ATR(14):** {req.Indicators.ATR14:F4} (Volatilitaet)");
+
+            if (req.Indicators.BollingerUpper.HasValue)
+            {
+                sb.AppendLine($"**Bollinger Bands(20,2):**");
+                sb.AppendLine($"  - Oberes Band: {req.Indicators.BollingerUpper:F4}");
+                sb.AppendLine($"  - Mittleres Band: {req.Indicators.BollingerMiddle:F4}");
+                sb.AppendLine($"  - Unteres Band: {req.Indicators.BollingerLower:F4}");
+
+                if (req.CurrentPrice > 0 && req.Indicators.BollingerLower.HasValue)
+                {
+                    string bbPosition;
+                    if (req.CurrentPrice > req.Indicators.BollingerUpper!.Value)
+                        bbPosition = "Preis ÜBER oberem Band (überkauft/starker Trend)";
+                    else if (req.CurrentPrice < req.Indicators.BollingerLower.Value)
+                        bbPosition = "Preis UNTER unterem Band (überverkauft/starker Abwärtstrend)";
+                    else
+                        bbPosition = "Preis innerhalb der Bänder";
+                    sb.AppendLine($"  - Position: {bbPosition}");
+                }
+            }
+
+            sb.AppendLine();
+        }
+
         sb.AppendLine("## Portfolio-Kontext");
         sb.AppendLine($"**Verfügbares Kapital:** ${req.AvailableCash:F2}");
         sb.AppendLine($"**Portfolio-Gesamtwert (Equity):** ${req.PortfolioValue:F2}");
@@ -95,4 +162,13 @@ public static class ClaudePromptBuilder
         sb.AppendLine("Analysiere die Daten und gib deine Handelsempfehlung als JSON. quantity in Lots (z. B. 0.01), stopLossPrice und takeProfitPrice als absolute Preise.");
         return sb.ToString();
     }
+
+    private static string GetRSISignal(decimal rsi) => rsi switch
+    {
+        >= 70 => "(überkauft – Verkaufssignal)",
+        >= 60 => "(leicht überkauft)",
+        <= 30 => "(überverkauft – Kaufsignal)",
+        <= 40 => "(leicht überverkauft)",
+        _ => "(neutral)"
+    };
 }

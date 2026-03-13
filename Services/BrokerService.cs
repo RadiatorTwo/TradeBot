@@ -17,6 +17,8 @@ public interface IBrokerService
     Task<List<decimal>> GetRecentPricesAsync(string symbol, int count = 20, CancellationToken ct = default);
     /// <summary>Historische Candles (Close-Preise) für einen Zeitrahmen (z. B. "1D", "4H", "1H").</summary>
     Task<List<decimal>> GetPriceHistoryAsync(string symbol, string resolution, int count, CancellationToken ct = default);
+    /// <summary>Historische OHLC-Candles fuer technische Indikatoren (ATR etc.).</summary>
+    Task<List<OhlcCandle>> GetCandlesAsync(string symbol, string resolution, int count, CancellationToken ct = default);
     Task<decimal> GetAccountCashAsync(CancellationToken ct = default);
     Task<decimal> GetPortfolioValueAsync(CancellationToken ct = default);
     Task<List<Position>> GetPositionsAsync(CancellationToken ct = default);
@@ -105,15 +107,30 @@ public class SimulatedBrokerService : IBrokerService
 
     public async Task<List<decimal>> GetPriceHistoryAsync(string symbol, string resolution, int count, CancellationToken ct = default)
     {
-        var prices = new List<decimal>();
+        var candles = await GetCandlesAsync(symbol, resolution, count, ct);
+        return candles.Select(c => c.Close).ToList();
+    }
+
+    public async Task<List<OhlcCandle>> GetCandlesAsync(string symbol, string resolution, int count, CancellationToken ct = default)
+    {
+        var candles = new List<OhlcCandle>();
         var currentPrice = await GetCurrentPriceAsync(symbol, ct);
 
         for (int i = 0; i < count; i++)
         {
             var variation = (decimal)(_rng.NextDouble() * 0.06 - 0.03);
-            prices.Add(Math.Round(currentPrice * (1 + variation), 4));
+            var close = Math.Round(currentPrice * (1 + variation), 4);
+            var spread = Math.Abs(close * (decimal)(_rng.NextDouble() * 0.01));
+            candles.Add(new OhlcCandle
+            {
+                Open = Math.Round(close + (decimal)(_rng.NextDouble() * 0.005 - 0.0025) * currentPrice, 4),
+                High = Math.Round(close + spread, 4),
+                Low = Math.Round(close - spread, 4),
+                Close = close,
+                Time = DateTimeOffset.UtcNow.AddHours(-count + i).ToUnixTimeMilliseconds()
+            });
         }
-        return prices;
+        return candles;
     }
 
     public Task<decimal> GetAccountCashAsync(CancellationToken ct = default)

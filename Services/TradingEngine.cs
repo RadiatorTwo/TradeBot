@@ -9,6 +9,10 @@ public class TradingEngine : BackgroundService
     private readonly IClaudeService _claude;
     private readonly IBrokerService _broker;
     private readonly IRiskManager _risk;
+    private readonly TechnicalAnalysisService _ta;
+    private readonly TradingSessionService _session;
+    private readonly MarketHoursService _marketHours;
+    private readonly EconomicCalendarService _calendar;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IOptionsMonitor<RiskSettings> _settingsMonitor;
     private readonly IConfiguration _config;
@@ -16,11 +20,11 @@ public class TradingEngine : BackgroundService
 
     private RiskSettings Settings => _settingsMonitor.CurrentValue;
 
-    private bool _isRunning;
+    private volatile bool _isRunning;
     public bool IsRunning => _isRunning;
 
     // Externe Steuerung
-    private bool _pauseRequested;
+    private volatile bool _pauseRequested;
     public void Pause() => _pauseRequested = true;
     public void Resume() => _pauseRequested = false;
 
@@ -28,6 +32,10 @@ public class TradingEngine : BackgroundService
         IClaudeService claude,
         IBrokerService broker,
         IRiskManager risk,
+        TechnicalAnalysisService ta,
+        TradingSessionService session,
+        MarketHoursService marketHours,
+        EconomicCalendarService calendar,
         IServiceScopeFactory scopeFactory,
         IOptionsMonitor<RiskSettings> settingsMonitor,
         IConfiguration config,
@@ -36,6 +44,10 @@ public class TradingEngine : BackgroundService
         _claude = claude;
         _broker = broker;
         _risk = risk;
+        _ta = ta;
+        _session = session;
+        _marketHours = marketHours;
+        _calendar = calendar;
         _scopeFactory = scopeFactory;
         _settingsMonitor = settingsMonitor;
         _config = config;
@@ -57,8 +69,6 @@ public class TradingEngine : BackgroundService
         await _broker.ConnectAsync(stoppingToken);
 
         await LogAsync("Info", "TradingEngine", "Trading Engine gestartet");
-
-        var interval = TimeSpan.FromMinutes(Settings.TradingIntervalMinutes);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -94,7 +104,8 @@ public class TradingEngine : BackgroundService
                 await LogAsync("Error", "TradingEngine", $"Fehler im Trading-Zyklus: {ex.Message}");
             }
 
-            await Task.Delay(interval, stoppingToken);
+            // Interval bei jedem Durchlauf neu lesen (Config-Reload)
+            await Task.Delay(TimeSpan.FromMinutes(Settings.TradingIntervalMinutes), stoppingToken);
         }
 
         await _broker.DisconnectAsync();
@@ -104,6 +115,15 @@ public class TradingEngine : BackgroundService
 
     private async Task RunTradingCycleAsync(CancellationToken ct)
     {
+        // Markt-Check: wenn Forex-Markt komplett geschlossen, gesamten Zyklus ueberspringen
+        if (!_marketHours.IsMarketOpen())
+        {
+            var nextOpen = _marketHours.GetNextOpen("EURUSD");
+            _logger.LogInformation("Markt geschlossen. Naechste Oeffnung: {NextOpen:dd.MM.yyyy HH:mm} UTC",
+                nextOpen);
+            return;
+        }
+
         var watchList = _config.GetSection("TradingStrategy:WatchList").Get<string[]>() ?? Array.Empty<string>();
         var cash = await _broker.GetAccountCashAsync(ct);
         var portfolioValue = await _broker.GetPortfolioValueAsync(ct);
@@ -119,6 +139,35 @@ public class TradingEngine : BackgroundService
 
             try
             {
+                // Markt-Check pro Symbol
+                if (!_marketHours.IsMarketOpen(symbol))
+                {
+                    _logger.LogDebug("Ueberspringe {Symbol} – Markt geschlossen", symbol);
+                    continue;
+                }
+
+                // Nicht zu nah am Marktschluss neue Positionen oeffnen
+                if (!_marketHours.IsSafeToOpenPosition(symbol))
+                {
+                    _logger.LogDebug("Ueberspringe {Symbol} – zu nah am Marktschluss", symbol);
+                    continue;
+                }
+
+                // Session-Filter: Symbol ueberspringen wenn ausserhalb der erlaubten Trading-Session
+                if (!_session.IsSessionActive(symbol))
+                {
+                    _logger.LogDebug("Ueberspringe {Symbol} – ausserhalb der erlaubten Trading-Session", symbol);
+                    continue;
+                }
+
+                // News-Filter: Symbol ueberspringen wenn High-Impact-Event bevorsteht
+                if (_calendar.IsSymbolAffectedByEvent(symbol))
+                {
+                    _logger.LogInformation(
+                        "Ueberspringe {Symbol} – High-Impact-Event in der Naehe", symbol);
+                    continue;
+                }
+
                 await AnalyzeAndTradeAsync(symbol, cash, portfolioValue, positions, ct);
 
                 // Kurze Pause zwischen Analysen (Rate Limiting)
@@ -136,12 +185,41 @@ public class TradingEngine : BackgroundService
         List<Position> positions, CancellationToken ct)
     {
         var currentPrice = await _broker.GetCurrentPriceAsync(symbol, ct);
+
+        // Preis-Validierung: wenn Broker 0 liefert, Symbol ueberspringen
+        if (currentPrice == 0)
+        {
+            _logger.LogWarning("Preis fuer {Symbol} ist 0 – ueberspringe (Markt evtl. geschlossen)", symbol);
+            return;
+        }
+
         var (bid, ask) = await _broker.GetBidAskAsync(symbol, ct);
         var recentPrices = await _broker.GetRecentPricesAsync(symbol, 20, ct);
         var candles1D = await _broker.GetPriceHistoryAsync(symbol, "1D", 30, ct);
         var candles4H = await _broker.GetPriceHistoryAsync(symbol, "4H", 30, ct);
         var candles1H = await _broker.GetPriceHistoryAsync(symbol, "1H", 30, ct);
         var currentPosition = positions.FirstOrDefault(p => p.Symbol == symbol);
+
+        // Technische Indikatoren berechnen (1H-Candles fuer OHLC, mehr Daten fuer EMA200)
+        TechnicalIndicators? indicators = null;
+        try
+        {
+            var ohlcCandles = await _broker.GetCandlesAsync(symbol, "1H", 210, ct);
+            if (ohlcCandles.Count > 0)
+            {
+                var closes = ohlcCandles.Select(c => c.Close).ToList();
+                var highs = ohlcCandles.Select(c => c.High).ToList();
+                var lows = ohlcCandles.Select(c => c.Low).ToList();
+                indicators = _ta.Calculate(closes, highs, lows);
+                _logger.LogDebug(
+                    "Indikatoren fuer {Symbol}: RSI={RSI}, EMA20={EMA20}, MACD={MACD}, ATR={ATR}",
+                    symbol, indicators.RSI14, indicators.EMA20, indicators.MACDLine, indicators.ATR14);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Fehler bei Indikator-Berechnung fuer {Symbol}", symbol);
+        }
 
         // Claude um Analyse bitten (Forex/CFD: Bid/Ask, Candles, Lots)
         var request = new ClaudeAnalysisRequest
@@ -158,6 +236,7 @@ public class TradingEngine : BackgroundService
             Candles1D = candles1D,
             Candles4H = candles4H,
             Candles1H = candles1H,
+            Indicators = indicators,
             CurrentPosition = currentPosition,
             AvailableCash = cash,
             PortfolioValue = portfolioValue
