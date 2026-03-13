@@ -61,7 +61,7 @@ public class IndexModel : PageModel
             TradesToday = tradesToday,
             IsEngineRunning = _engine.IsRunning,
             IsKillSwitchActive = _risk.IsKillSwitchActive,
-            IsIBConnected = _broker.IsConnected,
+            IsTradeLockerConnected = _broker.IsConnected,
             Positions = positions,
             RecentTrades = recentTrades,
             RecentLogs = recentLogs,

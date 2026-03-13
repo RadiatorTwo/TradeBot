@@ -1,0 +1,117 @@
+@page
+@model ClaudeTradingBot.Pages.SettingsModel
+@{
+    ViewData["Title"] = "Einstellungen";
+}
+
+<h2 style="margin-bottom: 24px;">Einstellungen</h2>
+
+<div class="warning-banner">
+    Anderungen werden sofort in appsettings.json geschrieben und bei Nutzung von IOptionsMonitor automatisch wirksam.
+</div>
+
+@if (Model.SaveSuccess)
+{
+    <div class="success-banner">Einstellungen erfolgreich gespeichert.</div>
+}
+
+@if (!ViewData.ModelState.IsValid)
+{
+    <div class="warning-banner" style="border-color: var(--red); color: var(--red); background: rgba(239,68,68,0.1);">
+        <strong>Validierungsfehler:</strong>
+        <ul style="margin: 8px 0 0 16px; list-style: disc;">
+            @foreach (var error in ViewData.ModelState.Values.SelectMany(v => v.Errors))
+            {
+                <li>@error.ErrorMessage</li>
+            }
+        </ul>
+    </div>
+}
+
+<form method="post">
+    <!-- Watchlist -->
+    <div class="form-section">
+        <h3>Watchlist</h3>
+        <div class="form-group">
+            <label>Symbole (komma-separiert)</label>
+            <textarea name="WatchList" rows="3">@Model.WatchList</textarea>
+            <div class="hint">z.B. EURUSD, GBPUSD, USDJPY, XAUUSD, US100</div>
+        </div>
+    </div>
+
+    <!-- Risiko-Parameter -->
+    <div class="form-section">
+        <h3>Risiko-Parameter</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="form-group">
+                <label>Min. Confidence</label>
+                <input type="number" name="MinConfidence" value="@Model.MinConfidence" step="0.01" min="0" max="1" />
+                <div class="hint">Minimale KI-Confidence fur Trade-Ausfuhrung (0-1)</div>
+            </div>
+            <div class="form-group">
+                <label>Max. Positionsgrosse (%)</label>
+                <input type="number" name="MaxPositionSizePercent" value="@Model.MaxPositionSizePercent" step="0.5" min="0" />
+                <div class="hint">Maximaler Anteil am Portfolio pro Trade</div>
+            </div>
+            <div class="form-group">
+                <label>Max. Tagesverlust (%)</label>
+                <input type="number" name="MaxDailyLossPercent" value="@Model.MaxDailyLossPercent" step="0.1" min="0" />
+                <div class="hint">Prozentualer Tagesverlust-Limit</div>
+            </div>
+            <div class="form-group">
+                <label>Max. Tagesverlust (absolut)</label>
+                <input type="number" name="MaxDailyLossAbsolute" value="@Model.MaxDailyLossAbsolute" step="10" min="0" />
+                <div class="hint">Absoluter Tagesverlust-Limit in $</div>
+            </div>
+            <div class="form-group">
+                <label>Stop-Loss (%)</label>
+                <input type="number" name="StopLossPercent" value="@Model.StopLossPercent" step="0.1" min="0" />
+                <div class="hint">Automatischer Stop-Loss pro Position</div>
+            </div>
+            <div class="form-group">
+                <label>Max. offene Positionen</label>
+                <input type="number" name="MaxOpenPositions" value="@Model.MaxOpenPositions" min="1" />
+            </div>
+        </div>
+    </div>
+
+    <!-- Intervall -->
+    <div class="form-section">
+        <h3>Trading-Intervall</h3>
+        <div class="form-group">
+            <label>Analyse-Intervall (Minuten)</label>
+            <input type="number" name="TradingIntervalMinutes" value="@Model.TradingIntervalMinutes" min="1" />
+            <div class="hint">Wie oft die Engine Marktdaten analysiert und Trades evaluiert</div>
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Einstellungen Speichern</button>
+</form>
+
+<!-- API-Konfiguration (readonly) -->
+<div class="form-section" style="margin-top: 24px;">
+    <h3>API-Konfiguration (nur Anzeige)</h3>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        <div class="form-group">
+            <label>LLM Provider</label>
+            <input type="text" value="@Model.LlmProvider" readonly />
+        </div>
+        <div class="form-group">
+            <label>TradeLocker Email</label>
+            <input type="text" value="@Model.TradeLockerEmail" readonly />
+        </div>
+        <div class="form-group">
+            <label>Anthropic API Key</label>
+            <input type="text" value="@Model.AnthropicKeyMasked" readonly />
+        </div>
+        <div class="form-group">
+            <label>Gemini API Key</label>
+            <input type="text" value="@Model.GeminiKeyMasked" readonly />
+        </div>
+        <div class="form-group">
+            <label>OpenAI-Compatible API Key</label>
+            <input type="text" value="@Model.OpenAIKeyMasked" readonly />
+        </div>
+    </div>
+    <div class="hint" style="margin-top: 8px;">API-Keys konnen nur direkt in appsettings.json geandert werden.</div>
+</div>

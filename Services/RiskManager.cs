@@ -3,6 +3,7 @@ using ClaudeTradingBot.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
+
 namespace ClaudeTradingBot.Services;
 
 public interface IRiskManager
@@ -17,7 +18,7 @@ public interface IRiskManager
 
 public class RiskManager : IRiskManager
 {
-    private readonly RiskSettings _settings;
+    private readonly IOptionsMonitor<RiskSettings> _settingsMonitor;
     private readonly IBrokerService _broker;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<RiskManager> _logger;
@@ -25,15 +26,17 @@ public class RiskManager : IRiskManager
     private bool _killSwitchActive;
     private string? _killSwitchReason;
 
+    private RiskSettings Settings => _settingsMonitor.CurrentValue;
+
     public bool IsKillSwitchActive => _killSwitchActive;
 
     public RiskManager(
-        IOptions<RiskSettings> settings,
+        IOptionsMonitor<RiskSettings> settings,
         IBrokerService broker,
         IServiceScopeFactory scopeFactory,
         ILogger<RiskManager> logger)
     {
-        _settings = settings.Value;
+        _settingsMonitor = settings;
         _broker = broker;
         _scopeFactory = scopeFactory;
         _logger = logger;
@@ -67,26 +70,26 @@ public class RiskManager : IRiskManager
             return true;
 
         // 3. Confidence-Schwelle (konfigurierbar via MinConfidence)
-        if (rec.Confidence < _settings.MinConfidence)
+        if (rec.Confidence < Settings.MinConfidence)
         {
-            _logger.LogInformation("Trade skipped – confidence {Conf:P0} below MinConfidence {Min:P0}", rec.Confidence, _settings.MinConfidence);
+            _logger.LogInformation("Trade skipped – confidence {Conf:P0} below MinConfidence {Min:P0}", rec.Confidence, Settings.MinConfidence);
             return false;
         }
 
         // 4. Maximale Positionsgröße prüfen (quantity in Lots; Notional = Lots × LotSize × Price)
         var portfolioValue = await _broker.GetPortfolioValueAsync(ct);
         var price = await _broker.GetCurrentPriceAsync(rec.Symbol, ct);
-        const decimal standardLotSize = 100_000m; // Forex Standard-Lot
-        var tradeValue = rec.Quantity * standardLotSize * price;
+        var lotSize = GetLotSize(rec.Symbol);
+        var tradeValue = rec.Quantity * lotSize * price;
         var positionPercent = portfolioValue > 0
             ? (double)(tradeValue / portfolioValue) * 100.0
             : 100.0;
 
-        if (positionPercent > _settings.MaxPositionSizePercent)
+        if (positionPercent > Settings.MaxPositionSizePercent)
         {
             _logger.LogWarning(
                 "Trade rejected – position size {Pct:F1}% exceeds max {Max:F1}%",
-                positionPercent, _settings.MaxPositionSizePercent);
+                positionPercent, Settings.MaxPositionSizePercent);
             return false;
         }
 
@@ -94,12 +97,12 @@ public class RiskManager : IRiskManager
         if (rec.Action.Equals("buy", StringComparison.OrdinalIgnoreCase))
         {
             var positions = await _broker.GetPositionsAsync(ct);
-            if (positions.Count >= _settings.MaxOpenPositions &&
+            if (positions.Count >= Settings.MaxOpenPositions &&
                 !positions.Any(p => p.Symbol == rec.Symbol))
             {
                 _logger.LogWarning(
                     "Trade rejected – max open positions ({Max}) reached",
-                    _settings.MaxOpenPositions);
+                    Settings.MaxOpenPositions);
                 return false;
             }
         }
@@ -129,11 +132,11 @@ public class RiskManager : IRiskManager
                 ? (double)((pos.AveragePrice - currentPrice) / pos.AveragePrice) * 100.0
                 : 0.0;
 
-            if (lossPercent >= _settings.StopLossPercent)
+            if (lossPercent >= Settings.StopLossPercent)
             {
                 _logger.LogWarning(
                     "🛑 STOP-LOSS triggered for {Symbol}: loss {Loss:F1}% >= {Max:F1}%",
-                    pos.Symbol, lossPercent, _settings.StopLossPercent);
+                    pos.Symbol, lossPercent, Settings.StopLossPercent);
 
                 var positionIdOrSymbol = pos.BrokerPositionId ?? pos.Symbol;
                 var success = await _broker.ClosePositionAsync(positionIdOrSymbol, null, ct);
@@ -200,6 +203,25 @@ public class RiskManager : IRiskManager
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>Lot-Größe je nach Instrument-Typ. Forex=100k, Gold=100oz, Indizes=1 Kontrakt.</summary>
+    private static decimal GetLotSize(string symbol)
+    {
+        var s = symbol.ToUpperInvariant();
+        // Edelmetalle: 1 Lot = 100 Einheiten (oz)
+        if (s.StartsWith("XAU") || s.StartsWith("XAG") || s.StartsWith("XPT") || s.StartsWith("XPD"))
+            return 100m;
+        // Indizes/CFDs: 1 Lot = 1 Kontrakt (Preis × 1)
+        if (s.Contains("100") || s.Contains("500") || s.Contains("30") || s.Contains("50") ||
+            s.StartsWith("US") || s.StartsWith("UK") || s.StartsWith("DE") || s.StartsWith("JP") ||
+            s.StartsWith("CHN") || s.StartsWith("AUS"))
+            return 1m;
+        // Öl: 1 Lot = 1000 Barrel
+        if (s.StartsWith("XTI") || s.StartsWith("XBR") || s.Contains("OIL") || s.Contains("WTI") || s.Contains("BRENT"))
+            return 1000m;
+        // Forex Standard: 1 Lot = 100.000 Einheiten
+        return 100_000m;
+    }
+
     private async Task<bool> IsDailyLossExceededAsync(CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();
@@ -216,10 +238,10 @@ public class RiskManager : IRiskManager
         var dailyLoss = yesterdayRecord.PortfolioValue - currentValue;
 
         // Absoluter Verlust-Check
-        if (dailyLoss >= _settings.MaxDailyLossAbsolute)
+        if (dailyLoss >= Settings.MaxDailyLossAbsolute)
         {
             _logger.LogCritical("Daily loss ${Loss:F2} exceeds absolute limit ${Max:F2}",
-                dailyLoss, _settings.MaxDailyLossAbsolute);
+                dailyLoss, Settings.MaxDailyLossAbsolute);
             return true;
         }
 
@@ -228,10 +250,10 @@ public class RiskManager : IRiskManager
             ? (double)(dailyLoss / yesterdayRecord.PortfolioValue) * 100.0
             : 0.0;
 
-        if (lossPercent >= _settings.MaxDailyLossPercent)
+        if (lossPercent >= Settings.MaxDailyLossPercent)
         {
             _logger.LogCritical("Daily loss {Loss:F1}% exceeds limit {Max:F1}%",
-                lossPercent, _settings.MaxDailyLossPercent);
+                lossPercent, Settings.MaxDailyLossPercent);
             return true;
         }
 

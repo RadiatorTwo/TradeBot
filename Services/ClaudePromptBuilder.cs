@@ -19,8 +19,15 @@ public static class ClaudePromptBuilder
           "stopLossPrice": <Preis für Stop-Loss oder null>,
           "takeProfitPrice": <Preis für Take-Profit oder null>
         }
-        - quantity ist immer in Lots (z. B. 0.01, 0.1, 1.0). Keine Stückzahlen.
+
+        WICHTIGE REGELN FÜR POSITIONSGRÖSSE:
+        - 1 Standard-Lot Forex = 100.000 Einheiten der Basiswährung (~100.000 $ Margin bei 1:1 Hebel).
+        - Nutze MAXIMAL 5-10% des verfügbaren Kapitals pro Trade.
+        - Bei einem Konto mit 25.000 $ bedeutet das max. 0.02 Lots (2 Micro-Lots).
+        - Berechnung: (Kapital × MaxRisiko%) / (100.000 × Preis) = Lots. Runde auf 0.01 ab.
         - stopLossPrice und takeProfitPrice sind absolute Preise (z. B. 1.0850 für EURUSD).
+        - Setze IMMER stopLossPrice und takeProfitPrice wenn action != "hold".
+
         Kein Markdown, keine Erklärung, kein Text außerhalb des JSON.
         """;
 
@@ -67,8 +74,9 @@ public static class ClaudePromptBuilder
         }
 
         sb.AppendLine("## Portfolio-Kontext");
-        sb.AppendLine($"**Verfügbares Kapital:** {req.AvailableCash:F2}");
-        sb.AppendLine($"**Portfolio-Gesamtwert (Equity):** {req.PortfolioValue:F2}");
+        sb.AppendLine($"**Verfügbares Kapital:** ${req.AvailableCash:F2}");
+        sb.AppendLine($"**Portfolio-Gesamtwert (Equity):** ${req.PortfolioValue:F2}");
+        sb.AppendLine("**Max. Positionsgröße:** 10% des Kapitals pro Trade");
 
         if (req.CurrentPosition != null)
         {

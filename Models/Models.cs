@@ -18,7 +18,8 @@ public enum TradeStatus
     Pending,
     Executed,
     Failed,
-    Cancelled
+    Cancelled,
+    Rejected
 }
 
 // ── Datenbank-Entitäten ────────────────────────────────────────────────
@@ -54,14 +55,24 @@ public class Trade
 
     /// <summary>Broker-Position-ID (z. B. TradeLocker positionId) für ClosePosition.</summary>
     public string? BrokerPositionId { get; set; }
+
+    /// <summary>Zeitpunkt der Positionsschließung (SL/TP/manuell).</summary>
+    public DateTime? ClosedAt { get; set; }
+
+    /// <summary>Realisierter Gewinn/Verlust nach Schließung.</summary>
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal? RealizedPnL { get; set; }
 }
 
 public class Position
 {
     [Key]
     public int Id { get; set; }
-    
+
     public string Symbol { get; set; } = string.Empty;
+
+    /// <summary>buy oder sell.</summary>
+    public string Side { get; set; } = "buy";
 
     /// <summary>Größe in Lots (Forex/CFD) oder Stückzahl.</summary>
     [Column(TypeName = "decimal(18,4)")]
@@ -186,6 +197,7 @@ public class OpenAICompatibleSettings
     /// <summary>Ollama: qwen2.5:7b (empfohlen für Trading/JSON), llama3.2:3b (leicht), mistral, deepseek-r1:7b</summary>
     public string Model { get; set; } = "qwen2.5:7b";
     public int MaxTokens { get; set; } = 2048;
+    public int TimeoutSeconds { get; set; } = 60;
 }
 
 // Legacy-IB-Konfiguration (wird nicht mehr aktiv verwendet,
@@ -226,6 +238,19 @@ public class PlaceOrderResult
     public bool Success { get; set; }
     public string? BrokerOrderId { get; set; }
     public string? BrokerPositionId { get; set; }
+}
+
+/// <summary>Geschlossene Position vom Broker (für Sync).</summary>
+public class BrokerClosedPosition
+{
+    public string PositionId { get; set; } = string.Empty;
+    public string Symbol { get; set; } = string.Empty;
+    public string Side { get; set; } = string.Empty;
+    public decimal Qty { get; set; }
+    public decimal OpenPrice { get; set; }
+    public decimal ClosePrice { get; set; }
+    public decimal PnL { get; set; }
+    public DateTime ClosedAt { get; set; }
 }
 
 // ── TradeLocker API DTOs ───────────────────────────────────────────────
@@ -277,7 +302,23 @@ public class TradeLockerInstrumentInfo
     public int Id { get; set; }
     /// <summary>Manche APIs liefern tradableInstrumentId statt Id.</summary>
     public int TradableInstrumentId { get; set; }
+    /// <summary>API-Feld "name" (z.B. "EURUSD", "XAUUSD"). TradeLocker nutzt "name" statt "symbol".</summary>
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+    /// <summary>Fallback: manche Broker liefern "symbol" statt "name".</summary>
+    [JsonPropertyName("symbol")]
     public string Symbol { get; set; } = string.Empty;
+    /// <summary>Gibt den besten verfügbaren Symbol-Namen zurück.</summary>
+    [JsonIgnore]
+    public string ResolvedSymbol => !string.IsNullOrWhiteSpace(Name) ? Name : Symbol;
+    /// <summary>Routes aus der API (z.B. [{"id":898485,"type":"TRADE"},{"id":1992737,"type":"INFO"}]).</summary>
+    public List<TradeLockerRoute>? Routes { get; set; }
+}
+
+public class TradeLockerRoute
+{
+    public int Id { get; set; }
+    public string Type { get; set; } = string.Empty;
 }
 
 public class TradeLockerQuote
@@ -291,7 +332,7 @@ public class TradeLockerOrderRequest
 {
     public decimal Price { get; set; }
     public decimal Qty { get; set; }
-    public string RouteId { get; set; } = "TRADE";
+    public int RouteId { get; set; }
     public string Side { get; set; } = "buy";
     public decimal? StopLoss { get; set; }
     public string? StopLossType { get; set; } = "absolute";
@@ -313,6 +354,7 @@ public class TradeLockerPositionInfo
 {
     public string Id { get; set; } = string.Empty;
     public int TradableInstrumentId { get; set; }
+    public string Side { get; set; } = "buy";
     public decimal Qty { get; set; }
     public decimal AvgPrice { get; set; }
     public decimal MarketPrice { get; set; }
@@ -402,7 +444,7 @@ public class DashboardViewModel
     public int TradesToday { get; set; }
     public bool IsEngineRunning { get; set; }
     public bool IsKillSwitchActive { get; set; }
-    public bool IsIBConnected { get; set; }
+    public bool IsTradeLockerConnected { get; set; }
     public List<Position> Positions { get; set; } = new();
     public List<Trade> RecentTrades { get; set; } = new();
     public List<TradingLog> RecentLogs { get; set; } = new();

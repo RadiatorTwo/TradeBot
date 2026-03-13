@@ -148,8 +148,8 @@ public class TradingEngine : BackgroundService
             CurrentPrice = currentPrice,
             Bid = bid,
             Ask = ask,
-            DayChange = recentPrices.Count > 1
-                ? ((currentPrice - recentPrices.Last()) / recentPrices.Last()) * 100
+            DayChange = recentPrices.Count > 1 && recentPrices.First() != 0
+                ? ((currentPrice - recentPrices.First()) / recentPrices.First()) * 100
                 : 0,
             Volume = 0, // Forex/CFD: optional
             RecentPrices = recentPrices,
@@ -161,6 +161,12 @@ public class TradingEngine : BackgroundService
             PortfolioValue = portfolioValue
         };
 
+        _logger.LogDebug(
+            "LLM-Input für {Symbol}: Price={Price:F4}, Bid={Bid:F4}, Ask={Ask:F4}, " +
+            "RecentPrices={Recent}, Candles1D={C1D}, Candles4H={C4H}, Candles1H={C1H}",
+            symbol, currentPrice, bid, ask,
+            recentPrices.Count, candles1D.Count, candles4H.Count, candles1H.Count);
+
         var recommendation = await _claude.AnalyzeAsync(request, ct);
 
         if (recommendation == null)
@@ -169,15 +175,63 @@ public class TradingEngine : BackgroundService
             return;
         }
 
-        // Risk Check
-        var isValid = await _risk.ValidateTradeAsync(recommendation, ct);
-
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
 
         var action = recommendation.Action.Equals("buy", StringComparison.OrdinalIgnoreCase)
             ? TradeAction.Buy
             : TradeAction.Sell;
+
+        // Gegenrichtung erkennen: LLM empfiehlt buy aber wir haben sell-Positionen (oder umgekehrt)
+        // → bestehende Positionen schließen
+        var oppositePositions = positions
+            .Where(p => p.Symbol == symbol && IsOppositeDirection(p.Side, recommendation.Action))
+            .ToList();
+
+        if (oppositePositions.Count > 0 && !recommendation.Action.Equals("hold", StringComparison.OrdinalIgnoreCase))
+        {
+            foreach (var pos in oppositePositions)
+            {
+                var posId = pos.BrokerPositionId ?? pos.Symbol;
+                _logger.LogInformation(
+                    "Schließe {Side}-Position {Symbol} ({Qty} Lots, ID: {PosId}) – LLM empfiehlt {Action}",
+                    pos.Side, pos.Symbol, pos.Quantity, posId, recommendation.Action.ToUpper());
+
+                var closeSuccess = await _broker.ClosePositionAsync(posId, null, ct);
+
+                db.Trades.Add(new Trade
+                {
+                    Symbol = symbol,
+                    Action = pos.Side == "buy" ? TradeAction.Sell : TradeAction.Buy,
+                    Quantity = pos.Quantity,
+                    Price = currentPrice,
+                    ExecutedPrice = closeSuccess ? currentPrice : null,
+                    ExecutedAt = closeSuccess ? DateTime.UtcNow : null,
+                    Status = closeSuccess ? TradeStatus.Executed : TradeStatus.Failed,
+                    ClaudeReasoning = $"Position geschlossen: LLM empfiehlt {recommendation.Action.ToUpper()} (Confidence: {recommendation.Confidence:P0}). {recommendation.Reasoning}",
+                    ClaudeConfidence = recommendation.Confidence,
+                    BrokerPositionId = pos.BrokerPositionId,
+                    ErrorMessage = closeSuccess ? null : "Close-Order fehlgeschlagen"
+                });
+
+                db.TradingLogs.Add(new TradingLog
+                {
+                    Level = closeSuccess ? "Info" : "Error",
+                    Source = "TradingEngine",
+                    Message = $"{(closeSuccess ? "✅" : "❌")} Close {pos.Side.ToUpper()} {pos.Quantity:F2} Lots {symbol} @ {currentPrice:F4} (LLM: {recommendation.Action.ToUpper()})"
+                });
+            }
+
+            await db.SaveChangesAsync(ct);
+
+            // Nach dem Schließen: wenn LLM auch eine neue Position empfiehlt, weiter machen
+            // Sonst hier beenden
+            if (recommendation.Confidence < _riskSettings.MinConfidence)
+                return;
+        }
+
+        // Risk Check
+        var isValid = await _risk.ValidateTradeAsync(recommendation, ct);
 
         if (!isValid || recommendation.Action.Equals("hold", StringComparison.OrdinalIgnoreCase))
         {
@@ -191,7 +245,7 @@ public class TradingEngine : BackgroundService
                     Price = currentPrice,
                     ClaudeReasoning = recommendation.Reasoning,
                     ClaudeConfidence = recommendation.Confidence,
-                    Status = TradeStatus.Failed,
+                    Status = TradeStatus.Rejected,
                     ErrorMessage = "Trade rejected by RiskManager"
                 });
             }
@@ -205,7 +259,27 @@ public class TradingEngine : BackgroundService
             return;
         }
 
-        // Trade ausführen (Lots, StopLoss, TakeProfit)
+        // Gleiche Richtung: nicht doppelt öffnen wenn wir schon eine Position haben
+        var sameDirectionPositions = positions
+            .Where(p => p.Symbol == symbol && !IsOppositeDirection(p.Side, recommendation.Action))
+            .ToList();
+
+        if (sameDirectionPositions.Count > 0)
+        {
+            _logger.LogInformation(
+                "Überspringe neue {Action}-Order für {Symbol} – bereits {Count} Position(en) in gleicher Richtung offen.",
+                recommendation.Action.ToUpper(), symbol, sameDirectionPositions.Count);
+            db.TradingLogs.Add(new TradingLog
+            {
+                Source = "TradingEngine",
+                Message = $"{symbol}: {recommendation.Action.ToUpper()} übersprungen – bereits Position offen",
+                Details = recommendation.Reasoning
+            });
+            await db.SaveChangesAsync(ct);
+            return;
+        }
+
+        // Neue Position eröffnen (Lots, StopLoss, TakeProfit)
         var trade = new Trade
         {
             Symbol = symbol,
@@ -240,6 +314,17 @@ public class TradingEngine : BackgroundService
         });
 
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Prüft ob Position-Side und LLM-Empfehlung in entgegengesetzte Richtungen zeigen.</summary>
+    private static bool IsOppositeDirection(string positionSide, string recommendedAction)
+    {
+        var isBuyPosition = positionSide.Equals("buy", StringComparison.OrdinalIgnoreCase);
+        var isSellRecommendation = recommendedAction.Equals("sell", StringComparison.OrdinalIgnoreCase);
+        var isSellPosition = positionSide.Equals("sell", StringComparison.OrdinalIgnoreCase);
+        var isBuyRecommendation = recommendedAction.Equals("buy", StringComparison.OrdinalIgnoreCase);
+
+        return (isBuyPosition && isSellRecommendation) || (isSellPosition && isBuyRecommendation);
     }
 
     private async Task LogAsync(string level, string source, string message)

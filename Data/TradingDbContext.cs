@@ -23,7 +23,8 @@ public class TradingDbContext : DbContext
 
         modelBuilder.Entity<Position>(e =>
         {
-            e.HasIndex(p => p.Symbol).IsUnique();
+            e.HasIndex(p => p.Symbol);
+            e.HasIndex(p => p.BrokerPositionId).IsUnique();
         });
 
         modelBuilder.Entity<DailyPnL>(e =>

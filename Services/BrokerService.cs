@@ -24,6 +24,9 @@ public interface IBrokerService
     Task<PlaceOrderResult> PlaceOrderAsync(string symbol, TradeAction action, decimal quantityLots, decimal? stopLoss, decimal? takeProfit, CancellationToken ct = default);
     /// <summary>Position schließen (komplett: quantity=null oder 0; teilweise: quantity = Lots).</summary>
     Task<bool> ClosePositionAsync(string positionIdOrSymbol, decimal? quantity, CancellationToken ct = default);
+
+    /// <summary>Geschlossene Positionen der letzten N Tage vom Broker abrufen.</summary>
+    Task<List<BrokerClosedPosition>> GetClosedPositionsAsync(int lookbackDays = 1, CancellationToken ct = default);
 }
 
 // ── Simulierte Implementierung für Paper Trading / Entwicklung ─────────
@@ -206,6 +209,9 @@ public class SimulatedBrokerService : IBrokerService
         if (closeQty <= 0) closeQty = pos.Quantity;
         return (await PlaceOrderAsync(positionIdOrSymbol, TradeAction.Sell, closeQty, null, null, ct)).Success;
     }
+
+    public Task<List<BrokerClosedPosition>> GetClosedPositionsAsync(int lookbackDays = 1, CancellationToken ct = default)
+        => Task.FromResult(new List<BrokerClosedPosition>());
 }
 
 // ── Echte IB Gateway Implementierung (Platzhalter) ────────────────────

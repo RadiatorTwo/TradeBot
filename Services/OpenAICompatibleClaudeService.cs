@@ -17,11 +17,20 @@ public class OpenAICompatibleClaudeService : IClaudeService
     private readonly OpenAICompatibleSettings _settings;
     private readonly ILogger<OpenAICompatibleClaudeService> _logger;
 
+    /// <summary>
+    /// Snake_case Policy für OpenAI/Ollama API (max_tokens, nicht maxTokens).
+    /// </summary>
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         PropertyNameCaseInsensitive = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
+    /// <summary>CamelCase für Response-Deserialisierung (ClaudeTradeRecommendation etc.)</summary>
+    private static readonly JsonSerializerOptions DeserializeOpts = new()
+    {
+        PropertyNameCaseInsensitive = true
     };
 
     public OpenAICompatibleClaudeService(
@@ -35,6 +44,7 @@ public class OpenAICompatibleClaudeService : IClaudeService
 
         var baseUrl = _settings.BaseUrl?.TrimEnd('/') ?? "http://localhost:11434/v1";
         _http.BaseAddress = new Uri(baseUrl + "/");
+        _http.Timeout = TimeSpan.FromSeconds(_settings.TimeoutSeconds > 0 ? _settings.TimeoutSeconds : 60);
         if (!string.IsNullOrEmpty(_settings.ApiKey))
             _http.DefaultRequestHeaders.Add("Authorization", "Bearer " + _settings.ApiKey);
     }
@@ -43,11 +53,12 @@ public class OpenAICompatibleClaudeService : IClaudeService
     {
         var userPrompt = ClaudePromptBuilder.BuildUserPrompt(request);
 
-        var body = new
+        var body = new Dictionary<string, object>
         {
-            model = _settings.Model,
-            max_tokens = _settings.MaxTokens,
-            messages = new[]
+            ["model"] = _settings.Model,
+            ["max_tokens"] = _settings.MaxTokens,
+            ["temperature"] = 0.2,
+            ["messages"] = new[]
             {
                 new { role = "system", content = ClaudePromptBuilder.SystemPrompt },
                 new { role = "user", content = userPrompt }
@@ -55,6 +66,7 @@ public class OpenAICompatibleClaudeService : IClaudeService
         };
 
         var json = JsonSerializer.Serialize(body, JsonOpts);
+        _logger.LogDebug("LLM Request JSON (first 500 chars): {Json}", json.Length > 500 ? json[..500] + "..." : json);
         var content = new StringContent(json, Encoding.UTF8, "application/json");
 
         try
@@ -66,7 +78,13 @@ public class OpenAICompatibleClaudeService : IClaudeService
 
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogError("OpenAI-compatible API error {Status}: {Body}", response.StatusCode, responseBody);
+                var statusCode = (int)response.StatusCode;
+                if (statusCode == 404)
+                    _logger.LogError("OpenAI-compatible API: Modell '{Model}' nicht gefunden (404). Ist das Modell in Ollama installiert?", _settings.Model);
+                else if (statusCode >= 500)
+                    _logger.LogError("OpenAI-compatible API: Server-Fehler {Status} (Out of Memory? GPU überlastet?): {Body}", statusCode, responseBody);
+                else
+                    _logger.LogError("OpenAI-compatible API error {Status}: {Body}", statusCode, responseBody);
                 return null;
             }
 
@@ -86,12 +104,14 @@ public class OpenAICompatibleClaudeService : IClaudeService
             if (string.IsNullOrWhiteSpace(textContent))
                 return null;
 
+            _logger.LogDebug("LLM raw response for {Symbol}: {Content}", request.Symbol, textContent.Length > 500 ? textContent[..500] : textContent);
+
             var cleanJson = textContent
                 .Replace("```json", "")
                 .Replace("```", "")
                 .Trim();
 
-            var recommendation = JsonSerializer.Deserialize<ClaudeTradeRecommendation>(cleanJson, JsonOpts);
+            var recommendation = JsonSerializer.Deserialize<ClaudeTradeRecommendation>(cleanJson, DeserializeOpts);
 
             _logger.LogInformation(
                 "LLM recommends {Action} {Qty:F2} Lots {Symbol} (confidence: {Conf:P0}, SL: {SL}, TP: {TP})",

@@ -3,6 +3,7 @@ using System;
 using ClaudeTradingBot.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace ClaudeTradingBot.Migrations
 {
     [DbContext(typeof(TradingDbContext))]
-    partial class TradingDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260313202422_AddPositionSyncFields")]
+    partial class AddPositionSyncFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "8.0.10");
@@ -77,10 +80,8 @@ namespace ClaudeTradingBot.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BrokerPositionId")
+                    b.HasIndex("Symbol")
                         .IsUnique();
-
-                    b.HasIndex("Symbol");
 
                     b.ToTable("Positions");
                 });
