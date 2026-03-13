@@ -21,6 +21,8 @@ public interface IBrokerService
     Task<List<OhlcCandle>> GetCandlesAsync(string symbol, string resolution, int count, CancellationToken ct = default);
     Task<decimal> GetAccountCashAsync(CancellationToken ct = default);
     Task<decimal> GetPortfolioValueAsync(CancellationToken ct = default);
+    /// <summary>Konto-Details (Balance, Equity, Margin, FreeMargin).</summary>
+    Task<AccountDetails> GetAccountDetailsAsync(CancellationToken ct = default);
     Task<List<Position>> GetPositionsAsync(CancellationToken ct = default);
     /// <summary>Order platzieren (Forex/CFD: quantity in Lots). Gibt Order-/Position-IDs für DB-Mapping zurück.</summary>
     Task<PlaceOrderResult> PlaceOrderAsync(string symbol, TradeAction action, decimal quantityLots, decimal? stopLoss, decimal? takeProfit, CancellationToken ct = default);
@@ -140,6 +142,18 @@ public class SimulatedBrokerService : IBrokerService
     {
         var positionValue = _positions.Values.Sum(p => p.CurrentPrice * p.Quantity);
         return Task.FromResult(_cash + positionValue);
+    }
+
+    public async Task<AccountDetails> GetAccountDetailsAsync(CancellationToken ct = default)
+    {
+        var equity = await GetPortfolioValueAsync(ct);
+        return new AccountDetails
+        {
+            Balance = _cash,
+            Equity = equity,
+            Margin = 0,
+            FreeMargin = equity
+        };
     }
 
     public Task<List<Position>> GetPositionsAsync(CancellationToken ct = default)

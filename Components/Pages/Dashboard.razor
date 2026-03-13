@@ -27,13 +27,21 @@
                  Color="@(vm.IsMarketOpen ? "green" : "red")" />
 </div>
 
-<!-- Stats -->
+<!-- Konto-Uebersicht -->
 <div class="stats-grid">
-    <StatCard Label="Portfolio-Wert" Value="@($"${vm.PortfolioValue:N2}")" />
-    <StatCard Label="Tages-P&L"
-              Value="@($"{(vm.DailyPnL >= 0 ? "+" : "")}${vm.DailyPnL:N2}")"
-              CssClass="@(vm.DailyPnL >= 0 ? "stat-positive" : "stat-negative")" />
-    <StatCard Label="Verfuegbares Kapital" Value="@($"${vm.AvailableCash:N2}")" />
+    <StatCard Label="Eigenkapital (Equity)" Value="@($"${vm.Account.Equity:N2}")" />
+    <StatCard Label="Kontostand (Balance)" Value="@($"${vm.Account.Balance:N2}")" />
+    <StatCard Label="Unrealisierter P&L"
+              Value="@($"{(vm.Account.UnrealizedPnL >= 0 ? "+" : "")}${vm.Account.UnrealizedPnL:N2}")"
+              CssClass="@(vm.Account.UnrealizedPnL >= 0 ? "stat-positive" : "stat-negative")" />
+    <StatCard Label="Verwendete Margin" Value="@($"${vm.Account.Margin:N2}")" />
+    <StatCard Label="Verfuegbare Margin" Value="@($"${vm.Account.FreeMargin:N2}")" />
+    @if (vm.Account.Margin > 0)
+    {
+        <StatCard Label="Margin-Nutzung"
+                  Value="@($"{vm.Account.MarginUsagePercent:F2}%")"
+                  CssClass="@(vm.Account.MarginUsagePercent <= 50 ? "stat-positive" : vm.Account.MarginUsagePercent <= 80 ? "" : "stat-negative")" />
+    }
     <StatCard Label="Offene Positionen" Value="@vm.OpenPositions.ToString()" />
     <StatCard Label="Trades Heute" Value="@vm.TradesToday.ToString()" />
 </div>
@@ -54,6 +62,12 @@
         <button class="btn btn-success" @onclick="ResetKillSwitch">Kill Switch Reset</button>
     }
 </div>
+
+<!-- Equity-Kurve -->
+<EquityChart PnLHistory="vm.PnLHistory" />
+
+<!-- Performance-Statistiken -->
+<TradingStats Stats="vm.Stats" />
 
 <!-- Naechste High-Impact Events -->
 @if (vm.UpcomingEvents.Any())
@@ -220,12 +234,14 @@
     {
         var positions = new List<Position>();
         decimal cash = 0, portfolioValue = 0;
+        var account = new AccountDetails();
 
         try
         {
             positions = await Broker.GetPositionsAsync();
-            cash = await Broker.GetAccountCashAsync();
-            portfolioValue = await Broker.GetPortfolioValueAsync();
+            account = await Broker.GetAccountDetailsAsync();
+            cash = account.FreeMargin > 0 ? account.FreeMargin : account.Balance;
+            portfolioValue = account.Equity > 0 ? account.Equity : account.Balance;
         }
         catch { }
 
@@ -251,10 +267,14 @@
             .Take(30)
             .ToListAsync();
 
+        var allTradesForStats = await db.Trades.ToListAsync();
+        var stats = TradingStatsService.Calculate(allTradesForStats, pnlHistory);
+
         vm = new DashboardViewModel
         {
             PortfolioValue = portfolioValue,
             AvailableCash = cash,
+            Account = account,
             OpenPositions = positions.Count,
             TradesToday = tradesToday,
             IsEngineRunning = Engine.IsRunning,
@@ -274,7 +294,8 @@
             Positions = positions,
             RecentTrades = recentTrades,
             RecentLogs = recentLogs,
-            PnLHistory = pnlHistory
+            PnLHistory = pnlHistory,
+            Stats = stats
         };
     }
 

@@ -20,6 +20,7 @@ public class RiskManager : IRiskManager
 {
     private readonly IOptionsMonitor<RiskSettings> _settingsMonitor;
     private readonly IBrokerService _broker;
+    private readonly NotificationService _notification;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<RiskManager> _logger;
 
@@ -33,11 +34,13 @@ public class RiskManager : IRiskManager
     public RiskManager(
         IOptionsMonitor<RiskSettings> settings,
         IBrokerService broker,
+        NotificationService notification,
         IServiceScopeFactory scopeFactory,
         ILogger<RiskManager> logger)
     {
         _settingsMonitor = settings;
         _broker = broker;
+        _notification = notification;
         _scopeFactory = scopeFactory;
         _logger = logger;
     }
@@ -46,7 +49,8 @@ public class RiskManager : IRiskManager
     {
         _killSwitchActive = true;
         _killSwitchReason = reason;
-        _logger.LogCritical("🚨 KILL SWITCH ACTIVATED: {Reason}", reason);
+        _logger.LogCritical("KILL SWITCH ACTIVATED: {Reason}", reason);
+        _ = _notification.SendAlertAsync($"Kill Switch aktiviert: {reason}");
     }
 
     public void ResetKillSwitch()

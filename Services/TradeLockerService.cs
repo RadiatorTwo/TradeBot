@@ -534,6 +534,7 @@ public class TradeLockerService : IBrokerService
                         (int)response.StatusCode, Truncate(body, 500));
                 return null;
             }
+            _logger.LogDebug("TradeLocker account details raw response: {Body}", Truncate(body, 800));
             // Wrapper-Format erkennen: { "data": { ... } } oder { "accountDetails": { ... } }
             TradeLockerAccountDetails? details = null;
             try
@@ -541,11 +542,23 @@ public class TradeLockerService : IBrokerService
                 using var doc = System.Text.Json.JsonDocument.Parse(body);
                 var root = doc.RootElement;
                 var target = root;
-                if (root.TryGetProperty("data", out var data) && data.ValueKind == System.Text.Json.JsonValueKind.Object)
+                // TradeLocker nutzt verschiedene Wrapper: { "d": {...} }, { "data": {...} }, { "accountDetails": {...} }
+                if (root.TryGetProperty("d", out var dProp) && dProp.ValueKind == System.Text.Json.JsonValueKind.Object)
+                    target = dProp;
+                else if (root.TryGetProperty("data", out var data) && data.ValueKind == System.Text.Json.JsonValueKind.Object)
                     target = data;
                 else if (root.TryGetProperty("accountDetails", out var ad) && ad.ValueKind == System.Text.Json.JsonValueKind.Object)
                     target = ad;
+
+                // Felder können auch als Strings kommen, manuell parsen als Fallback
                 details = JsonSerializer.Deserialize<TradeLockerAccountDetails>(target.GetRawText(), JsonOptions);
+
+                // Manche APIs liefern die Daten in einem verschachtelten "accountDetails"-Objekt innerhalb von "d"
+                if (details != null && details.Balance == 0 && details.Equity == 0 && details.AccountBalance == 0)
+                {
+                    if (target.TryGetProperty("accountDetails", out var nested) && nested.ValueKind == System.Text.Json.JsonValueKind.Object)
+                        details = JsonSerializer.Deserialize<TradeLockerAccountDetails>(nested.GetRawText(), JsonOptions);
+                }
             }
             catch (Exception ex)
             {
@@ -902,6 +915,107 @@ public class TradeLockerService : IBrokerService
             if (equity != 0) return equity;
         }
         return _balanceFromAllAccounts;
+    }
+
+    public async Task<AccountDetails> GetAccountDetailsAsync(CancellationToken ct = default)
+    {
+        var result = new AccountDetails();
+
+        // Versuch 1: /trade/accounts/{id}/details
+        var details = await GetAccountDetailsInternalAsync(ct);
+        if (details != null)
+        {
+            result.Balance = details.Balance != 0 ? details.Balance : details.AccountBalance;
+            result.Equity = details.Equity != 0 ? details.Equity : details.AccountEquity;
+            result.Margin = details.Margin;
+            result.FreeMargin = details.FreeMargin;
+        }
+
+        // Versuch 2: /trade/accounts/{id}/state (alternativer Endpunkt bei manchen Brokern)
+        if (result.Equity == 0 || result.Margin == 0)
+        {
+            var stateDetails = await GetAccountStateAsync(ct);
+            if (stateDetails != null)
+            {
+                if (result.Balance == 0)
+                    result.Balance = stateDetails.Balance != 0 ? stateDetails.Balance : stateDetails.AccountBalance;
+                if (result.Equity == 0)
+                    result.Equity = stateDetails.Equity != 0 ? stateDetails.Equity : stateDetails.AccountEquity;
+                if (result.Margin == 0)
+                    result.Margin = stateDetails.Margin;
+                if (result.FreeMargin == 0)
+                    result.FreeMargin = stateDetails.FreeMargin;
+            }
+        }
+
+        // Fallback auf Balance aus all-accounts Login
+        if (result.Balance == 0 && _balanceFromAllAccounts > 0)
+            result.Balance = _balanceFromAllAccounts;
+        if (result.Equity == 0 && result.Balance > 0)
+            result.Equity = result.Balance;
+        if (result.FreeMargin == 0 && result.Equity > 0)
+            result.FreeMargin = result.Equity - result.Margin;
+
+        _logger.LogDebug("AccountDetails: Balance={Balance}, Equity={Equity}, Margin={Margin}, FreeMargin={FreeMargin}",
+            result.Balance, result.Equity, result.Margin, result.FreeMargin);
+
+        return result;
+    }
+
+    /// <summary>
+    /// Alternativer Endpunkt: /trade/accounts/{id}/state
+    /// Liefert { "d": { "accountDetailsData": [balance, equity, freeMargin, ..., margin, ...] } }
+    /// Array-Indizes (TradeLocker Demo):
+    ///   [0]=Balance, [1]=Equity, [2]=FreeMargin, [9]=UsedMargin
+    /// </summary>
+    private async Task<TradeLockerAccountDetails?> GetAccountStateAsync(CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(_accountId)) return null;
+        await ThrottleAsync(ct);
+        try
+        {
+            using var client = GetHttpClient();
+            var response = await client.GetAsync($"trade/accounts/{_accountId}/state", ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogDebug("TradeLocker /state endpoint: {Status}", (int)response.StatusCode);
+                return null;
+            }
+            var body = await response.Content.ReadAsStringAsync(ct);
+            _logger.LogDebug("TradeLocker account state raw: {Body}", Truncate(body, 800));
+
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            var target = root;
+            if (root.TryGetProperty("d", out var d))
+                target = d;
+
+            // Format: { "accountDetailsData": [balance, equity, freeMargin, ..., usedMargin, ...] }
+            if (target.TryGetProperty("accountDetailsData", out var arr) &&
+                arr.ValueKind == System.Text.Json.JsonValueKind.Array &&
+                arr.GetArrayLength() >= 10)
+            {
+                var balance = arr[0].GetDecimal();
+                var equity = arr[1].GetDecimal();
+                var freeMargin = arr[2].GetDecimal();
+                var usedMargin = arr[9].GetDecimal();
+
+                return new TradeLockerAccountDetails
+                {
+                    Balance = balance,
+                    Equity = equity,
+                    FreeMargin = freeMargin,
+                    Margin = usedMargin
+                };
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "TradeLocker /state endpoint fehlgeschlagen");
+            return null;
+        }
     }
 
     /// <summary>Parst Positionen aus TradeLockers Array-of-Arrays-Format:

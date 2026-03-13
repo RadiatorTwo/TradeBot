@@ -21,6 +21,7 @@ builder.Services.Configure<GeminiSettings>(builder.Configuration.GetSection("Gem
 builder.Services.Configure<OpenAICompatibleSettings>(builder.Configuration.GetSection("OpenAICompatible"));
 builder.Services.Configure<TradeLockerSettings>(builder.Configuration.GetSection("TradeLocker"));
 builder.Services.Configure<RiskSettings>(builder.Configuration.GetSection("RiskManagement"));
+builder.Services.Configure<TelegramSettings>(builder.Configuration.GetSection("Telegram"));
 
 // ── Datenbank ──────────────────────────────────────────────────────────
 // AddDbContextFactory fuer Blazor-Komponenten (kurzlebige Kontexte)
@@ -48,6 +49,7 @@ builder.Services.AddSingleton<IRiskManager, RiskManager>();
 builder.Services.AddSingleton<TechnicalAnalysisService>();
 builder.Services.AddSingleton<TradingSessionService>();
 builder.Services.AddSingleton<MarketHoursService>();
+builder.Services.AddSingleton<NotificationService>();
 builder.Services.AddSingleton<EconomicCalendarService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<EconomicCalendarService>());
 
@@ -135,6 +137,16 @@ app.MapGet("/api/status", (TradingEngine engine, IBrokerService broker, IRiskMan
         marketOpen = marketHours.IsMarketOpen(),
         marketStatus = marketHours.GetMarketStatus()
     }));
+
+// ── PnL-History API (fuer Equity-Kurve) ──────────────────────────────────
+app.MapGet("/api/pnl-history", async (TradingDbContext db) =>
+{
+    var history = await db.DailyPnLs
+        .OrderBy(d => d.Date)
+        .Select(d => new { date = d.Date.ToString("yyyy-MM-dd"), portfolio = d.PortfolioValue, pnl = d.RealizedPnL })
+        .ToListAsync();
+    return Results.Ok(history);
+});
 
 // ── CSV-Export für Trade-Historie ────────────────────────────────────────
 app.MapGet("/api/trades/export", async (

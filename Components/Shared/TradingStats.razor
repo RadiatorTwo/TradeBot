@@ -1,0 +1,44 @@
+@if (Stats.TotalExecuted > 0 || Stats.TotalRejected > 0)
+{
+    <div class="section">
+        <h2>Performance-Statistiken</h2>
+        <div class="stats-grid">
+            <StatCard Label="Ausgefuehrt"
+                      Value="@Stats.TotalExecuted.ToString()" />
+            <StatCard Label="Abgelehnt / Fehlgeschlagen"
+                      Value="@($"{Stats.TotalRejected} / {Stats.TotalFailed}")" />
+            <StatCard Label="Avg. Confidence"
+                      Value="@($"{Stats.AvgConfidence:F1}%")" />
+            <StatCard Label="Trades / Tag"
+                      Value="@Stats.TradesPerDay.ToString("F1")" />
+
+            @if (Stats.HasPnLData)
+            {
+                <StatCard Label="Win-Rate"
+                          Value="@($"{Stats.WinRate:F1}%")"
+                          CssClass="@(Stats.WinRate >= 50 ? "stat-positive" : "stat-negative")" />
+                <StatCard Label="Profit Factor"
+                          Value="@Stats.ProfitFactor.ToString("F2")"
+                          CssClass="@(Stats.ProfitFactor >= 1.5m ? "stat-positive" : Stats.ProfitFactor >= 1m ? "" : "stat-negative")" />
+                <StatCard Label="Netto P&L"
+                          Value="@($"{(Stats.NetPnL >= 0 ? "+" : "")}${Stats.NetPnL:N2}")"
+                          CssClass="@(Stats.NetPnL >= 0 ? "stat-positive" : "stat-negative")" />
+                <StatCard Label="Max Drawdown"
+                          Value="@($"${Stats.MaxDrawdown:N2} ({Stats.MaxDrawdownPercent:F1}%)")"
+                          CssClass="stat-negative" />
+                <StatCard Label="Avg Win / Avg Loss"
+                          Value="@($"${Stats.AvgWin:N2} / ${Stats.AvgLoss:N2}")" />
+                <StatCard Label="Sharpe Ratio"
+                          Value="@Stats.SharpeRatio.ToString("F2")"
+                          CssClass="@(Stats.SharpeRatio >= 1 ? "stat-positive" : Stats.SharpeRatio >= 0 ? "" : "stat-negative")" />
+                <StatCard Label="Trades (W/L)"
+                          Value="@($"{Stats.ClosedTrades} ({Stats.WinningTrades}W / {Stats.LosingTrades}L)")" />
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public TradingStatsViewModel Stats { get; set; } = new();
+}

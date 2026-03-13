@@ -13,6 +13,7 @@ public class TradingEngine : BackgroundService
     private readonly TradingSessionService _session;
     private readonly MarketHoursService _marketHours;
     private readonly EconomicCalendarService _calendar;
+    private readonly NotificationService _notification;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IOptionsMonitor<RiskSettings> _settingsMonitor;
     private readonly IConfiguration _config;
@@ -37,6 +38,7 @@ public class TradingEngine : BackgroundService
         TradingSessionService session,
         MarketHoursService marketHours,
         EconomicCalendarService calendar,
+        NotificationService notification,
         IServiceScopeFactory scopeFactory,
         IOptionsMonitor<RiskSettings> settingsMonitor,
         IConfiguration config,
@@ -49,6 +51,7 @@ public class TradingEngine : BackgroundService
         _session = session;
         _marketHours = marketHours;
         _calendar = calendar;
+        _notification = notification;
         _scopeFactory = scopeFactory;
         _settingsMonitor = settingsMonitor;
         _config = config;
@@ -415,6 +418,9 @@ public class TradingEngine : BackgroundService
         });
 
         await db.SaveChangesAsync(ct);
+
+        // Telegram-Notification
+        _ = _notification.SendTradeNotificationAsync(trade);
     }
 
     /// <summary>

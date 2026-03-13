@@ -340,6 +340,19 @@ public static class PipCalculator
     }
 }
 
+/// <summary>Konto-Details vom Broker (Balance, Equity, Margin).</summary>
+public class AccountDetails
+{
+    public decimal Balance { get; set; }
+    public decimal Equity { get; set; }
+    public decimal Margin { get; set; }
+    public decimal FreeMargin { get; set; }
+    /// <summary>Unrealisierter P&L = Equity - Balance.</summary>
+    public decimal UnrealizedPnL => Equity - Balance;
+    /// <summary>Margin-Nutzung = (Margin / Equity) * 100%. Wie TradeLocker es anzeigt.</summary>
+    public double MarginUsagePercent => Equity > 0 ? (double)(Margin / Equity) * 100 : 0;
+}
+
 /// <summary>OHLC-Candle fuer technische Indikatoren.</summary>
 public class OhlcCandle
 {
@@ -558,6 +571,7 @@ public record DashboardViewModel
     public decimal DailyPnL { get; set; }
     public decimal TotalPnL { get; set; }
     public decimal AvailableCash { get; set; }
+    public AccountDetails Account { get; set; } = new();
     public int OpenPositions { get; set; }
     public int TradesToday { get; set; }
     public bool IsEngineRunning { get; set; }
@@ -571,6 +585,34 @@ public record DashboardViewModel
     public List<TradingLog> RecentLogs { get; set; } = new();
     public List<DailyPnL> PnLHistory { get; set; } = new();
     public List<UpcomingEventViewModel> UpcomingEvents { get; set; } = new();
+    public TradingStatsViewModel Stats { get; set; } = new();
+}
+
+/// <summary>Performance-Kennzahlen fuer das Dashboard.</summary>
+public record TradingStatsViewModel
+{
+    // Allgemeine Trade-Uebersicht (immer verfuegbar)
+    public int TotalExecuted { get; init; }
+    public int TotalRejected { get; init; }
+    public int TotalFailed { get; init; }
+    public double AvgConfidence { get; init; }
+
+    // PnL-basierte Stats (nur wenn geschlossene Trades mit PnL vorhanden)
+    public bool HasPnLData { get; init; }
+    public int ClosedTrades { get; init; }
+    public int WinningTrades { get; init; }
+    public int LosingTrades { get; init; }
+    public double WinRate { get; init; }
+    public decimal AvgWin { get; init; }
+    public decimal AvgLoss { get; init; }
+    public decimal ProfitFactor { get; init; }
+    public decimal TotalProfit { get; init; }
+    public decimal TotalLoss { get; init; }
+    public decimal NetPnL { get; init; }
+    public decimal MaxDrawdown { get; init; }
+    public double MaxDrawdownPercent { get; init; }
+    public double SharpeRatio { get; init; }
+    public double TradesPerDay { get; init; }
 }
 
 public class UpcomingEventViewModel

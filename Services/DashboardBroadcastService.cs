@@ -97,14 +97,16 @@ public class DashboardBroadcastService : BackgroundService
     {
         var positions = new List<Position>();
         decimal cash = 0, portfolioValue = 0;
+        var account = new AccountDetails();
 
         if (_broker.IsConnected)
         {
             try
             {
                 positions = await _broker.GetPositionsAsync(ct);
-                cash = await _broker.GetAccountCashAsync(ct);
-                portfolioValue = await _broker.GetPortfolioValueAsync(ct);
+                account = await _broker.GetAccountDetailsAsync(ct);
+                cash = account.FreeMargin > 0 ? account.FreeMargin : account.Balance;
+                portfolioValue = account.Equity > 0 ? account.Equity : account.Balance;
             }
             catch (Exception ex)
             {
@@ -134,10 +136,15 @@ public class DashboardBroadcastService : BackgroundService
             .Take(30)
             .ToListAsync(ct);
 
+        // Trade-Statistiken berechnen
+        var allTradesForStats = await db.Trades.ToListAsync(ct);
+        var stats = TradingStatsService.Calculate(allTradesForStats, pnlHistory);
+
         return new DashboardViewModel
         {
             PortfolioValue = portfolioValue,
             AvailableCash = cash,
+            Account = account,
             OpenPositions = positions.Count,
             TradesToday = tradesToday,
             IsEngineRunning = _engine.IsRunning,
@@ -157,7 +164,8 @@ public class DashboardBroadcastService : BackgroundService
             Positions = positions,
             RecentTrades = recentTrades,
             RecentLogs = recentLogs,
-            PnLHistory = pnlHistory
+            PnLHistory = pnlHistory,
+            Stats = stats
         };
     }
 }
