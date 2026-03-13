@@ -24,7 +24,7 @@ public class RiskManager : IRiskManager
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<RiskManager> _logger;
 
-    private bool _killSwitchActive;
+    private volatile bool _killSwitchActive;
     private string? _killSwitchReason;
 
     private RiskSettings Settings => _settingsMonitor.CurrentValue;
@@ -80,9 +80,12 @@ public class RiskManager : IRiskManager
             return false;
         }
 
-        // 4. Maximale Positionsgröße prüfen (quantity in Lots; Notional = Lots × LotSize × Price)
+        // Broker-Daten einmalig laden (vermeidet mehrfache API-Aufrufe)
         var portfolioValue = await _broker.GetPortfolioValueAsync(ct);
         var price = await _broker.GetCurrentPriceAsync(rec.Symbol, ct);
+        var positions = await _broker.GetPositionsAsync(ct);
+
+        // 4. Maximale Positionsgröße prüfen (quantity in Lots; Notional = Lots × LotSize × Price)
         var lotSize = GetLotSize(rec.Symbol);
         var tradeValue = rec.Quantity * lotSize * price;
         var positionPercent = portfolioValue > 0
@@ -100,7 +103,6 @@ public class RiskManager : IRiskManager
         // 5. Max offene Positionen prüfen (nur bei Kauf)
         if (rec.Action.Equals("buy", StringComparison.OrdinalIgnoreCase))
         {
-            var positions = await _broker.GetPositionsAsync(ct);
             if (positions.Count >= Settings.MaxOpenPositions &&
                 !positions.Any(p => p.Symbol == rec.Symbol))
             {
@@ -112,10 +114,44 @@ public class RiskManager : IRiskManager
         }
 
         // 6. Tagesverlust prüfen
-        if (await IsDailyLossExceededAsync(ct))
+        if (await IsDailyLossExceededAsync(portfolioValue, ct))
         {
             ActivateKillSwitch("Maximum daily loss exceeded");
             return false;
+        }
+
+        // 7. Drawdown vom Peak prüfen (Phase 4.1) – Kill Switch, daher vor Weekly/Monthly
+        if (Settings.MaxDrawdownPercent > 0 && await IsDrawdownExceededAsync(portfolioValue, ct))
+        {
+            ActivateKillSwitch($"Maximum drawdown from peak ({Settings.MaxDrawdownPercent:F1}%) exceeded");
+            return false;
+        }
+
+        // 8. Wochenverlust prüfen (Phase 4.3)
+        if (Settings.MaxWeeklyLossPercent > 0 && await IsWeeklyLossExceededAsync(portfolioValue, ct))
+        {
+            _ = _notification.SendAlertAsync($"Wochenverlust-Limit ({Settings.MaxWeeklyLossPercent:F1}%) erreicht – neue Trades blockiert");
+            return false;
+        }
+
+        // 9. Monatsverlust prüfen (Phase 4.3)
+        if (Settings.MaxMonthlyLossPercent > 0 && await IsMonthlyLossExceededAsync(portfolioValue, ct))
+        {
+            _ = _notification.SendAlertAsync($"Monatsverlust-Limit ({Settings.MaxMonthlyLossPercent:F1}%) erreicht – neue Trades blockiert");
+            return false;
+        }
+
+        // 10. Korrelationscheck (Phase 4.2)
+        if (Settings.MaxCorrelatedExposurePercent > 0)
+        {
+            var correlatedExposure = GetCorrelatedExposurePercent(rec, positions, portfolioValue, price);
+            if (correlatedExposure > Settings.MaxCorrelatedExposurePercent)
+            {
+                _logger.LogWarning(
+                    "Trade rejected – correlated exposure {Exp:F1}% exceeds max {Max:F1}% for {Symbol}",
+                    correlatedExposure, Settings.MaxCorrelatedExposurePercent, rec.Symbol);
+                return false;
+            }
         }
 
         _logger.LogInformation(
@@ -248,12 +284,21 @@ public class RiskManager : IRiskManager
             .Where(t => t.CreatedAt.Date == DateTime.UtcNow.Date)
             .CountAsync(ct);
 
+        // PeakEquity: Maximum aus bisherigem Peak und aktuellem Wert
+        var previousPeak = await db.DailyPnLs
+            .OrderByDescending(d => d.Date)
+            .Where(d => d.Date < today)
+            .Select(d => d.PeakEquity)
+            .FirstOrDefaultAsync(ct);
+        var currentPeak = Math.Max(previousPeak, portfolioValue);
+
         var existing = await db.DailyPnLs.FirstOrDefaultAsync(d => d.Date == today, ct);
 
         if (existing != null)
         {
             existing.PortfolioValue = portfolioValue;
             existing.TradeCount = todayTrades;
+            existing.PeakEquity = currentPeak;
         }
         else
         {
@@ -261,7 +306,8 @@ public class RiskManager : IRiskManager
             {
                 Date = today,
                 PortfolioValue = portfolioValue,
-                TradeCount = todayTrades
+                TradeCount = todayTrades,
+                PeakEquity = currentPeak
             });
         }
 
@@ -287,7 +333,7 @@ public class RiskManager : IRiskManager
         return 100_000m;
     }
 
-    private async Task<bool> IsDailyLossExceededAsync(CancellationToken ct)
+    private async Task<bool> IsDailyLossExceededAsync(decimal currentValue, CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
@@ -299,7 +345,6 @@ public class RiskManager : IRiskManager
         if (yesterdayRecord == null)
             return false;
 
-        var currentValue = await _broker.GetPortfolioValueAsync(ct);
         var dailyLoss = yesterdayRecord.PortfolioValue - currentValue;
 
         // Absoluter Verlust-Check
@@ -319,6 +364,144 @@ public class RiskManager : IRiskManager
         {
             _logger.LogCritical("Daily loss {Loss:F1}% exceeds limit {Max:F1}%",
                 lossPercent, Settings.MaxDailyLossPercent);
+            return true;
+        }
+
+        return false;
+    }
+
+    // ── Phase 4.1: Drawdown vom Peak ─────────────────────────────────
+
+    private async Task<bool> IsDrawdownExceededAsync(decimal currentValue, CancellationToken ct)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
+
+        var latestRecord = await db.DailyPnLs
+            .OrderByDescending(d => d.Date)
+            .FirstOrDefaultAsync(ct);
+
+        if (latestRecord == null || latestRecord.PeakEquity <= 0)
+            return false;
+
+        var peakEquity = latestRecord.PeakEquity;
+        var drawdown = peakEquity - currentValue;
+        var drawdownPercent = drawdown > 0
+            ? (double)(drawdown / peakEquity) * 100.0
+            : 0.0;
+
+        if (drawdownPercent >= Settings.MaxDrawdownPercent)
+        {
+            _logger.LogCritical(
+                "Drawdown {DD:F1}% from peak equity ${Peak:F2} exceeds limit {Max:F1}%",
+                drawdownPercent, peakEquity, Settings.MaxDrawdownPercent);
+            return true;
+        }
+
+        return false;
+    }
+
+    // ── Phase 4.2: Korrelationscheck ─────────────────────────────────
+
+    private double GetCorrelatedExposurePercent(
+        ClaudeTradeRecommendation rec, IReadOnlyList<Position> positions,
+        decimal portfolioValue, decimal currentPrice)
+    {
+        if (portfolioValue <= 0) return 0;
+
+        var newLotSize = GetLotSize(rec.Symbol);
+        var newTradeValue = rec.Quantity * newLotSize * currentPrice;
+        var isBuy = rec.Action.Equals("buy", StringComparison.OrdinalIgnoreCase);
+
+        var correlatedExposure = newTradeValue;
+
+        foreach (var pos in positions)
+        {
+            var correlation = CorrelationMatrix.GetCorrelation(rec.Symbol, pos.Symbol);
+            if (Math.Abs(correlation) < 0.3) continue;
+
+            var posLotSize = GetLotSize(pos.Symbol);
+            var posValue = pos.Quantity * posLotSize * pos.CurrentPrice;
+
+            // Gleiche Richtung bei positiver Korrelation = addiert sich
+            // Gleiche Richtung bei negativer Korrelation = hebt sich auf
+            var posSide = pos.Side.Equals("buy", StringComparison.OrdinalIgnoreCase);
+            var sameDirection = isBuy == posSide;
+            var effectiveCorrelation = sameDirection ? correlation : -correlation;
+
+            if (effectiveCorrelation > 0)
+            {
+                correlatedExposure += posValue * (decimal)Math.Abs(effectiveCorrelation);
+            }
+        }
+
+        return (double)(correlatedExposure / portfolioValue) * 100.0;
+    }
+
+    // ── Phase 4.3: Weekly/Monthly Loss Limits ────────────────────────
+
+    /// <summary>Tage seit Montag: So=6, Mo=0, Di=1, ... Sa=5.</summary>
+    private static int DaysSinceMonday(DateOnly date) =>
+        ((int)date.DayOfWeek + 6) % 7;
+
+    private async Task<bool> IsWeeklyLossExceededAsync(decimal currentValue, CancellationToken ct)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var weekStart = today.AddDays(-DaysSinceMonday(today));
+
+        // Referenzwert: letzter PnL-Eintrag vor dieser Woche
+        var previousRecord = await db.DailyPnLs
+            .Where(d => d.Date < weekStart)
+            .OrderByDescending(d => d.Date)
+            .FirstOrDefaultAsync(ct);
+
+        if (previousRecord == null) return false;
+
+        var weeklyLoss = previousRecord.PortfolioValue - currentValue;
+        var weeklyLossPercent = previousRecord.PortfolioValue > 0
+            ? (double)(weeklyLoss / previousRecord.PortfolioValue) * 100.0
+            : 0.0;
+
+        if (weeklyLossPercent >= Settings.MaxWeeklyLossPercent)
+        {
+            _logger.LogWarning(
+                "Weekly loss {Loss:F1}% exceeds limit {Max:F1}%",
+                weeklyLossPercent, Settings.MaxWeeklyLossPercent);
+            return true;
+        }
+
+        return false;
+    }
+
+    private async Task<bool> IsMonthlyLossExceededAsync(decimal currentValue, CancellationToken ct)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var monthStart = new DateOnly(today.Year, today.Month, 1);
+
+        // Referenzwert: letzter PnL-Eintrag vor diesem Monat
+        var previousRecord = await db.DailyPnLs
+            .Where(d => d.Date < monthStart)
+            .OrderByDescending(d => d.Date)
+            .FirstOrDefaultAsync(ct);
+
+        if (previousRecord == null) return false;
+
+        var monthlyLoss = previousRecord.PortfolioValue - currentValue;
+        var monthlyLossPercent = previousRecord.PortfolioValue > 0
+            ? (double)(monthlyLoss / previousRecord.PortfolioValue) * 100.0
+            : 0.0;
+
+        if (monthlyLossPercent >= Settings.MaxMonthlyLossPercent)
+        {
+            _logger.LogWarning(
+                "Monthly loss {Loss:F1}% exceeds limit {Max:F1}%",
+                monthlyLossPercent, Settings.MaxMonthlyLossPercent);
             return true;
         }
 

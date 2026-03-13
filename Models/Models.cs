@@ -109,19 +109,23 @@ public class DailyPnL
 {
     [Key]
     public int Id { get; set; }
-    
+
     public DateOnly Date { get; set; }
-    
+
     [Column(TypeName = "decimal(18,4)")]
     public decimal RealizedPnL { get; set; }
-    
+
     [Column(TypeName = "decimal(18,4)")]
     public decimal UnrealizedPnL { get; set; }
-    
+
     [Column(TypeName = "decimal(18,4)")]
     public decimal PortfolioValue { get; set; }
-    
+
     public int TradeCount { get; set; }
+
+    /// <summary>Hoechster Equity-Wert bis zu diesem Tag (fuer Drawdown-Berechnung).</summary>
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal PeakEquity { get; set; }
 }
 
 public class TradingLog
@@ -277,6 +281,64 @@ public class RiskSettings
     public double BreakevenTriggerPips { get; set; } = 0;
     /// <summary>Risiko pro Trade in % des Portfolios. Position Sizing basierend auf SL-Distanz. 0 = deaktiviert (nutzt MaxPositionSizePercent).</summary>
     public double RiskPerTradePercent { get; set; } = 0;
+
+    // ── Phase 4: Robustheit ───────────────────────────────────────────
+    /// <summary>Max. Drawdown vom Equity-Peak in %. Kill Switch bei Ueberschreitung. 0 = deaktiviert.</summary>
+    public double MaxDrawdownPercent { get; set; } = 0;
+    /// <summary>Max. Wochenverlust in %. Neue Trades werden blockiert bei Ueberschreitung. 0 = deaktiviert.</summary>
+    public double MaxWeeklyLossPercent { get; set; } = 0;
+    /// <summary>Max. Monatsverlust in %. Neue Trades werden blockiert bei Ueberschreitung. 0 = deaktiviert.</summary>
+    public double MaxMonthlyLossPercent { get; set; } = 0;
+    /// <summary>Max. korrelierte Exposure in % des Portfolios. 0 = deaktiviert.</summary>
+    public double MaxCorrelatedExposurePercent { get; set; } = 0;
+}
+
+/// <summary>Statische Korrelationsmatrix fuer gaengige Forex/CFD-Pairs.</summary>
+public static class CorrelationMatrix
+{
+    /// <summary>Korrelationskoeffizienten zwischen Instrumenten (-1.0 bis 1.0).</summary>
+    private static readonly Dictionary<(string, string), double> _correlations = new()
+    {
+        // Stark korrelierte Paare
+        { ("EURUSD", "GBPUSD"), 0.85 },
+        { ("EURUSD", "AUDUSD"), 0.70 },
+        { ("EURUSD", "NZDUSD"), 0.65 },
+        { ("GBPUSD", "AUDUSD"), 0.60 },
+        { ("GBPUSD", "NZDUSD"), 0.55 },
+        { ("AUDUSD", "NZDUSD"), 0.90 },
+
+        // Invers korrelierte Paare (USD auf der anderen Seite)
+        { ("EURUSD", "USDCHF"), -0.90 },
+        { ("EURUSD", "USDJPY"), -0.50 },
+        { ("GBPUSD", "USDCHF"), -0.80 },
+        { ("GBPUSD", "USDJPY"), -0.40 },
+
+        // Gold-Korrelationen
+        { ("XAUUSD", "EURUSD"), 0.40 },
+        { ("XAUUSD", "USDJPY"), -0.30 },
+        { ("XAUUSD", "USDCHF"), -0.35 },
+
+        // Indizes
+        { ("US100", "US500"), 0.95 },
+        { ("US100", "US30"), 0.85 },
+        { ("US500", "US30"), 0.90 },
+    };
+
+    /// <summary>Korrelation zwischen zwei Symbolen. 0 wenn unbekannt.</summary>
+    public static double GetCorrelation(string symbol1, string symbol2)
+    {
+        var s1 = symbol1.ToUpperInvariant();
+        var s2 = symbol2.ToUpperInvariant();
+
+        if (s1 == s2) return 1.0;
+
+        if (_correlations.TryGetValue((s1, s2), out var corr))
+            return corr;
+        if (_correlations.TryGetValue((s2, s1), out var corrReverse))
+            return corrReverse;
+
+        return 0.0;
+    }
 }
 
 /// <summary>Pip-Berechnungen fuer Forex/CFD-Instrumente.</summary>
