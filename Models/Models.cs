@@ -1,0 +1,389 @@
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
+
+namespace ClaudeTradingBot.Models;
+
+// ── Trade-Entscheidung von Claude ──────────────────────────────────────
+
+public enum TradeAction
+{
+    Buy,
+    Sell,
+    Hold
+}
+
+public enum TradeStatus
+{
+    Pending,
+    Executed,
+    Failed,
+    Cancelled
+}
+
+// ── Datenbank-Entitäten ────────────────────────────────────────────────
+
+public class Trade
+{
+    [Key]
+    public int Id { get; set; }
+    
+    public string Symbol { get; set; } = string.Empty;
+    public TradeAction Action { get; set; }
+    public TradeStatus Status { get; set; }
+    
+    // Lot-Größe (z.B. 0.01 für 1 Micro-Lot)
+    public decimal Quantity { get; set; }
+    
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal Price { get; set; }
+    
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal? ExecutedPrice { get; set; }
+    
+    public string ClaudeReasoning { get; set; } = string.Empty;
+    public double ClaudeConfidence { get; set; }
+    
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? ExecutedAt { get; set; }
+    
+    public string? ErrorMessage { get; set; }
+}
+
+public class Position
+{
+    [Key]
+    public int Id { get; set; }
+    
+    public string Symbol { get; set; } = string.Empty;
+    public int Quantity { get; set; }
+    
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal AveragePrice { get; set; }
+    
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal CurrentPrice { get; set; }
+    
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal UnrealizedPnL => (CurrentPrice - AveragePrice) * Quantity;
+    
+    public double UnrealizedPnLPercent => AveragePrice > 0
+        ? (double)((CurrentPrice - AveragePrice) / AveragePrice) * 100.0
+        : 0.0;
+    
+    public DateTime LastUpdated { get; set; } = DateTime.UtcNow;
+}
+
+public class DailyPnL
+{
+    [Key]
+    public int Id { get; set; }
+    
+    public DateOnly Date { get; set; }
+    
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal RealizedPnL { get; set; }
+    
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal UnrealizedPnL { get; set; }
+    
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal PortfolioValue { get; set; }
+    
+    public int TradeCount { get; set; }
+}
+
+public class TradingLog
+{
+    [Key]
+    public int Id { get; set; }
+    
+    public string Level { get; set; } = "Info";
+    public string Source { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+    public string? Details { get; set; }
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+}
+
+// ── Claude API DTOs ────────────────────────────────────────────────────
+
+public class ClaudeAnalysisRequest
+{
+    public string Symbol { get; set; } = string.Empty;
+    public decimal CurrentPrice { get; set; }
+    /// <summary>Bid-Preis (Forex/CFD). 0 wenn nicht verfügbar.</summary>
+    public decimal Bid { get; set; }
+    /// <summary>Ask-Preis (Forex/CFD). 0 wenn nicht verfügbar.</summary>
+    public decimal Ask { get; set; }
+    public decimal DayChange { get; set; }
+    public decimal Volume { get; set; }
+    public List<decimal> RecentPrices { get; set; } = new();
+    /// <summary>Candles 1D (Close-Preise, älteste zuerst).</summary>
+    public List<decimal> Candles1D { get; set; } = new();
+    /// <summary>Candles 4H (Close-Preise).</summary>
+    public List<decimal> Candles4H { get; set; } = new();
+    /// <summary>Candles 1H (Close-Preise).</summary>
+    public List<decimal> Candles1H { get; set; } = new();
+    public Position? CurrentPosition { get; set; }
+    public decimal AvailableCash { get; set; }
+    public decimal PortfolioValue { get; set; }
+}
+
+public class ClaudeTradeRecommendation
+{
+    public string Symbol { get; set; } = string.Empty;
+    public string Action { get; set; } = "hold";
+    // Für Forex/CFD: Lot-Größe (z.B. 0.01)
+    public decimal Quantity { get; set; }
+    public double Confidence { get; set; }
+    public string Reasoning { get; set; } = string.Empty;
+    public decimal? StopLossPrice { get; set; }
+    public decimal? TakeProfitPrice { get; set; }
+}
+
+// ── Konfigurationsklassen ──────────────────────────────────────────────
+
+/// <summary>Wahl des LLM-Providers: Anthropic (Claude), Gemini (kostenloser Cloud-Free-Tier), OpenAICompatible (z. B. Ollama).</summary>
+public class LlmSettings
+{
+    public string Provider { get; set; } = "Gemini"; // "Anthropic" | "Gemini" | "OpenAICompatible"
+}
+
+/// <summary>Claude von Anthropic = dieselbe API wie Cursor Agentic Workflow und das Python-Paket anthropic (client.messages.create). API-Key von https://console.anthropic.com/ (Format sk-ant-...).</summary>
+public class AnthropicSettings
+{
+    public string ApiKey { get; set; } = string.Empty;
+    public string Model { get; set; } = "claude-sonnet-4-20250514";
+    public int MaxTokens { get; set; } = 2048;
+}
+
+/// <summary>Google Gemini API. Free-Tier: Oft muss ein Billing-Account verknüpft werden (wird nicht belastet), sonst Quota 0. Key: https://aistudio.google.com/apikey</summary>
+public class GeminiSettings
+{
+    public string ApiKey { get; set; } = string.Empty;
+    /// <summary>z. B. gemini-2.0-flash, gemini-2.0-flash-lite (mehr Free-Quota), gemini-2.5-flash</summary>
+    public string Model { get; set; } = "gemini-2.0-flash-lite";
+    public int MaxTokens { get; set; } = 2048;
+}
+
+/// <summary>Für OpenAI-kompatible Endpoints (Ollama, LM Studio, OpenRouter).</summary>
+public class OpenAICompatibleSettings
+{
+    public string BaseUrl { get; set; } = "http://localhost:11434/v1/"; // Ollama default
+    public string ApiKey { get; set; } = string.Empty; // bei Ollama leer
+    /// <summary>Ollama: qwen2.5:7b (empfohlen für Trading/JSON), llama3.2:3b (leicht), mistral, deepseek-r1:7b</summary>
+    public string Model { get; set; } = "qwen2.5:7b";
+    public int MaxTokens { get; set; } = 2048;
+}
+
+// Legacy-IB-Konfiguration (wird nicht mehr aktiv verwendet,
+// bleibt aber für die simulierte Broker-Implementierung erhalten)
+public class IBSettings
+{
+    public string Host { get; set; } = "127.0.0.1";
+    public int Port { get; set; } = 4002;
+    public int ClientId { get; set; } = 1;
+    public bool UsePaperTrading { get; set; } = true;
+}
+
+// TradeLocker Konfiguration
+public class TradeLockerSettings
+{
+    public string BaseUrl { get; set; } = "https://demo.tradelocker.com/backend-api";
+    public string Email { get; set; } = string.Empty;
+    public string Password { get; set; } = string.Empty;
+    public string Server { get; set; } = string.Empty;
+    public string? AccountId { get; set; }
+}
+
+public class RiskSettings
+{
+    public double MaxPositionSizePercent { get; set; } = 10.0;
+    public double MaxDailyLossPercent { get; set; } = 3.0;
+    public double StopLossPercent { get; set; } = 5.0;
+    public int MaxOpenPositions { get; set; } = 10;
+    public int TradingIntervalMinutes { get; set; } = 15;
+    public bool KillSwitchEnabled { get; set; } = true;
+    public decimal MaxDailyLossAbsolute { get; set; } = 500m;
+}
+
+// ── TradeLocker API DTOs ───────────────────────────────────────────────
+
+public class TradeLockerAuthResponse
+{
+    public string AccessToken { get; set; } = string.Empty;
+    public string RefreshToken { get; set; } = string.Empty;
+}
+
+/// <summary>Ein Konto aus GET /auth/jwt/all-accounts. API liefert "id", accNum, accountBalance.</summary>
+public class TradeLockerAccountInfo
+{
+    /// <summary>Eindeutige Kontonummer (z. B. 2005672). API-Feld: id.</summary>
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    /// <summary>Index für Header accNum (oft einstellig: 1, 2, …). API kann Zahl oder String liefern.</summary>
+    [JsonConverter(typeof(AccNumConverter))]
+    [JsonPropertyName("accNum")]
+    public string AccNum { get; set; } = string.Empty;
+
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Kontostand aus all-accounts (Fallback, wenn /details 0 liefert).</summary>
+    [JsonPropertyName("accountBalance")]
+    [JsonConverter(typeof(DecimalOrStringConverter))]
+    public decimal AccountBalance { get; set; }
+}
+
+/// <summary>Liest accNum als Zahl oder String aus der TradeLocker-API.</summary>
+public class AccNumConverter : System.Text.Json.Serialization.JsonConverter<string>
+{
+    public override string Read(ref System.Text.Json.Utf8JsonReader reader, Type typeToConvert, System.Text.Json.JsonSerializerOptions options)
+    {
+        if (reader.TokenType == System.Text.Json.JsonTokenType.Number)
+            return reader.TryGetInt32(out var n) ? n.ToString() : reader.GetDouble().ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (reader.TokenType == System.Text.Json.JsonTokenType.String)
+            return reader.GetString() ?? string.Empty;
+        return string.Empty;
+    }
+
+    public override void Write(System.Text.Json.Utf8JsonWriter writer, string value, System.Text.Json.JsonSerializerOptions options)
+        => writer.WriteStringValue(value);
+}
+
+public class TradeLockerInstrumentInfo
+{
+    public int Id { get; set; }
+    /// <summary>Manche APIs liefern tradableInstrumentId statt Id.</summary>
+    public int TradableInstrumentId { get; set; }
+    public string Symbol { get; set; } = string.Empty;
+}
+
+public class TradeLockerQuote
+{
+    public int TradableInstrumentId { get; set; }
+    public decimal Bid { get; set; }
+    public decimal Ask { get; set; }
+}
+
+public class TradeLockerOrderRequest
+{
+    public decimal Price { get; set; }
+    public decimal Qty { get; set; }
+    public string RouteId { get; set; } = "TRADE";
+    public string Side { get; set; } = "buy";
+    public decimal? StopLoss { get; set; }
+    public string? StopLossType { get; set; } = "absolute";
+    public decimal? TakeProfit { get; set; }
+    public string? TakeProfitType { get; set; } = "absolute";
+    public decimal TrStopOffset { get; set; }
+    public int TradableInstrumentId { get; set; }
+    public string Type { get; set; } = "market";
+    public string Validity { get; set; } = "IOC";
+}
+
+public class TradeLockerOrderResponse
+{
+    public string Id { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+}
+
+public class TradeLockerPositionInfo
+{
+    public string Id { get; set; } = string.Empty;
+    public int TradableInstrumentId { get; set; }
+    public decimal Qty { get; set; }
+    public decimal AvgPrice { get; set; }
+    public decimal MarketPrice { get; set; }
+}
+
+/// <summary>Response von GET /trade/accounts/{id}/details. API kann balance/equity oder accountBalance/accountEquity liefern (evtl. als String).</summary>
+public class TradeLockerAccountDetails
+{
+    [JsonPropertyName("balance")]
+    [JsonConverter(typeof(DecimalOrStringConverter))]
+    public decimal Balance { get; set; }
+
+    [JsonPropertyName("equity")]
+    [JsonConverter(typeof(DecimalOrStringConverter))]
+    public decimal Equity { get; set; }
+
+    [JsonPropertyName("margin")]
+    [JsonConverter(typeof(DecimalOrStringConverter))]
+    public decimal Margin { get; set; }
+
+    [JsonPropertyName("freeMargin")]
+    [JsonConverter(typeof(DecimalOrStringConverter))]
+    public decimal FreeMargin { get; set; }
+
+    /// <summary>Alternative API-Felder (z. B. all-accounts verwendet accountBalance).</summary>
+    [JsonPropertyName("accountBalance")]
+    [JsonConverter(typeof(DecimalOrStringConverter))]
+    public decimal AccountBalance { get; set; }
+
+    [JsonPropertyName("accountEquity")]
+    [JsonConverter(typeof(DecimalOrStringConverter))]
+    public decimal AccountEquity { get; set; }
+}
+
+/// <summary>Liest decimal als Zahl oder String (z. B. "25005.00") aus der TradeLocker-API.</summary>
+public class DecimalOrStringConverter : System.Text.Json.Serialization.JsonConverter<decimal>
+{
+    public override decimal Read(ref System.Text.Json.Utf8JsonReader reader, Type typeToConvert, System.Text.Json.JsonSerializerOptions options)
+    {
+        if (reader.TokenType == System.Text.Json.JsonTokenType.Number)
+            return reader.GetDecimal();
+        if (reader.TokenType == System.Text.Json.JsonTokenType.String && decimal.TryParse(reader.GetString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d))
+            return d;
+        return 0m;
+    }
+
+    public override void Write(System.Text.Json.Utf8JsonWriter writer, decimal value, System.Text.Json.JsonSerializerOptions options)
+        => writer.WriteNumberValue(value);
+}
+
+/// <summary>Ein Candle aus GET /trade/history (o/h/l/c/t oder open/high/low/close/time)</summary>
+public class TradeLockerCandle
+{
+    [JsonPropertyName("open")]
+    public decimal Open { get; set; }
+    [JsonPropertyName("high")]
+    public decimal High { get; set; }
+    [JsonPropertyName("low")]
+    public decimal Low { get; set; }
+    [JsonPropertyName("close")]
+    public decimal Close { get; set; }
+    [JsonPropertyName("time")]
+    public long Time { get; set; }
+
+    // Kurzform (o/h/l/c/t) der API abbilden auf dieselben Werte
+    [JsonPropertyName("o")]
+    public decimal O { get => Open; set => Open = value; }
+    [JsonPropertyName("h")]
+    public decimal H { get => High; set => High = value; }
+    [JsonPropertyName("l")]
+    public decimal L { get => Low; set => Low = value; }
+    [JsonPropertyName("c")]
+    public decimal C { get => Close; set => Close = value; }
+    [JsonPropertyName("t")]
+    public long T { get => Time; set => Time = value; }
+}
+
+// ── Dashboard View Models ──────────────────────────────────────────────
+
+public class DashboardViewModel
+{
+    public decimal PortfolioValue { get; set; }
+    public decimal DailyPnL { get; set; }
+    public decimal TotalPnL { get; set; }
+    public decimal AvailableCash { get; set; }
+    public int OpenPositions { get; set; }
+    public int TradesToday { get; set; }
+    public bool IsEngineRunning { get; set; }
+    public bool IsKillSwitchActive { get; set; }
+    public bool IsIBConnected { get; set; }
+    public List<Position> Positions { get; set; } = new();
+    public List<Trade> RecentTrades { get; set; } = new();
+    public List<TradingLog> RecentLogs { get; set; } = new();
+    public List<DailyPnL> PnLHistory { get; set; } = new();
+}

@@ -1,0 +1,332 @@
+@page
+@using ClaudeTradingBot.Models
+@model ClaudeTradingBot.Pages.IndexModel
+@{
+    ViewData["Title"] = "Trading Dashboard";
+    var vm = Model.Dashboard;
+}
+
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Claude Trading Bot</title>
+    <style>
+        :root {
+            --bg: #0f1117;
+            --surface: #1a1d27;
+            --border: #2a2d3a;
+            --text: #e4e4e7;
+            --muted: #71717a;
+            --accent: #6366f1;
+            --green: #22c55e;
+            --red: #ef4444;
+            --yellow: #eab308;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg); color: var(--text);
+            line-height: 1.6;
+        }
+
+        .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+
+        header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 32px; padding-bottom: 16px; border-bottom: 1px solid var(--border);
+        }
+        header h1 { font-size: 1.5rem; font-weight: 700; }
+        header h1 span { color: var(--accent); }
+
+        .status-badges { display: flex; gap: 12px; }
+        .badge {
+            padding: 4px 12px; border-radius: 16px; font-size: 0.75rem;
+            font-weight: 600; text-transform: uppercase;
+        }
+        .badge-green { background: rgba(34,197,94,0.15); color: var(--green); }
+        .badge-red { background: rgba(239,68,68,0.15); color: var(--red); }
+        .badge-yellow { background: rgba(234,179,8,0.15); color: var(--yellow); }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px; margin-bottom: 32px;
+        }
+        .stat-card {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 12px; padding: 20px;
+        }
+        .stat-label { font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+        .stat-value { font-size: 1.75rem; font-weight: 700; }
+        .stat-positive { color: var(--green); }
+        .stat-negative { color: var(--red); }
+
+        /* Controls */
+        .controls {
+            display: flex; gap: 12px; margin-bottom: 32px; flex-wrap: wrap;
+        }
+        .btn {
+            padding: 10px 20px; border-radius: 8px; border: none;
+            font-weight: 600; cursor: pointer; font-size: 0.875rem;
+            transition: opacity 0.2s;
+        }
+        .btn:hover { opacity: 0.85; }
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-danger { background: var(--red); color: white; }
+        .btn-success { background: var(--green); color: white; }
+        .btn-outline {
+            background: transparent; color: var(--text);
+            border: 1px solid var(--border);
+        }
+
+        /* Tables */
+        .section { margin-bottom: 32px; }
+        .section h2 {
+            font-size: 1.1rem; font-weight: 600;
+            margin-bottom: 16px; color: var(--muted);
+        }
+
+        table {
+            width: 100%; border-collapse: collapse;
+            background: var(--surface); border-radius: 12px;
+            overflow: hidden; border: 1px solid var(--border);
+        }
+        th {
+            text-align: left; padding: 12px 16px;
+            font-size: 0.75rem; text-transform: uppercase;
+            color: var(--muted); background: var(--bg);
+            border-bottom: 1px solid var(--border);
+        }
+        td {
+            padding: 12px 16px; font-size: 0.875rem;
+            border-bottom: 1px solid var(--border);
+        }
+        tr:last-child td { border-bottom: none; }
+
+        .pnl-positive { color: var(--green); font-weight: 600; }
+        .pnl-negative { color: var(--red); font-weight: 600; }
+
+        .log-entry { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; }
+        .log-time { color: var(--muted); }
+        .log-warn { color: var(--yellow); }
+        .log-error { color: var(--red); }
+
+        .empty-state {
+            text-align: center; padding: 40px; color: var(--muted);
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>🤖 <span>Claude</span> Trading Bot</h1>
+        <div class="status-badges">
+            @if (vm.IsEngineRunning)
+            {
+                <span class="badge badge-green">● Engine Läuft</span>
+            }
+            else
+            {
+                <span class="badge badge-red">● Engine Gestoppt</span>
+            }
+
+            @if (vm.IsIBConnected)
+            {
+                <span class="badge badge-green">● IB Verbunden</span>
+            }
+            else
+            {
+                <span class="badge badge-red">● IB Getrennt</span>
+            }
+
+            @if (vm.IsKillSwitchActive)
+            {
+                <span class="badge badge-red">🚨 Kill Switch Aktiv</span>
+            }
+        </div>
+    </header>
+
+    <!-- Stats -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-label">Portfolio-Wert</div>
+            <div class="stat-value">$@vm.PortfolioValue.ToString("N2")</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Tages-P&amp;L</div>
+            <div class="stat-value @(vm.DailyPnL >= 0 ? "stat-positive" : "stat-negative")">
+                @(vm.DailyPnL >= 0 ? "+" : "")$@vm.DailyPnL.ToString("N2")
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Verfügbares Kapital</div>
+            <div class="stat-value">$@vm.AvailableCash.ToString("N2")</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Offene Positionen</div>
+            <div class="stat-value">@vm.OpenPositions</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Trades Heute</div>
+            <div class="stat-value">@vm.TradesToday</div>
+        </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls">
+        <button class="btn btn-primary" onclick="apiCall('/api/engine/resume')">▶ Engine Starten</button>
+        <button class="btn btn-outline" onclick="apiCall('/api/engine/pause')">⏸ Engine Pausieren</button>
+        <button class="btn btn-danger" onclick="if(confirm('Kill Switch wirklich aktivieren?')) apiCall('/api/killswitch/activate')">
+            🚨 Kill Switch
+        </button>
+        @if (vm.IsKillSwitchActive)
+        {
+            <button class="btn btn-success" onclick="if(confirm('Kill Switch zurücksetzen?')) apiCall('/api/killswitch/reset')">
+                ✅ Kill Switch Reset
+            </button>
+        }
+        <button class="btn btn-outline" onclick="location.reload()">🔄 Aktualisieren</button>
+    </div>
+
+    <!-- Positionen -->
+    <div class="section">
+        <h2>📊 Offene Positionen</h2>
+        @if (vm.Positions.Any())
+        {
+            <table>
+                <thead>
+                    <tr>
+                        <th>Symbol</th><th>Menge</th><th>Ø Preis</th>
+                        <th>Aktuell</th><th>P&amp;L</th><th>P&amp;L %</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in vm.Positions)
+                    {
+                        <tr>
+                            <td><strong>@p.Symbol</strong></td>
+                            <td>@p.Quantity</td>
+                            <td>$@p.AveragePrice.ToString("F2")</td>
+                            <td>$@p.CurrentPrice.ToString("F2")</td>
+                            <td class="@(p.UnrealizedPnL >= 0 ? "pnl-positive" : "pnl-negative")">
+                                @(p.UnrealizedPnL >= 0 ? "+" : "")$@p.UnrealizedPnL.ToString("F2")
+                            </td>
+                            <td class="@(p.UnrealizedPnLPercent >= 0 ? "pnl-positive" : "pnl-negative")">
+                                @(p.UnrealizedPnLPercent >= 0 ? "+" : "")@p.UnrealizedPnLPercent.ToString("F2")%
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <div class="empty-state">Keine offenen Positionen</div>
+        }
+    </div>
+
+    <!-- Letzte Trades -->
+    <div class="section">
+        <h2>📈 Letzte Trades</h2>
+        @if (vm.RecentTrades.Any())
+        {
+            <table>
+                <thead>
+                    <tr>
+                        <th>Zeit</th><th>Symbol</th><th>Aktion</th>
+                        <th>Menge</th><th>Preis</th><th>Confidence</th>
+                        <th>Status</th><th>Begründung</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var t in vm.RecentTrades)
+                    {
+                        <tr>
+                            <td style="font-size:0.75rem;color:var(--muted)">@t.CreatedAt.ToString("dd.MM HH:mm")</td>
+                            <td><strong>@t.Symbol</strong></td>
+                            <td class="@(t.Action == TradeAction.Buy ? "pnl-positive" : "pnl-negative")">
+                                @t.Action.ToString().ToUpper()
+                            </td>
+                            <td>@t.Quantity</td>
+                            <td>$@t.Price.ToString("F2")</td>
+                            <td>@t.ClaudeConfidence.ToString("P0")</td>
+                            <td>
+                                @switch (t.Status)
+                                {
+                                    case TradeStatus.Executed:
+                                        <span class="badge badge-green">Ausgeführt</span>
+                                        break;
+                                    case TradeStatus.Failed:
+                                        <span class="badge badge-red">Fehlgeschlagen</span>
+                                        break;
+                                    default:
+                                        <span class="badge badge-yellow">@t.Status</span>
+                                        break;
+                                }
+                            </td>
+                            <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                                title="@t.ClaudeReasoning">
+                                @t.ClaudeReasoning
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <div class="empty-state">Noch keine Trades</div>
+        }
+    </div>
+
+    <!-- Logs -->
+    <div class="section">
+        <h2>📋 Letzte Log-Einträge</h2>
+        @if (vm.RecentLogs.Any())
+        {
+            <table>
+                <thead><tr><th>Zeit</th><th>Quelle</th><th>Nachricht</th></tr></thead>
+                <tbody>
+                    @foreach (var log in vm.RecentLogs)
+                    {
+                        var cls = log.Level switch
+                        {
+                            "Warning" => "log-warn",
+                            "Error" => "log-error",
+                            "Critical" => "log-error",
+                            _ => ""
+                        };
+                        <tr class="log-entry">
+                            <td class="log-time">@log.Timestamp.ToString("HH:mm:ss")</td>
+                            <td>@log.Source</td>
+                            <td class="@cls">@log.Message</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <div class="empty-state">Keine Log-Einträge</div>
+        }
+    </div>
+</div>
+
+<script>
+    async function apiCall(url) {
+        try {
+            await fetch(url, { method: 'POST' });
+            location.reload();
+        } catch (e) {
+            alert('Fehler: ' + e.message);
+        }
+    }
+
+    // Auto-Refresh alle 30 Sekunden
+    setTimeout(() => location.reload(), 30000);
+</script>
+</body>
+</html>

@@ -1,0 +1,197 @@
+using ClaudeTradingBot.Models;
+using Microsoft.Extensions.Options;
+
+namespace ClaudeTradingBot.Services;
+
+// ── Interface für Broker-Anbindung ─────────────────────────────────────
+// Kann gegen echte IB-Implementierung ausgetauscht werden.
+
+public interface IBrokerService
+{
+    bool IsConnected { get; }
+    Task ConnectAsync(CancellationToken ct = default);
+    Task DisconnectAsync();
+    Task<decimal> GetCurrentPriceAsync(string symbol, CancellationToken ct = default);
+    /// <summary>Bid/Ask für Forex/CFD. (0,0) wenn nicht verfügbar.</summary>
+    Task<(decimal Bid, decimal Ask)> GetBidAskAsync(string symbol, CancellationToken ct = default);
+    Task<List<decimal>> GetRecentPricesAsync(string symbol, int count = 20, CancellationToken ct = default);
+    /// <summary>Historische Candles (Close-Preise) für einen Zeitrahmen (z. B. "1D", "4H", "1H").</summary>
+    Task<List<decimal>> GetPriceHistoryAsync(string symbol, string resolution, int count, CancellationToken ct = default);
+    Task<decimal> GetAccountCashAsync(CancellationToken ct = default);
+    Task<decimal> GetPortfolioValueAsync(CancellationToken ct = default);
+    Task<List<Position>> GetPositionsAsync(CancellationToken ct = default);
+    Task<bool> PlaceOrderAsync(string symbol, TradeAction action, int quantity, CancellationToken ct = default);
+}
+
+// ── Simulierte Implementierung für Paper Trading / Entwicklung ─────────
+// HINWEIS: Ersetze diese Klasse durch eine echte IB-Gateway-Anbindung
+// z.B. mit dem IBApi NuGet-Paket oder der InterReact-Bibliothek.
+
+public class SimulatedBrokerService : IBrokerService
+{
+    private readonly IBSettings _settings;
+    private readonly ILogger<SimulatedBrokerService> _logger;
+    private bool _connected;
+    private decimal _cash = 100_000m;
+    private readonly Dictionary<string, Position> _positions = new();
+    private readonly Random _rng = new();
+
+    // Simulierte Basispreise
+    private readonly Dictionary<string, decimal> _basePrices = new()
+    {
+        ["AAPL"] = 185.50m, ["MSFT"] = 425.30m, ["GOOGL"] = 175.20m,
+        ["AMZN"] = 195.80m, ["NVDA"] = 880.50m, ["META"] = 520.40m,
+        ["TSLA"] = 245.60m, ["JPM"] = 205.30m,  ["V"] = 285.10m,
+        ["SPY"] = 525.70m
+    };
+
+    public bool IsConnected => _connected;
+
+    public SimulatedBrokerService(IOptions<IBSettings> settings, ILogger<SimulatedBrokerService> logger)
+    {
+        _settings = settings.Value;
+        _logger = logger;
+    }
+
+    public Task ConnectAsync(CancellationToken ct = default)
+    {
+        _logger.LogInformation(
+            "Connecting to IB Gateway at {Host}:{Port} (Paper: {Paper})",
+            _settings.Host, _settings.Port, _settings.UsePaperTrading);
+
+        _connected = true;
+        _logger.LogInformation("Simulated broker connection established");
+        return Task.CompletedTask;
+    }
+
+    public Task DisconnectAsync()
+    {
+        _connected = false;
+        _logger.LogInformation("Broker disconnected");
+        return Task.CompletedTask;
+    }
+
+    public Task<decimal> GetCurrentPriceAsync(string symbol, CancellationToken ct = default)
+    {
+        var basePrice = _basePrices.GetValueOrDefault(symbol, 100m);
+        // Simuliere kleine Preisschwankungen (±2%)
+        var variation = (decimal)(_rng.NextDouble() * 0.04 - 0.02);
+        var price = Math.Round(basePrice * (1 + variation), 2);
+        return Task.FromResult(price);
+    }
+
+    public Task<(decimal Bid, decimal Ask)> GetBidAskAsync(string symbol, CancellationToken ct = default)
+    {
+        var price = _basePrices.GetValueOrDefault(symbol, 100m);
+        var spread = (decimal)(_rng.NextDouble() * 0.002);
+        var bid = Math.Round(price * (1 - spread / 2), 4);
+        var ask = Math.Round(price * (1 + spread / 2), 4);
+        return Task.FromResult((bid, ask));
+    }
+
+    public async Task<List<decimal>> GetRecentPricesAsync(string symbol, int count = 20, CancellationToken ct = default)
+    {
+        return await GetPriceHistoryAsync(symbol, "1H", count, ct);
+    }
+
+    public async Task<List<decimal>> GetPriceHistoryAsync(string symbol, string resolution, int count, CancellationToken ct = default)
+    {
+        var prices = new List<decimal>();
+        var currentPrice = await GetCurrentPriceAsync(symbol, ct);
+
+        for (int i = 0; i < count; i++)
+        {
+            var variation = (decimal)(_rng.NextDouble() * 0.06 - 0.03);
+            prices.Add(Math.Round(currentPrice * (1 + variation), 4));
+        }
+        return prices;
+    }
+
+    public Task<decimal> GetAccountCashAsync(CancellationToken ct = default)
+        => Task.FromResult(_cash);
+
+    public Task<decimal> GetPortfolioValueAsync(CancellationToken ct = default)
+    {
+        var positionValue = _positions.Values.Sum(p => p.CurrentPrice * p.Quantity);
+        return Task.FromResult(_cash + positionValue);
+    }
+
+    public Task<List<Position>> GetPositionsAsync(CancellationToken ct = default)
+        => Task.FromResult(_positions.Values.ToList());
+
+    public async Task<bool> PlaceOrderAsync(string symbol, TradeAction action, int quantity, CancellationToken ct = default)
+    {
+        if (!_connected)
+        {
+            _logger.LogWarning("Cannot place order – broker not connected");
+            return false;
+        }
+
+        var price = await GetCurrentPriceAsync(symbol, ct);
+
+        if (action == TradeAction.Buy)
+        {
+            var cost = price * quantity;
+            if (cost > _cash)
+            {
+                _logger.LogWarning("Insufficient cash for {Qty}x {Symbol} @ {Price}", quantity, symbol, price);
+                return false;
+            }
+
+            _cash -= cost;
+
+            if (_positions.TryGetValue(symbol, out var existing))
+            {
+                var totalQty = existing.Quantity + quantity;
+                existing.AveragePrice = (existing.AveragePrice * existing.Quantity + price * quantity) / totalQty;
+                existing.Quantity = totalQty;
+                existing.CurrentPrice = price;
+                existing.LastUpdated = DateTime.UtcNow;
+            }
+            else
+            {
+                _positions[symbol] = new Position
+                {
+                    Symbol = symbol,
+                    Quantity = quantity,
+                    AveragePrice = price,
+                    CurrentPrice = price,
+                    LastUpdated = DateTime.UtcNow
+                };
+            }
+
+            _logger.LogInformation("BUY {Qty}x {Symbol} @ ${Price:F2}", quantity, symbol, price);
+        }
+        else if (action == TradeAction.Sell)
+        {
+            if (!_positions.TryGetValue(symbol, out var pos) || pos.Quantity < quantity)
+            {
+                _logger.LogWarning("Cannot sell {Qty}x {Symbol} – insufficient position", quantity, symbol);
+                return false;
+            }
+
+            _cash += price * quantity;
+            pos.Quantity -= quantity;
+            pos.CurrentPrice = price;
+            pos.LastUpdated = DateTime.UtcNow;
+
+            if (pos.Quantity == 0)
+                _positions.Remove(symbol);
+
+            _logger.LogInformation("SELL {Qty}x {Symbol} @ ${Price:F2}", quantity, symbol, price);
+        }
+
+        return true;
+    }
+}
+
+// ── Echte IB Gateway Implementierung (Platzhalter) ────────────────────
+// TODO: Implementiere dies mit dem offiziellen IBApi NuGet-Paket
+// oder der InterReact-Bibliothek (https://github.com/dshe/InterReact)
+//
+// public class InteractiveBrokersService : IBrokerService
+// {
+//     // Nutze IBApi.EClientSocket für die Verbindung zu TWS/Gateway
+//     // Implementiere EWrapper für Callbacks
+//     // Siehe: https://interactivebrokers.github.io/tws-api/
+// }
