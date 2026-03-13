@@ -20,7 +20,10 @@ public interface IBrokerService
     Task<decimal> GetAccountCashAsync(CancellationToken ct = default);
     Task<decimal> GetPortfolioValueAsync(CancellationToken ct = default);
     Task<List<Position>> GetPositionsAsync(CancellationToken ct = default);
-    Task<bool> PlaceOrderAsync(string symbol, TradeAction action, int quantity, CancellationToken ct = default);
+    /// <summary>Order platzieren (Forex/CFD: quantity in Lots). Gibt Order-/Position-IDs für DB-Mapping zurück.</summary>
+    Task<PlaceOrderResult> PlaceOrderAsync(string symbol, TradeAction action, decimal quantityLots, decimal? stopLoss, decimal? takeProfit, CancellationToken ct = default);
+    /// <summary>Position schließen (komplett: quantity=null oder 0; teilweise: quantity = Lots).</summary>
+    Task<bool> ClosePositionAsync(string positionIdOrSymbol, decimal? quantity, CancellationToken ct = default);
 }
 
 // ── Simulierte Implementierung für Paper Trading / Entwicklung ─────────
@@ -119,14 +122,16 @@ public class SimulatedBrokerService : IBrokerService
     public Task<List<Position>> GetPositionsAsync(CancellationToken ct = default)
         => Task.FromResult(_positions.Values.ToList());
 
-    public async Task<bool> PlaceOrderAsync(string symbol, TradeAction action, int quantity, CancellationToken ct = default)
+    public async Task<PlaceOrderResult> PlaceOrderAsync(string symbol, TradeAction action, decimal quantityLots, decimal? stopLoss, decimal? takeProfit, CancellationToken ct = default)
     {
         if (!_connected)
         {
             _logger.LogWarning("Cannot place order – broker not connected");
-            return false;
+            return new PlaceOrderResult { Success = false };
         }
 
+        var quantity = (int)Math.Round(quantityLots);
+        if (quantity <= 0) quantity = 1;
         var price = await GetCurrentPriceAsync(symbol, ct);
 
         if (action == TradeAction.Buy)
@@ -135,7 +140,7 @@ public class SimulatedBrokerService : IBrokerService
             if (cost > _cash)
             {
                 _logger.LogWarning("Insufficient cash for {Qty}x {Symbol} @ {Price}", quantity, symbol, price);
-                return false;
+                return new PlaceOrderResult { Success = false };
             }
 
             _cash -= cost;
@@ -160,14 +165,14 @@ public class SimulatedBrokerService : IBrokerService
                 };
             }
 
-            _logger.LogInformation("BUY {Qty}x {Symbol} @ ${Price:F2}", quantity, symbol, price);
+            _logger.LogInformation("BUY {Qty} Lots {Symbol} @ ${Price:F2} (SL={SL}, TP={TP})", quantityLots, symbol, price, stopLoss, takeProfit);
         }
         else if (action == TradeAction.Sell)
         {
             if (!_positions.TryGetValue(symbol, out var pos) || pos.Quantity < quantity)
             {
                 _logger.LogWarning("Cannot sell {Qty}x {Symbol} – insufficient position", quantity, symbol);
-                return false;
+                return new PlaceOrderResult { Success = false };
             }
 
             _cash += price * quantity;
@@ -178,10 +183,28 @@ public class SimulatedBrokerService : IBrokerService
             if (pos.Quantity == 0)
                 _positions.Remove(symbol);
 
-            _logger.LogInformation("SELL {Qty}x {Symbol} @ ${Price:F2}", quantity, symbol, price);
+            _logger.LogInformation("SELL {Qty} Lots {Symbol} @ ${Price:F2}", quantityLots, symbol, price);
         }
 
-        return true;
+        return new PlaceOrderResult { Success = true };
+    }
+
+    public async Task<bool> ClosePositionAsync(string positionIdOrSymbol, decimal? quantity, CancellationToken ct = default)
+    {
+        if (!_connected)
+        {
+            _logger.LogWarning("Cannot close position – broker not connected");
+            return false;
+        }
+        // Simulierter Broker: positionIdOrSymbol als Symbol verwenden
+        if (!_positions.TryGetValue(positionIdOrSymbol, out var pos))
+        {
+            _logger.LogWarning("Position not found for close: {Id}", positionIdOrSymbol);
+            return false;
+        }
+        var closeQty = quantity ?? pos.Quantity;
+        if (closeQty <= 0) closeQty = pos.Quantity;
+        return (await PlaceOrderAsync(positionIdOrSymbol, TradeAction.Sell, closeQty, null, null, ct)).Success;
     }
 }
 

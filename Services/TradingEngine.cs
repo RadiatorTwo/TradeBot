@@ -175,9 +175,26 @@ public class TradingEngine : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
 
+        var action = recommendation.Action.Equals("buy", StringComparison.OrdinalIgnoreCase)
+            ? TradeAction.Buy
+            : TradeAction.Sell;
+
         if (!isValid || recommendation.Action.Equals("hold", StringComparison.OrdinalIgnoreCase))
         {
-            // Logge die Analyse auch bei Hold
+            if (!recommendation.Action.Equals("hold", StringComparison.OrdinalIgnoreCase) && !isValid)
+            {
+                db.Trades.Add(new Trade
+                {
+                    Symbol = symbol,
+                    Action = action,
+                    Quantity = recommendation.Quantity,
+                    Price = currentPrice,
+                    ClaudeReasoning = recommendation.Reasoning,
+                    ClaudeConfidence = recommendation.Confidence,
+                    Status = TradeStatus.Failed,
+                    ErrorMessage = "Trade rejected by RiskManager"
+                });
+            }
             db.TradingLogs.Add(new TradingLog
             {
                 Source = "Claude",
@@ -188,11 +205,7 @@ public class TradingEngine : BackgroundService
             return;
         }
 
-        // Trade ausführen
-        var action = recommendation.Action.Equals("buy", StringComparison.OrdinalIgnoreCase)
-            ? TradeAction.Buy
-            : TradeAction.Sell;
-
+        // Trade ausführen (Lots, StopLoss, TakeProfit)
         var trade = new Trade
         {
             Symbol = symbol,
@@ -204,24 +217,25 @@ public class TradingEngine : BackgroundService
             Status = TradeStatus.Pending
         };
 
-        // IBrokerService erwartet aktuell noch eine Ganzzahl-Stückzahl.
-        // Für Forex/CFD-Lots wird die Signatur in einer späteren Phase angepasst.
-        var success = await _broker.PlaceOrderAsync(symbol, action, (int)recommendation.Quantity, ct);
+        var result = await _broker.PlaceOrderAsync(
+            symbol, action, recommendation.Quantity,
+            recommendation.StopLossPrice, recommendation.TakeProfitPrice, ct);
 
-        trade.Status = success ? TradeStatus.Executed : TradeStatus.Failed;
-        trade.ExecutedPrice = success ? currentPrice : null;
-        trade.ExecutedAt = success ? DateTime.UtcNow : null;
-
-        if (!success)
+        trade.Status = result.Success ? TradeStatus.Executed : TradeStatus.Failed;
+        trade.ExecutedPrice = result.Success ? currentPrice : null;
+        trade.ExecutedAt = result.Success ? DateTime.UtcNow : null;
+        trade.BrokerOrderId = result.BrokerOrderId;
+        trade.BrokerPositionId = result.BrokerPositionId;
+        if (!result.Success)
             trade.ErrorMessage = "Order execution failed at broker";
 
         db.Trades.Add(trade);
 
         db.TradingLogs.Add(new TradingLog
         {
-            Level = success ? "Info" : "Error",
+            Level = result.Success ? "Info" : "Error",
             Source = "TradingEngine",
-            Message = $"{(success ? "✅" : "❌")} {action} {recommendation.Quantity:F2} Lots {symbol} @ {currentPrice:F4}",
+            Message = $"{(result.Success ? "✅" : "❌")} {action} {recommendation.Quantity:F2} Lots {symbol} @ {currentPrice:F4}",
             Details = recommendation.Reasoning
         });
 

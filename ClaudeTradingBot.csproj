@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>ClaudeTradingBot</RootNamespace>
+    <UserSecretsId>claude-trading-bot-secrets</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>

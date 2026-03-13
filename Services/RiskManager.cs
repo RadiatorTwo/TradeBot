@@ -66,10 +66,10 @@ public class RiskManager : IRiskManager
         if (rec.Action.Equals("hold", StringComparison.OrdinalIgnoreCase))
             return true;
 
-        // 3. Confidence-Schwelle
-        if (rec.Confidence < 0.6)
+        // 3. Confidence-Schwelle (konfigurierbar via MinConfidence)
+        if (rec.Confidence < _settings.MinConfidence)
         {
-            _logger.LogInformation("Trade skipped – confidence too low: {Conf:P0}", rec.Confidence);
+            _logger.LogInformation("Trade skipped – confidence {Conf:P0} below MinConfidence {Min:P0}", rec.Confidence, _settings.MinConfidence);
             return false;
         }
 
@@ -135,7 +135,8 @@ public class RiskManager : IRiskManager
                     "🛑 STOP-LOSS triggered for {Symbol}: loss {Loss:F1}% >= {Max:F1}%",
                     pos.Symbol, lossPercent, _settings.StopLossPercent);
 
-                var success = await _broker.PlaceOrderAsync(pos.Symbol, TradeAction.Sell, pos.Quantity, ct);
+                var positionIdOrSymbol = pos.BrokerPositionId ?? pos.Symbol;
+                var success = await _broker.ClosePositionAsync(positionIdOrSymbol, null, ct);
 
                 // Trade in DB loggen
                 using var scope = _scopeFactory.CreateScope();
@@ -151,14 +152,15 @@ public class RiskManager : IRiskManager
                     ExecutedPrice = success ? currentPrice : null,
                     ClaudeReasoning = $"Automatischer Stop-Loss bei {lossPercent:F1}% Verlust",
                     ClaudeConfidence = 1.0,
-                    ExecutedAt = success ? DateTime.UtcNow : null
+                    ExecutedAt = success ? DateTime.UtcNow : null,
+                    BrokerPositionId = pos.BrokerPositionId
                 });
 
                 db.TradingLogs.Add(new TradingLog
                 {
                     Level = "Warning",
                     Source = "RiskManager",
-                    Message = $"Stop-Loss: SELL {pos.Quantity}x {pos.Symbol} @ ${currentPrice:F2} (Verlust: {lossPercent:F1}%)"
+                    Message = $"Stop-Loss: Close {pos.Quantity:F2} Lots {pos.Symbol} @ ${currentPrice:F2} (Verlust: {lossPercent:F1}%)"
                 });
 
                 await db.SaveChangesAsync(ct);

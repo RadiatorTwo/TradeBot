@@ -48,6 +48,12 @@ public class Trade
     public DateTime? ExecutedAt { get; set; }
     
     public string? ErrorMessage { get; set; }
+
+    /// <summary>Broker-Order-ID (z. B. TradeLocker orderId) für Zuordnung.</summary>
+    public string? BrokerOrderId { get; set; }
+
+    /// <summary>Broker-Position-ID (z. B. TradeLocker positionId) für ClosePosition.</summary>
+    public string? BrokerPositionId { get; set; }
 }
 
 public class Position
@@ -56,7 +62,13 @@ public class Position
     public int Id { get; set; }
     
     public string Symbol { get; set; } = string.Empty;
-    public int Quantity { get; set; }
+
+    /// <summary>Größe in Lots (Forex/CFD) oder Stückzahl.</summary>
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal Quantity { get; set; }
+
+    /// <summary>Broker-Position-ID für ClosePositionAsync (z. B. TradeLocker positionId).</summary>
+    public string? BrokerPositionId { get; set; }
     
     [Column(TypeName = "decimal(18,4)")]
     public decimal AveragePrice { get; set; }
@@ -198,6 +210,7 @@ public class TradeLockerSettings
 
 public class RiskSettings
 {
+    public double MinConfidence { get; set; } = 0.65;
     public double MaxPositionSizePercent { get; set; } = 10.0;
     public double MaxDailyLossPercent { get; set; } = 3.0;
     public double StopLossPercent { get; set; } = 5.0;
@@ -205,6 +218,14 @@ public class RiskSettings
     public int TradingIntervalMinutes { get; set; } = 15;
     public bool KillSwitchEnabled { get; set; } = true;
     public decimal MaxDailyLossAbsolute { get; set; } = 500m;
+}
+
+/// <summary>Ergebnis von IBrokerService.PlaceOrderAsync (OrderId/PositionId für DB-Mapping).</summary>
+public class PlaceOrderResult
+{
+    public bool Success { get; set; }
+    public string? BrokerOrderId { get; set; }
+    public string? BrokerPositionId { get; set; }
 }
 
 // ── TradeLocker API DTOs ───────────────────────────────────────────────

@@ -624,7 +624,8 @@ public class TradeLockerService : IBrokerService
                 list.Add(new Position
                 {
                     Symbol = symbol,
-                    Quantity = (int)Math.Round(p.Qty),
+                    Quantity = p.Qty,
+                    BrokerPositionId = p.Id,
                     AveragePrice = p.AvgPrice,
                     CurrentPrice = p.MarketPrice,
                     LastUpdated = DateTime.UtcNow
@@ -638,8 +639,117 @@ public class TradeLockerService : IBrokerService
         return list;
     }
 
-    /// <summary>Phase 2: Stub. Volle Order-Ausführung in Phase 4.</summary>
-    public Task<bool> PlaceOrderAsync(string symbol, TradeAction action, int quantity, CancellationToken ct = default)
-        => Task.FromResult(false);
+    public async Task<PlaceOrderResult> PlaceOrderAsync(string symbol, TradeAction action, decimal quantityLots, decimal? stopLoss, decimal? takeProfit, CancellationToken ct = default)
+    {
+        if (!_isConnected || string.IsNullOrEmpty(_accountId))
+        {
+            _logger.LogWarning("TradeLocker: Cannot place order – not connected or no account.");
+            return new PlaceOrderResult { Success = false };
+        }
+        var tradableInstrumentId = ResolveSymbolToInstrumentId(symbol);
+        if (tradableInstrumentId == null)
+        {
+            _logger.LogWarning("TradeLocker: Unknown symbol {Symbol}", symbol);
+            return new PlaceOrderResult { Success = false };
+        }
+        if (quantityLots <= 0)
+        {
+            _logger.LogWarning("TradeLocker: Invalid quantity {Qty}", quantityLots);
+            return new PlaceOrderResult { Success = false };
+        }
+        await ThrottleAsync(ct);
+        try
+        {
+            var side = action == TradeAction.Buy ? "buy" : "sell";
+            var body = new TradeLockerOrderRequest
+            {
+                Price = 0m,
+                Qty = quantityLots,
+                RouteId = "TRADE",
+                Side = side,
+                StopLoss = stopLoss,
+                StopLossType = "absolute",
+                TakeProfit = takeProfit,
+                TakeProfitType = "absolute",
+                TrStopOffset = 0m,
+                TradableInstrumentId = tradableInstrumentId.Value,
+                Type = "market",
+                Validity = "IOC"
+            };
+            using var client = GetHttpClient();
+            var response = await client.PostAsJsonAsync($"trade/accounts/{_accountId}/orders", body, JsonOptions, ct);
+            var responseBody = await response.Content.ReadAsStringAsync(ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("TradeLocker PlaceOrder failed: {StatusCode} – {Body}", (int)response.StatusCode, Truncate(responseBody, 400));
+                return new PlaceOrderResult { Success = false };
+            }
+            var orderResponse = JsonSerializer.Deserialize<TradeLockerOrderResponse>(responseBody, JsonOptions);
+            var orderId = orderResponse?.Id;
+            _logger.LogInformation("TradeLocker order placed: {Symbol} {Side} {Qty} Lots, orderId={OrderId}", symbol, side, quantityLots, orderId);
+            return new PlaceOrderResult
+            {
+                Success = true,
+                BrokerOrderId = orderId
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "TradeLocker PlaceOrder exception for {Symbol}", symbol);
+            return new PlaceOrderResult { Success = false };
+        }
+    }
+
+    public async Task<bool> ClosePositionAsync(string positionIdOrSymbol, decimal? quantity, CancellationToken ct = default)
+    {
+        if (!_isConnected || string.IsNullOrEmpty(_accountId))
+        {
+            _logger.LogWarning("TradeLocker: Cannot close position – not connected or no account.");
+            return false;
+        }
+        if (string.IsNullOrWhiteSpace(positionIdOrSymbol))
+        {
+            _logger.LogWarning("TradeLocker: ClosePosition called with empty positionIdOrSymbol.");
+            return false;
+        }
+        await ThrottleAsync(ct);
+        try
+        {
+            string positionId;
+            if (int.TryParse(positionIdOrSymbol, out _) || positionIdOrSymbol.Length > 10)
+            {
+                positionId = positionIdOrSymbol;
+            }
+            else
+            {
+                var positions = await GetPositionsAsync(ct);
+                var pos = positions.FirstOrDefault(p => p.Symbol.Equals(positionIdOrSymbol, StringComparison.OrdinalIgnoreCase));
+                if (pos == null)
+                {
+                    _logger.LogWarning("TradeLocker: No position found for symbol {Symbol}", positionIdOrSymbol);
+                    return false;
+                }
+                positionId = pos.BrokerPositionId ?? positionIdOrSymbol;
+            }
+            using var client = GetHttpClient();
+            var qty = quantity ?? 0m;
+            var url = $"trade/positions/{positionId}?qty={qty}";
+            var request = new HttpRequestMessage(HttpMethod.Delete, url);
+            var response = await client.SendAsync(request, ct);
+            var responseBody = await response.Content.ReadAsStringAsync(ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("TradeLocker ClosePosition failed: {StatusCode} – {Body}", (int)response.StatusCode, Truncate(responseBody, 400));
+                return false;
+            }
+            _logger.LogInformation("TradeLocker position closed: positionId={PositionId}, qty={Qty}", positionId, qty);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "TradeLocker ClosePosition exception for {Id}", positionIdOrSymbol);
+            return false;
+        }
+    }
 }
 

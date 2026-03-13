@@ -40,7 +40,14 @@ Desktop.ini
 ## Environment / Secrets
 appsettings.Development.json
 appsettings.Local.json
+appsettings.Production.json
 *.pfx
 *.key
 .env
 .env.*
+
+## User Secrets (zusätzlich zu Default-Pfad)
+secrets.json
+
+## Zip-Dateien
+*.zip

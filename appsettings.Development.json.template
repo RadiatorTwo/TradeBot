@@ -1,0 +1,16 @@
+{
+  "TradeLocker": {
+    "Email": "deine-email@example.com",
+    "Password": "dein-passwort",
+    "Server": "DEIN_SERVER"
+  },
+  "Anthropic": {
+    "ApiKey": "sk-ant-..."
+  },
+  "Gemini": {
+    "ApiKey": "AIza..."
+  },
+  "OpenAICompatible": {
+    "ApiKey": "optional-fuer-ollama"
+  }
+}
