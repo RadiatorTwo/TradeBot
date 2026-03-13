@@ -28,6 +28,9 @@ obj/
 ## Logs
 logs/
 
+## Cursor IDE
+.cursor/
+
 ## OS files
 Thumbs.db
 ehthumbs.db
