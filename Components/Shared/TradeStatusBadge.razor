@@ -1,0 +1,23 @@
+@switch (Status)
+{
+    case TradeStatus.Executed:
+        <span class="badge badge-green">Ausgefuehrt</span>
+        break;
+    case TradeStatus.Failed:
+        <span class="badge badge-red" title="@ErrorMessage">Fehlgeschlagen</span>
+        break;
+    case TradeStatus.Rejected:
+        <span class="badge badge-orange" title="@ErrorMessage">Abgelehnt</span>
+        break;
+    case TradeStatus.Pending:
+        <span class="badge badge-yellow">Ausstehend</span>
+        break;
+    case TradeStatus.Cancelled:
+        <span class="badge badge-yellow">Abgebrochen</span>
+        break;
+}
+
+@code {
+    [Parameter, EditorRequired] public TradeStatus Status { get; set; }
+    [Parameter] public string? ErrorMessage { get; set; }
+}

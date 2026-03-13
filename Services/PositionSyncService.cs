@@ -13,6 +13,7 @@ namespace ClaudeTradingBot.Services;
 public class PositionSyncService : BackgroundService
 {
     private readonly IBrokerService _broker;
+    private readonly TradingEngine _engine;
     private readonly MarketHoursService _marketHours;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<PositionSyncService> _logger;
@@ -23,11 +24,13 @@ public class PositionSyncService : BackgroundService
 
     public PositionSyncService(
         IBrokerService broker,
+        TradingEngine engine,
         MarketHoursService marketHours,
         IServiceScopeFactory scopeFactory,
         ILogger<PositionSyncService> logger)
     {
         _broker = broker;
+        _engine = engine;
         _marketHours = marketHours;
         _scopeFactory = scopeFactory;
         _logger = logger;
@@ -57,11 +60,15 @@ public class PositionSyncService : BackgroundService
         {
             try
             {
-                // Reduzierte Sync-Frequenz wenn Markt geschlossen
-                var interval = _marketHours.IsMarketOpen()
-                    ? PositionSyncInterval
-                    : PositionSyncIntervalClosed;
+                // Reduzierte Sync-Frequenz wenn Markt geschlossen oder Engine pausiert
+                var interval = !_marketHours.IsMarketOpen() || _engine.IsPaused
+                    ? PositionSyncIntervalClosed
+                    : PositionSyncInterval;
                 await Task.Delay(interval, stoppingToken);
+
+                // Wenn Engine pausiert: nur selten syncen (offene Positionen koennen sich nicht aendern)
+                if (_engine.IsPaused)
+                    continue;
 
                 // Positionen synchronisieren
                 await SyncPositionsAsync(stoppingToken);

@@ -552,7 +552,7 @@ public class TradeLockerCandle
 
 // ── Dashboard View Models ──────────────────────────────────────────────
 
-public class DashboardViewModel
+public record DashboardViewModel
 {
     public decimal PortfolioValue { get; set; }
     public decimal DailyPnL { get; set; }
@@ -561,6 +561,7 @@ public class DashboardViewModel
     public int OpenPositions { get; set; }
     public int TradesToday { get; set; }
     public bool IsEngineRunning { get; set; }
+    public bool IsEnginePaused { get; set; }
     public bool IsKillSwitchActive { get; set; }
     public bool IsTradeLockerConnected { get; set; }
     public bool IsMarketOpen { get; set; }

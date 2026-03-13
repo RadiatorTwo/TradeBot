@@ -1,0 +1,23 @@
+@using Microsoft.AspNetCore.Components.Web
+
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Claude Trading Bot</title>
+    <link rel="stylesheet" href="css/app.css" />
+    <HeadOutlet @rendermode="RenderMode.InteractiveServer" />
+</head>
+<body>
+    <Routes @rendermode="RenderMode.InteractiveServer" />
+
+    <div id="components-reconnect-modal">
+        <div class="reconnect-content">
+            Verbindung wird wiederhergestellt...
+        </div>
+    </div>
+
+    <script src="_framework/blazor.web.js"></script>
+</body>
+</html>

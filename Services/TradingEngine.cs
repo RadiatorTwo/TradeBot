@@ -25,6 +25,7 @@ public class TradingEngine : BackgroundService
 
     // Externe Steuerung
     private volatile bool _pauseRequested;
+    public bool IsPaused => _pauseRequested;
     public void Pause() => _pauseRequested = true;
     public void Resume() => _pauseRequested = false;
 

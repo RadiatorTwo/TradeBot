@@ -1,4 +1,6 @@
+using ClaudeTradingBot.Components;
 using ClaudeTradingBot.Data;
+using ClaudeTradingBot.Hubs;
 using ClaudeTradingBot.Models;
 using ClaudeTradingBot.Services;
 using Microsoft.EntityFrameworkCore;
@@ -21,7 +23,9 @@ builder.Services.Configure<TradeLockerSettings>(builder.Configuration.GetSection
 builder.Services.Configure<RiskSettings>(builder.Configuration.GetSection("RiskManagement"));
 
 // ── Datenbank ──────────────────────────────────────────────────────────
-builder.Services.AddDbContext<TradingDbContext>(options =>
+// AddDbContextFactory fuer Blazor-Komponenten (kurzlebige Kontexte)
+// Registriert auch AddDbContext fuer bestehende scoped Services
+builder.Services.AddDbContextFactory<TradingDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("TradingDb")));
 
 // ── Services: LLM-Provider wählbar (Gemini = kostenloser Cloud-Free-Tier, Anthropic, OpenAICompatible) ──
@@ -54,8 +58,13 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<TradingEngine>());
 // ── Position Sync Service (synchronisiert DB mit Broker) ───────────────
 builder.Services.AddHostedService<PositionSyncService>();
 
-// ── ASP.NET Razor Pages ────────────────────────────────────────────────
-builder.Services.AddRazorPages();
+// ── Dashboard Broadcast (SignalR-Push alle 3s) ─────────────────────────
+builder.Services.AddSingleton<DashboardBroadcastService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<DashboardBroadcastService>());
+
+// ── Blazor Server ──────────────────────────────────────────────────────
+builder.Services.AddRazorComponents()
+    .AddInteractiveServerComponents();
 
 var app = builder.Build();
 
@@ -85,9 +94,14 @@ if (!app.Environment.IsDevelopment())
 
 app.UseStaticFiles();
 app.UseRouting();
-app.MapRazorPages();
+app.UseAntiforgery();
 
-// ── API-Endpunkte für Dashboard-Steuerung ──────────────────────────────
+// ── Blazor + SignalR ────────────────────────────────────────────────────
+app.MapRazorComponents<App>()
+    .AddInteractiveServerRenderMode();
+app.MapHub<TradingHub>("/tradinghub");
+
+// ── API-Endpunkte für externe Steuerung ─────────────────────────────────
 app.MapPost("/api/engine/pause", (TradingEngine engine) =>
 {
     engine.Pause();

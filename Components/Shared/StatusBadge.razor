@@ -1,0 +1,8 @@
+@* Wiederverwendbare Status-Badge-Komponente *@
+
+<span class="badge badge-@Color">@Text</span>
+
+@code {
+    [Parameter, EditorRequired] public string Text { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public string Color { get; set; } = "green";
+}

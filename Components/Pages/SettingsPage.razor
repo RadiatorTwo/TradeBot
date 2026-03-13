@@ -1,0 +1,225 @@
+@page "/settings"
+@using System.Text.Json
+@using System.Text.Json.Nodes
+@inject IConfiguration Configuration
+@inject IWebHostEnvironment Env
+
+<PageTitle>Einstellungen - Claude Trading Bot</PageTitle>
+
+<h2 style="margin-bottom: 24px;">Einstellungen</h2>
+
+<div class="warning-banner">
+    Aenderungen werden sofort in appsettings.json geschrieben und bei Nutzung von IOptionsMonitor automatisch wirksam.
+</div>
+
+@if (_saveSuccess)
+{
+    <div class="success-banner">Einstellungen erfolgreich gespeichert.</div>
+}
+
+@if (_errors.Any())
+{
+    <div class="error-banner">
+        <strong>Validierungsfehler:</strong>
+        <ul style="margin: 8px 0 0 16px; list-style: disc;">
+            @foreach (var error in _errors)
+            {
+                <li>@error</li>
+            }
+        </ul>
+    </div>
+}
+
+<EditForm Model="this" OnValidSubmit="SaveSettings" FormName="settings">
+    <!-- Watchlist -->
+    <div class="form-section">
+        <h3>Watchlist</h3>
+        <div class="form-group">
+            <label>Symbole (komma-separiert)</label>
+            <textarea rows="3" @bind="WatchList"></textarea>
+            <div class="hint">z.B. EURUSD, GBPUSD, USDJPY, XAUUSD, US100</div>
+        </div>
+    </div>
+
+    <!-- Risiko-Parameter -->
+    <div class="form-section">
+        <h3>Risiko-Parameter</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="form-group">
+                <label>Min. Confidence</label>
+                <input type="number" @bind="MinConfidence" step="0.01" min="0" max="1" />
+                <div class="hint">Minimale KI-Confidence fuer Trade-Ausfuehrung (0-1)</div>
+            </div>
+            <div class="form-group">
+                <label>Max. Positionsgroesse (%)</label>
+                <input type="number" @bind="MaxPositionSizePercent" step="0.5" min="0" />
+                <div class="hint">Maximaler Anteil am Portfolio pro Trade</div>
+            </div>
+            <div class="form-group">
+                <label>Max. Tagesverlust (%)</label>
+                <input type="number" @bind="MaxDailyLossPercent" step="0.1" min="0" />
+                <div class="hint">Prozentualer Tagesverlust-Limit</div>
+            </div>
+            <div class="form-group">
+                <label>Max. Tagesverlust (absolut)</label>
+                <input type="number" @bind="MaxDailyLossAbsolute" step="10" min="0" />
+                <div class="hint">Absoluter Tagesverlust-Limit in $</div>
+            </div>
+            <div class="form-group">
+                <label>Stop-Loss (%)</label>
+                <input type="number" @bind="StopLossPercent" step="0.1" min="0" />
+                <div class="hint">Automatischer Stop-Loss pro Position</div>
+            </div>
+            <div class="form-group">
+                <label>Max. offene Positionen</label>
+                <input type="number" @bind="MaxOpenPositions" min="1" />
+            </div>
+        </div>
+    </div>
+
+    <!-- Intervall -->
+    <div class="form-section">
+        <h3>Trading-Intervall</h3>
+        <div class="form-group">
+            <label>Analyse-Intervall (Minuten)</label>
+            <input type="number" @bind="TradingIntervalMinutes" min="1" />
+            <div class="hint">Wie oft die Engine Marktdaten analysiert und Trades evaluiert</div>
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Einstellungen Speichern</button>
+</EditForm>
+
+<!-- API-Konfiguration (readonly) -->
+<div class="form-section" style="margin-top: 24px;">
+    <h3>API-Konfiguration (nur Anzeige)</h3>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        <div class="form-group">
+            <label>LLM Provider</label>
+            <input type="text" value="@_llmProvider" readonly />
+        </div>
+        <div class="form-group">
+            <label>TradeLocker Email</label>
+            <input type="text" value="@_tradeLockerEmail" readonly />
+        </div>
+        <div class="form-group">
+            <label>Anthropic API Key</label>
+            <input type="text" value="@_anthropicKeyMasked" readonly />
+        </div>
+        <div class="form-group">
+            <label>Gemini API Key</label>
+            <input type="text" value="@_geminiKeyMasked" readonly />
+        </div>
+        <div class="form-group">
+            <label>OpenAI-Compatible API Key</label>
+            <input type="text" value="@_openAIKeyMasked" readonly />
+        </div>
+    </div>
+    <div class="hint" style="margin-top: 8px;">API-Keys koennen nur direkt in appsettings.json geaendert werden.</div>
+</div>
+
+@code {
+    private string WatchList { get; set; } = string.Empty;
+    private double MinConfidence { get; set; }
+    private double MaxPositionSizePercent { get; set; }
+    private double MaxDailyLossPercent { get; set; }
+    private double StopLossPercent { get; set; }
+    private int MaxOpenPositions { get; set; }
+    private int TradingIntervalMinutes { get; set; }
+    private decimal MaxDailyLossAbsolute { get; set; }
+
+    private string _llmProvider = string.Empty;
+    private string _anthropicKeyMasked = string.Empty;
+    private string _geminiKeyMasked = string.Empty;
+    private string _openAIKeyMasked = string.Empty;
+    private string _tradeLockerEmail = string.Empty;
+
+    private bool _saveSuccess;
+    private List<string> _errors = new();
+
+    protected override void OnInitialized()
+    {
+        LoadCurrentValues();
+    }
+
+    private async Task SaveSettings()
+    {
+        _saveSuccess = false;
+        _errors = new List<string>();
+
+        // Validierung
+        if (MinConfidence < 0 || MinConfidence > 1)
+            _errors.Add("Min. Confidence muss zwischen 0 und 1 liegen.");
+        if (MaxPositionSizePercent <= 0)
+            _errors.Add("Max. Positionsgroesse muss > 0 sein.");
+        if (MaxDailyLossPercent <= 0)
+            _errors.Add("Max. Tagesverlust muss > 0 sein.");
+        if (StopLossPercent <= 0)
+            _errors.Add("Stop-Loss muss > 0 sein.");
+        if (MaxOpenPositions < 1)
+            _errors.Add("Max. offene Positionen muss >= 1 sein.");
+        if (TradingIntervalMinutes < 1)
+            _errors.Add("Trading-Intervall muss >= 1 Minute sein.");
+        if (MaxDailyLossAbsolute <= 0)
+            _errors.Add("Max. Tagesverlust (absolut) muss > 0 sein.");
+
+        if (_errors.Any())
+            return;
+
+        var appSettingsPath = Path.Combine(Env.ContentRootPath, "appsettings.json");
+        var json = await File.ReadAllTextAsync(appSettingsPath);
+        var doc = JsonNode.Parse(json, documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip })!;
+
+        // WatchList
+        var watchItems = WatchList
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToArray();
+        var strategyNode = doc["TradingStrategy"] ??= new JsonObject();
+        strategyNode["WatchList"] = new JsonArray(watchItems.Select(w => (JsonNode)JsonValue.Create(w)!).ToArray());
+
+        // RiskManagement
+        var riskNode = doc["RiskManagement"] ??= new JsonObject();
+        riskNode["MinConfidence"] = MinConfidence;
+        riskNode["MaxPositionSizePercent"] = MaxPositionSizePercent;
+        riskNode["MaxDailyLossPercent"] = MaxDailyLossPercent;
+        riskNode["StopLossPercent"] = StopLossPercent;
+        riskNode["MaxOpenPositions"] = MaxOpenPositions;
+        riskNode["TradingIntervalMinutes"] = TradingIntervalMinutes;
+        riskNode["MaxDailyLossAbsolute"] = MaxDailyLossAbsolute;
+
+        var options = new JsonSerializerOptions { WriteIndented = true };
+        await File.WriteAllTextAsync(appSettingsPath, doc.ToJsonString(options));
+
+        _saveSuccess = true;
+        LoadCurrentValues();
+    }
+
+    private void LoadCurrentValues()
+    {
+        var watchArray = Configuration.GetSection("TradingStrategy:WatchList").Get<string[]>() ?? Array.Empty<string>();
+        WatchList = string.Join(", ", watchArray);
+
+        MinConfidence = Configuration.GetValue("RiskManagement:MinConfidence", 0.65);
+        MaxPositionSizePercent = Configuration.GetValue("RiskManagement:MaxPositionSizePercent", 10.0);
+        MaxDailyLossPercent = Configuration.GetValue("RiskManagement:MaxDailyLossPercent", 3.0);
+        StopLossPercent = Configuration.GetValue("RiskManagement:StopLossPercent", 5.0);
+        MaxOpenPositions = Configuration.GetValue("RiskManagement:MaxOpenPositions", 10);
+        TradingIntervalMinutes = Configuration.GetValue("RiskManagement:TradingIntervalMinutes", 15);
+        MaxDailyLossAbsolute = Configuration.GetValue("RiskManagement:MaxDailyLossAbsolute", 500m);
+
+        _llmProvider = Configuration.GetValue<string>("Llm:Provider") ?? "Gemini";
+        _anthropicKeyMasked = MaskKey(Configuration.GetValue<string>("Anthropic:ApiKey"));
+        _geminiKeyMasked = MaskKey(Configuration.GetValue<string>("Gemini:ApiKey"));
+        _openAIKeyMasked = MaskKey(Configuration.GetValue<string>("OpenAICompatible:ApiKey"));
+        _tradeLockerEmail = Configuration.GetValue<string>("TradeLocker:Email") ?? string.Empty;
+    }
+
+    private static string MaskKey(string? key)
+    {
+        if (string.IsNullOrEmpty(key))
+            return "(nicht gesetzt)";
+        if (key.Length <= 8)
+            return "***";
+        return key[..4] + "***" + key[^4..];
+    }
+}

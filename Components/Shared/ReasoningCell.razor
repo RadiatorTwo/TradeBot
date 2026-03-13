@@ -1,0 +1,21 @@
+@if (!string.IsNullOrEmpty(ErrorMessage))
+{
+    <div style="color:#f97316;font-size:0.8rem;margin-bottom:4px">@ErrorMessage</div>
+}
+
+<div class="reasoning-toggle" @onclick="Toggle">
+    @(Reasoning?.Length > 60 ? Reasoning[..60] + "..." : Reasoning)
+</div>
+
+@if (_expanded)
+{
+    <div class="reasoning-full open">@Reasoning</div>
+}
+
+@code {
+    [Parameter] public string? ErrorMessage { get; set; }
+    [Parameter] public string? Reasoning { get; set; }
+
+    private bool _expanded;
+    private void Toggle() => _expanded = !_expanded;
+}

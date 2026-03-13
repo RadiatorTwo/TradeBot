@@ -1,0 +1,133 @@
+@page "/trades"
+@using ClaudeTradingBot.Data
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<TradingDbContext> DbFactory
+
+<PageTitle>Trade-Historie - Claude Trading Bot</PageTitle>
+
+<h2 style="margin-bottom: 24px;">Trade-Historie</h2>
+
+<!-- Filter -->
+<div class="filter-bar">
+    <div class="filter-group">
+        <label>Von</label>
+        <input type="date" @bind="FilterFrom" />
+    </div>
+    <div class="filter-group">
+        <label>Bis</label>
+        <input type="date" @bind="FilterTo" />
+    </div>
+    <div class="filter-group">
+        <label>Symbol</label>
+        <select @bind="FilterSymbol">
+            <option value="">Alle</option>
+            @foreach (var s in _availableSymbols)
+            {
+                <option value="@s">@s</option>
+            }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Status</label>
+        <select @bind="FilterStatus">
+            <option value="">Alle</option>
+            <option value="Executed">Ausgefuehrt</option>
+            <option value="Failed">Fehlgeschlagen</option>
+            <option value="Rejected">Abgelehnt</option>
+            <option value="Pending">Ausstehend</option>
+            <option value="Cancelled">Abgebrochen</option>
+        </select>
+    </div>
+    <div class="filter-group" style="justify-content: end;">
+        <button class="btn btn-primary" @onclick="ApplyFilter">Filtern</button>
+    </div>
+    <div class="filter-group" style="justify-content: end;">
+        <a href="@CsvExportUrl" class="btn btn-outline">CSV Export</a>
+    </div>
+</div>
+
+@if (_trades.Any())
+{
+    <table>
+        <thead>
+            <tr>
+                <th>Zeit</th><th>Symbol</th><th>Aktion</th>
+                <th>Menge</th><th>Preis</th><th>Confidence</th>
+                <th>Status</th><th>Begruendung</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var t in _trades)
+            {
+                <tr>
+                    <td style="font-size:0.75rem;color:var(--muted)">@t.CreatedAt.ToString("dd.MM.yyyy HH:mm")</td>
+                    <td><strong>@t.Symbol</strong></td>
+                    <td class="@(t.Action == TradeAction.Buy ? "pnl-positive" : "pnl-negative")">
+                        @t.Action.ToString().ToUpper()
+                    </td>
+                    <td>@t.Quantity.ToString("F2")</td>
+                    <td>$@t.Price.ToString("F4")</td>
+                    <td>@t.ClaudeConfidence.ToString("P0")</td>
+                    <td><TradeStatusBadge Status="t.Status" ErrorMessage="@t.ErrorMessage" /></td>
+                    <td><ReasoningCell ErrorMessage="@t.ErrorMessage" Reasoning="@t.ClaudeReasoning" /></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else
+{
+    <div class="empty-state">Keine Trades gefunden</div>
+}
+
+@code {
+    private DateTime? FilterFrom { get; set; }
+    private DateTime? FilterTo { get; set; }
+    private string FilterSymbol { get; set; } = string.Empty;
+    private string FilterStatus { get; set; } = string.Empty;
+
+    private List<Trade> _trades = new();
+    private List<string> _availableSymbols = new();
+
+    private string CsvExportUrl =>
+        $"/api/trades/export?from={FilterFrom?.ToString("yyyy-MM-dd")}&to={FilterTo?.ToString("yyyy-MM-dd")}&symbol={FilterSymbol}&status={FilterStatus}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSymbols();
+        await ApplyFilter();
+    }
+
+    private async Task LoadSymbols()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _availableSymbols = await db.Trades
+            .Select(t => t.Symbol)
+            .Distinct()
+            .OrderBy(s => s)
+            .ToListAsync();
+    }
+
+    private async Task ApplyFilter()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var query = db.Trades.AsQueryable();
+
+        if (FilterFrom.HasValue)
+            query = query.Where(t => t.CreatedAt >= FilterFrom.Value);
+
+        if (FilterTo.HasValue)
+            query = query.Where(t => t.CreatedAt <= FilterTo.Value.Date.AddDays(1));
+
+        if (!string.IsNullOrEmpty(FilterSymbol))
+            query = query.Where(t => t.Symbol == FilterSymbol);
+
+        if (!string.IsNullOrEmpty(FilterStatus) && Enum.TryParse<TradeStatus>(FilterStatus, out var status))
+            query = query.Where(t => t.Status == status);
+
+        _trades = await query
+            .OrderByDescending(t => t.CreatedAt)
+            .Take(200)
+            .ToListAsync();
+    }
+}
