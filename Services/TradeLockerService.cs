@@ -1083,6 +1083,32 @@ public class TradeLockerService : IBrokerService
         }
     }
 
+    public async Task<bool> UpdatePositionStopLossAsync(string positionId, decimal newStopLoss, CancellationToken ct = default)
+    {
+        if (!_isConnected || string.IsNullOrEmpty(_accountId)) return false;
+        await ThrottleAsync(ct);
+        try
+        {
+            using var client = GetHttpClient();
+            var body = new { stopLoss = newStopLoss, stopLossType = "absolute" };
+            var response = await client.PatchAsJsonAsync($"trade/positions/{positionId}", body, JsonOptions, ct);
+            var responseBody = await response.Content.ReadAsStringAsync(ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogDebug("UpdatePositionSL failed for {PosId}: {Status} – {Body}",
+                    positionId, (int)response.StatusCode, Truncate(responseBody, 200));
+                return false;
+            }
+            _logger.LogInformation("TradeLocker SL updated: positionId={PosId}, newSL={SL:F5}", positionId, newStopLoss);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "UpdatePositionSL exception for {PosId}", positionId);
+            return false;
+        }
+    }
+
     public async Task<List<BrokerClosedPosition>> GetClosedPositionsAsync(int lookbackDays = 1, CancellationToken ct = default)
     {
         var list = new List<BrokerClosedPosition>();

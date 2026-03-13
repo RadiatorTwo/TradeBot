@@ -128,32 +128,93 @@ public class RiskManager : IRiskManager
         foreach (var pos in positions)
         {
             var currentPrice = await _broker.GetCurrentPriceAsync(pos.Symbol, ct);
+            if (currentPrice == 0) continue;
+
+            var isBuy = pos.Side.Equals("buy", StringComparison.OrdinalIgnoreCase);
+
+            // Gewinn/Verlust in Pips berechnen (richtungsabhaengig)
+            var priceDiff = isBuy
+                ? currentPrice - pos.AveragePrice
+                : pos.AveragePrice - currentPrice;
+            var gainPips = (double)PipCalculator.PriceToPips(pos.Symbol, priceDiff) * Math.Sign((double)priceDiff);
+
             var lossPercent = pos.AveragePrice > 0
-                ? (double)((pos.AveragePrice - currentPrice) / pos.AveragePrice) * 100.0
+                ? (double)(Math.Abs(priceDiff) / pos.AveragePrice) * 100.0
                 : 0.0;
 
-            if (lossPercent >= Settings.StopLossPercent)
+            // ── 1. Breakeven-Stop ──────────────────────────────────────
+            if (Settings.BreakevenTriggerPips > 0 && gainPips >= Settings.BreakevenTriggerPips && pos.BrokerPositionId != null)
+            {
+                // SL auf Einstiegspreis + 1 Pip setzen (nur wenn noch nicht dort)
+                var breakevenSL = isBuy
+                    ? pos.AveragePrice + PipCalculator.PipsToPrice(pos.Symbol, 1m)
+                    : pos.AveragePrice - PipCalculator.PipsToPrice(pos.Symbol, 1m);
+
+                // Nur aktualisieren wenn es eine Verbesserung waere
+                var shouldUpdate = isBuy
+                    ? breakevenSL > pos.AveragePrice  // Buy: SL nach oben
+                    : breakevenSL < pos.AveragePrice; // Sell: SL nach unten
+
+                if (shouldUpdate)
+                {
+                    var success = await _broker.UpdatePositionStopLossAsync(pos.BrokerPositionId, breakevenSL, ct);
+                    if (success)
+                    {
+                        _logger.LogInformation(
+                            "Breakeven-Stop gesetzt fuer {Symbol}: SL auf {SL:F5} (Gewinn: {Gain:F1} Pips)",
+                            pos.Symbol, breakevenSL, gainPips);
+                    }
+                }
+            }
+
+            // ── 2. Trailing Stop ───────────────────────────────────────
+            if (Settings.TrailingStopPips > 0 && gainPips > Settings.TrailingStopPips && pos.BrokerPositionId != null)
+            {
+                var trailDistance = PipCalculator.PipsToPrice(pos.Symbol, (decimal)Settings.TrailingStopPips);
+                var trailingSL = isBuy
+                    ? currentPrice - trailDistance
+                    : currentPrice + trailDistance;
+
+                // Nur aktualisieren wenn neuer SL besser als Einstiegspreis ist
+                var isBetter = isBuy
+                    ? trailingSL > pos.AveragePrice
+                    : trailingSL < pos.AveragePrice;
+
+                if (isBetter)
+                {
+                    var success = await _broker.UpdatePositionStopLossAsync(pos.BrokerPositionId, trailingSL, ct);
+                    if (success)
+                    {
+                        _logger.LogInformation(
+                            "Trailing-Stop aktualisiert fuer {Symbol}: SL auf {SL:F5} (Gewinn: {Gain:F1} Pips, Trail: {Trail} Pips)",
+                            pos.Symbol, trailingSL, gainPips, Settings.TrailingStopPips);
+                    }
+                }
+            }
+
+            // ── 3. Lokaler Stop-Loss (Fallback) ───────────────────────
+            if (priceDiff < 0 && lossPercent >= Settings.StopLossPercent)
             {
                 _logger.LogWarning(
-                    "🛑 STOP-LOSS triggered for {Symbol}: loss {Loss:F1}% >= {Max:F1}%",
+                    "STOP-LOSS triggered for {Symbol}: loss {Loss:F1}% >= {Max:F1}%",
                     pos.Symbol, lossPercent, Settings.StopLossPercent);
 
                 var positionIdOrSymbol = pos.BrokerPositionId ?? pos.Symbol;
+                var closeAction = isBuy ? TradeAction.Sell : TradeAction.Buy;
                 var success = await _broker.ClosePositionAsync(positionIdOrSymbol, null, ct);
 
-                // Trade in DB loggen
                 using var scope = _scopeFactory.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
 
                 db.Trades.Add(new Trade
                 {
                     Symbol = pos.Symbol,
-                    Action = TradeAction.Sell,
+                    Action = closeAction,
                     Status = success ? TradeStatus.Executed : TradeStatus.Failed,
                     Quantity = pos.Quantity,
                     Price = currentPrice,
                     ExecutedPrice = success ? currentPrice : null,
-                    ClaudeReasoning = $"Automatischer Stop-Loss bei {lossPercent:F1}% Verlust",
+                    ClaudeReasoning = $"Automatischer Stop-Loss bei {lossPercent:F1}% Verlust ({gainPips:F1} Pips)",
                     ClaudeConfidence = 1.0,
                     ExecutedAt = success ? DateTime.UtcNow : null,
                     BrokerPositionId = pos.BrokerPositionId
@@ -163,7 +224,7 @@ public class RiskManager : IRiskManager
                 {
                     Level = "Warning",
                     Source = "RiskManager",
-                    Message = $"Stop-Loss: Close {pos.Quantity:F2} Lots {pos.Symbol} @ ${currentPrice:F2} (Verlust: {lossPercent:F1}%)"
+                    Message = $"Stop-Loss: Close {pos.Quantity:F2} Lots {pos.Symbol} @ {currentPrice:F5} (Verlust: {lossPercent:F1}%)"
                 });
 
                 await db.SaveChangesAsync(ct);

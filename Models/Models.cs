@@ -230,6 +230,75 @@ public class RiskSettings
     public int TradingIntervalMinutes { get; set; } = 15;
     public bool KillSwitchEnabled { get; set; } = true;
     public decimal MaxDailyLossAbsolute { get; set; } = 500m;
+
+    // ── Phase 1: Gewinnschutz ────────────────────────────────────────
+    /// <summary>Trailing Stop in Pips. 0 = deaktiviert. Zieht SL nach wenn Gewinn > Distanz.</summary>
+    public double TrailingStopPips { get; set; } = 0;
+    /// <summary>Breakeven: SL auf Einstiegspreis verschieben wenn Gewinn >= X Pips. 0 = deaktiviert.</summary>
+    public double BreakevenTriggerPips { get; set; } = 0;
+    /// <summary>Risiko pro Trade in % des Portfolios. Position Sizing basierend auf SL-Distanz. 0 = deaktiviert (nutzt MaxPositionSizePercent).</summary>
+    public double RiskPerTradePercent { get; set; } = 0;
+}
+
+/// <summary>Pip-Berechnungen fuer Forex/CFD-Instrumente.</summary>
+public static class PipCalculator
+{
+    /// <summary>Pip-Groesse (kleinste Preiseinheit) je Instrument.</summary>
+    public static decimal GetPipSize(string symbol)
+    {
+        var s = symbol.ToUpperInvariant();
+        // JPY-Pairs: 1 Pip = 0.01
+        if (s.Contains("JPY"))
+            return 0.01m;
+        // Gold: 1 Pip = 0.1
+        if (s.StartsWith("XAU"))
+            return 0.1m;
+        // Silber: 1 Pip = 0.01
+        if (s.StartsWith("XAG"))
+            return 0.01m;
+        // Indizes: 1 Pip = 1.0
+        if (s.Contains("100") || s.Contains("500") || s.Contains("30") || s.Contains("50") ||
+            s.StartsWith("US") || s.StartsWith("UK") || s.StartsWith("DE") || s.StartsWith("JP"))
+            return 1.0m;
+        // Oel: 1 Pip = 0.01
+        if (s.StartsWith("XTI") || s.StartsWith("XBR") || s.Contains("OIL"))
+            return 0.01m;
+        // Forex Standard: 1 Pip = 0.0001
+        return 0.0001m;
+    }
+
+    /// <summary>Preisdifferenz in Pips umrechnen.</summary>
+    public static decimal PriceToPips(string symbol, decimal priceDiff)
+        => Math.Abs(priceDiff) / GetPipSize(symbol);
+
+    /// <summary>Pips in Preisdifferenz umrechnen.</summary>
+    public static decimal PipsToPrice(string symbol, decimal pips)
+        => pips * GetPipSize(symbol);
+
+    /// <summary>Pip-Wert in USD pro Standard-Lot (1.0 Lot).</summary>
+    public static decimal GetPipValuePerLot(string symbol, decimal currentPrice)
+    {
+        var s = symbol.ToUpperInvariant();
+        var pipSize = GetPipSize(symbol);
+
+        // JPY-Pairs: Pip-Wert = 100.000 * 0.01 / Preis = 1000/Preis USD
+        if (s.Length >= 6 && s[3..6] == "JPY")
+            return 100_000m * pipSize / currentPrice;
+        // XXX/USD Pairs (EURUSD, GBPUSD): Pip-Wert = 100.000 * 0.0001 = $10
+        if (s.Length >= 6 && s[3..6] == "USD")
+            return 100_000m * pipSize;
+        // USD/XXX Pairs (USDCHF, USDCAD): Pip-Wert = 100.000 * 0.0001 / Preis
+        if (s.Length >= 3 && s[..3] == "USD")
+            return 100_000m * pipSize / currentPrice;
+        // Gold: 100 oz * 0.1 = $10
+        if (s.StartsWith("XAU"))
+            return 100m * pipSize;
+        // Indizes: 1 Kontrakt * 1.0 = $1
+        if (s.Contains("100") || s.StartsWith("US") || s.StartsWith("DE"))
+            return 1m * pipSize;
+        // Fallback: Standard Forex
+        return 100_000m * pipSize;
+    }
 }
 
 /// <summary>Ergebnis von IBrokerService.PlaceOrderAsync (OrderId/PositionId für DB-Mapping).</summary>

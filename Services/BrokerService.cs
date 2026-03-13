@@ -27,6 +27,9 @@ public interface IBrokerService
 
     /// <summary>Geschlossene Positionen der letzten N Tage vom Broker abrufen.</summary>
     Task<List<BrokerClosedPosition>> GetClosedPositionsAsync(int lookbackDays = 1, CancellationToken ct = default);
+
+    /// <summary>Stop-Loss einer Position beim Broker aktualisieren (Trailing/Breakeven).</summary>
+    Task<bool> UpdatePositionStopLossAsync(string positionId, decimal newStopLoss, CancellationToken ct = default);
 }
 
 // ── Simulierte Implementierung für Paper Trading / Entwicklung ─────────
@@ -212,6 +215,9 @@ public class SimulatedBrokerService : IBrokerService
 
     public Task<List<BrokerClosedPosition>> GetClosedPositionsAsync(int lookbackDays = 1, CancellationToken ct = default)
         => Task.FromResult(new List<BrokerClosedPosition>());
+
+    public Task<bool> UpdatePositionStopLossAsync(string positionId, decimal newStopLoss, CancellationToken ct = default)
+        => Task.FromResult(true);
 }
 
 // ── Echte IB Gateway Implementierung (Platzhalter) ────────────────────

@@ -10,9 +10,11 @@ public class TradingEngine : BackgroundService
     private readonly IBrokerService _broker;
     private readonly IRiskManager _risk;
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly RiskSettings _riskSettings;
+    private readonly IOptionsMonitor<RiskSettings> _settingsMonitor;
     private readonly IConfiguration _config;
     private readonly ILogger<TradingEngine> _logger;
+
+    private RiskSettings Settings => _settingsMonitor.CurrentValue;
 
     private bool _isRunning;
     public bool IsRunning => _isRunning;
@@ -27,7 +29,7 @@ public class TradingEngine : BackgroundService
         IBrokerService broker,
         IRiskManager risk,
         IServiceScopeFactory scopeFactory,
-        IOptions<RiskSettings> riskSettings,
+        IOptionsMonitor<RiskSettings> settingsMonitor,
         IConfiguration config,
         ILogger<TradingEngine> logger)
     {
@@ -35,7 +37,7 @@ public class TradingEngine : BackgroundService
         _broker = broker;
         _risk = risk;
         _scopeFactory = scopeFactory;
-        _riskSettings = riskSettings.Value;
+        _settingsMonitor = settingsMonitor;
         _config = config;
         _logger = logger;
     }
@@ -56,7 +58,7 @@ public class TradingEngine : BackgroundService
 
         await LogAsync("Info", "TradingEngine", "Trading Engine gestartet");
 
-        var interval = TimeSpan.FromMinutes(_riskSettings.TradingIntervalMinutes);
+        var interval = TimeSpan.FromMinutes(Settings.TradingIntervalMinutes);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -80,7 +82,7 @@ public class TradingEngine : BackgroundService
                 // Tages-PnL aufzeichnen
                 await _risk.RecordDailyPnLAsync(stoppingToken);
 
-                _logger.LogInformation("Cycle complete. Next run in {Min} minutes.", _riskSettings.TradingIntervalMinutes);
+                _logger.LogInformation("Cycle complete. Next run in {Min} minutes.", Settings.TradingIntervalMinutes);
             }
             catch (OperationCanceledException)
             {
@@ -226,7 +228,7 @@ public class TradingEngine : BackgroundService
 
             // Nach dem Schließen: wenn LLM auch eine neue Position empfiehlt, weiter machen
             // Sonst hier beenden
-            if (recommendation.Confidence < _riskSettings.MinConfidence)
+            if (recommendation.Confidence < Settings.MinConfidence)
                 return;
         }
 
@@ -279,12 +281,31 @@ public class TradingEngine : BackgroundService
             return;
         }
 
+        // Risk-based Position Sizing: Lot-Größe aus SL-Distanz berechnen
+        var quantity = recommendation.Quantity;
+        if (Settings.RiskPerTradePercent > 0 && recommendation.StopLossPrice.HasValue && recommendation.StopLossPrice.Value > 0)
+        {
+            var calculatedLots = CalculatePositionSize(
+                symbol, currentPrice, recommendation.StopLossPrice.Value, portfolioValue);
+
+            if (calculatedLots.HasValue)
+            {
+                _logger.LogInformation(
+                    "Risk-based Sizing für {Symbol}: LLM={LlmQty:F2} → Berechnet={CalcQty:F2} Lots " +
+                    "(Risk={Risk}%, SL-Distanz={SlDist:F1} Pips)",
+                    symbol, recommendation.Quantity, calculatedLots.Value,
+                    Settings.RiskPerTradePercent,
+                    PipCalculator.PriceToPips(symbol, Math.Abs(currentPrice - recommendation.StopLossPrice.Value)));
+                quantity = calculatedLots.Value;
+            }
+        }
+
         // Neue Position eröffnen (Lots, StopLoss, TakeProfit)
         var trade = new Trade
         {
             Symbol = symbol,
             Action = action,
-            Quantity = recommendation.Quantity,
+            Quantity = quantity,
             Price = currentPrice,
             ClaudeReasoning = recommendation.Reasoning,
             ClaudeConfidence = recommendation.Confidence,
@@ -292,7 +313,7 @@ public class TradingEngine : BackgroundService
         };
 
         var result = await _broker.PlaceOrderAsync(
-            symbol, action, recommendation.Quantity,
+            symbol, action, quantity,
             recommendation.StopLossPrice, recommendation.TakeProfitPrice, ct);
 
         trade.Status = result.Success ? TradeStatus.Executed : TradeStatus.Failed;
@@ -309,11 +330,45 @@ public class TradingEngine : BackgroundService
         {
             Level = result.Success ? "Info" : "Error",
             Source = "TradingEngine",
-            Message = $"{(result.Success ? "✅" : "❌")} {action} {recommendation.Quantity:F2} Lots {symbol} @ {currentPrice:F4}",
+            Message = $"{(result.Success ? "✅" : "❌")} {action} {quantity:F2} Lots {symbol} @ {currentPrice:F4}",
             Details = recommendation.Reasoning
         });
 
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Berechnet die Lot-Größe basierend auf Risiko pro Trade.
+    /// Formel: Lots = (Portfolio × RiskPercent) / (SL-Distanz-in-Pips × PipWert-pro-Lot)
+    /// </summary>
+    private decimal? CalculatePositionSize(string symbol, decimal currentPrice, decimal stopLossPrice, decimal portfolioValue)
+    {
+        var slDistancePips = PipCalculator.PriceToPips(symbol, Math.Abs(currentPrice - stopLossPrice));
+
+        if (slDistancePips <= 0)
+        {
+            _logger.LogWarning("SL-Distanz ist 0 für {Symbol} – kann Position Size nicht berechnen", symbol);
+            return null;
+        }
+
+        var pipValuePerLot = PipCalculator.GetPipValuePerLot(symbol, currentPrice);
+        if (pipValuePerLot <= 0)
+        {
+            _logger.LogWarning("Pip-Wert ist 0 für {Symbol} – kann Position Size nicht berechnen", symbol);
+            return null;
+        }
+
+        var riskAmount = portfolioValue * (decimal)(Settings.RiskPerTradePercent / 100.0);
+        var lots = riskAmount / (slDistancePips * pipValuePerLot);
+
+        // Auf 2 Dezimalstellen runden (Micro-Lots: 0.01)
+        lots = Math.Round(lots, 2);
+
+        // Minimum: 0.01 Lots (1 Micro-Lot)
+        if (lots < 0.01m)
+            lots = 0.01m;
+
+        return lots;
     }
 
     /// <summary>Prüft ob Position-Side und LLM-Empfehlung in entgegengesetzte Richtungen zeigen.</summary>
