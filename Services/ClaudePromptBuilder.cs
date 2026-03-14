@@ -41,6 +41,8 @@ public static class ClaudePromptBuilder
         if (req.Bid != 0 || req.Ask != 0)
         {
             sb.AppendLine($"**Bid:** {req.Bid:F4}  **Ask:** {req.Ask:F4}");
+            var spreadPips = PipCalculator.PriceToPips(req.Symbol, req.Ask - req.Bid);
+            sb.AppendLine($"**Aktueller Spread:** {spreadPips:F1} Pips");
         }
         sb.AppendLine($"**Tagesveränderung:** {req.DayChange:+0.00;-0.00}%");
         if (req.Volume > 0)

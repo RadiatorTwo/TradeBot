@@ -354,8 +354,13 @@ public class TradingEngine : BackgroundService
                 return;
         }
 
-        // Risk Check
-        var isValid = await _risk.ValidateTradeAsync(recommendation, ct);
+        // Spread berechnen (fuer Risk Check und Trade-Log)
+        var spreadPips = (bid > 0 && ask > 0)
+            ? PipCalculator.PriceToPips(symbol, ask - bid)
+            : 0m;
+
+        // Risk Check (mit Spread-Daten)
+        var isValid = await _risk.ValidateTradeAsync(recommendation, bid, ask, ct);
 
         if (!isValid || recommendation.Action.Equals("hold", StringComparison.OrdinalIgnoreCase))
         {
@@ -429,6 +434,7 @@ public class TradingEngine : BackgroundService
             Action = action,
             Quantity = quantity,
             Price = currentPrice,
+            SpreadAtEntry = spreadPips > 0 ? spreadPips : null,
             ClaudeReasoning = recommendation.Reasoning,
             ClaudeConfidence = recommendation.Confidence,
             Status = TradeStatus.Pending

@@ -56,6 +56,10 @@ public class Trade
     /// <summary>Broker-Position-ID (z. B. TradeLocker positionId) für ClosePosition.</summary>
     public string? BrokerPositionId { get; set; }
 
+    /// <summary>Spread in Pips zum Zeitpunkt der Trade-Eroeffnung.</summary>
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal? SpreadAtEntry { get; set; }
+
     /// <summary>Zeitpunkt der Positionsschließung (SL/TP/manuell).</summary>
     public DateTime? ClosedAt { get; set; }
 
@@ -306,6 +310,10 @@ public class RiskSettings
     public double MaxMonthlyLossPercent { get; set; } = 0;
     /// <summary>Max. korrelierte Exposure in % des Portfolios. 0 = deaktiviert.</summary>
     public double MaxCorrelatedExposurePercent { get; set; } = 0;
+
+    // ── Phase 8.1: Spread-Filter ──────────────────────────────────────
+    /// <summary>Max. erlaubter Spread in Pips. Trade wird abgelehnt wenn Spread hoeher. 0 = deaktiviert.</summary>
+    public double MaxSpreadPips { get; set; } = 0;
 }
 
 /// <summary>Statische Korrelationsmatrix fuer gaengige Forex/CFD-Pairs.</summary>

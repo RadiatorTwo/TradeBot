@@ -12,6 +12,7 @@ public interface IRiskManager
     void ActivateKillSwitch(string reason);
     void ResetKillSwitch();
     Task<bool> ValidateTradeAsync(ClaudeTradeRecommendation recommendation, CancellationToken ct = default);
+    Task<bool> ValidateTradeAsync(ClaudeTradeRecommendation recommendation, decimal bid, decimal ask, CancellationToken ct = default);
     Task CheckStopLossesAsync(CancellationToken ct = default);
     Task RecordDailyPnLAsync(CancellationToken ct = default);
 }
@@ -60,7 +61,10 @@ public class RiskManager : IRiskManager
         _logger.LogWarning("Kill switch has been manually reset");
     }
 
-    public async Task<bool> ValidateTradeAsync(ClaudeTradeRecommendation rec, CancellationToken ct = default)
+    public Task<bool> ValidateTradeAsync(ClaudeTradeRecommendation rec, CancellationToken ct = default)
+        => ValidateTradeAsync(rec, 0, 0, ct);
+
+    public async Task<bool> ValidateTradeAsync(ClaudeTradeRecommendation rec, decimal bid, decimal ask, CancellationToken ct = default)
     {
         // 1. Kill Switch prüfen
         if (_killSwitchActive)
@@ -78,6 +82,19 @@ public class RiskManager : IRiskManager
         {
             _logger.LogInformation("Trade skipped – confidence {Conf:P0} below MinConfidence {Min:P0}", rec.Confidence, Settings.MinConfidence);
             return false;
+        }
+
+        // 4. Spread-Filter (Phase 8.1)
+        if (Settings.MaxSpreadPips > 0 && bid > 0 && ask > 0)
+        {
+            var spreadPips = (double)PipCalculator.PriceToPips(rec.Symbol, ask - bid);
+            if (spreadPips > Settings.MaxSpreadPips)
+            {
+                _logger.LogInformation(
+                    "Trade rejected – spread {Spread:F1} Pips exceeds max {Max:F1} Pips for {Symbol}",
+                    spreadPips, Settings.MaxSpreadPips, rec.Symbol);
+                return false;
+            }
         }
 
         // Broker-Daten einmalig laden (vermeidet mehrfache API-Aufrufe)
