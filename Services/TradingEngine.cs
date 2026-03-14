@@ -399,24 +399,38 @@ public class TradingEngine : BackgroundService
             return;
         }
 
-        // Gleiche Richtung: nicht doppelt öffnen wenn wir schon eine Position haben
+        // Gleiche Richtung: Pyramiding pruefen oder blocken
         var sameDirectionPositions = positions
             .Where(p => p.Symbol == symbol && !IsOppositeDirection(p.Side, recommendation.Action))
             .ToList();
 
         if (sameDirectionPositions.Count > 0)
         {
-            _logger.LogInformation(
-                "Überspringe neue {Action}-Order für {Symbol} – bereits {Count} Position(en) in gleicher Richtung offen.",
-                recommendation.Action.ToUpper(), symbol, sameDirectionPositions.Count);
-            db.TradingLogs.Add(new TradingLog
+            var maxPyramid = Settings.MaxPyramidLevels;
+            var isPyramidAllowed = maxPyramid > 0
+                && sameDirectionPositions.Count < maxPyramid
+                && recommendation.Confidence >= Settings.PyramidMinConfidence;
+
+            if (!isPyramidAllowed)
             {
-                Source = "TradingEngine",
-                Message = $"{symbol}: {recommendation.Action.ToUpper()} übersprungen – bereits Position offen",
-                Details = recommendation.Reasoning
-            });
-            await db.SaveChangesAsync(ct);
-            return;
+                _logger.LogDebug(
+                    "Ueberspringe {Action} {Symbol} – bereits {Count} Position(en) offen{PyramidInfo}.",
+                    recommendation.Action.ToUpper(), symbol, sameDirectionPositions.Count,
+                    maxPyramid > 0 ? $" (max Pyramid: {maxPyramid}, Conf: {recommendation.Confidence:P0})" : "");
+                db.TradingLogs.Add(new TradingLog
+                {
+                    Source = "TradingEngine",
+                    Message = $"{symbol}: {recommendation.Action.ToUpper()} uebersprungen – bereits Position offen",
+                    Details = recommendation.Reasoning
+                });
+                await db.SaveChangesAsync(ct);
+                return;
+            }
+
+            _logger.LogInformation(
+                "Pyramiding: {Action} {Symbol} – Level {Level}/{Max} (Confidence: {Conf:P0})",
+                recommendation.Action.ToUpper(), symbol,
+                sameDirectionPositions.Count + 1, maxPyramid, recommendation.Confidence);
         }
 
         // Risk-based Position Sizing: Lot-Größe aus SL-Distanz berechnen

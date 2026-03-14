@@ -151,9 +151,12 @@ public static class ClaudePromptBuilder
         {
             sb.AppendLine();
             sb.AppendLine("**Bestehende Position:**");
+            sb.AppendLine($"- Richtung: {req.CurrentPosition.Side.ToUpper()}");
             sb.AppendLine($"- Menge (Lots): {req.CurrentPosition.Quantity}");
             sb.AppendLine($"- Durchschnittspreis: {req.CurrentPosition.AveragePrice:F4}");
             sb.AppendLine($"- Unrealisierter P&L: {req.CurrentPosition.UnrealizedPnL:F2} ({req.CurrentPosition.UnrealizedPnLPercent:+0.00;-0.00}%)");
+            sb.AppendLine();
+            sb.AppendLine("Du kannst die bestehende Position vergroessern (Pyramiding) indem du erneut die gleiche Richtung empfiehlst – aber nur bei hoher Confidence (>75%) und wenn der Trend klar bestaetigt ist.");
         }
         else
         {

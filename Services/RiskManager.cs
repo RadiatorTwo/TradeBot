@@ -29,6 +29,9 @@ public class RiskManager : IRiskManager
     private volatile bool _killSwitchActive;
     private string? _killSwitchReason;
 
+    /// <summary>BrokerPositionIds die bereits partial-closed wurden (verhindert doppelten Partial Close).</summary>
+    private readonly HashSet<string> _partialClosedPositions = new();
+
     private RiskSettings Settings => _settingsMonitor.CurrentValue;
 
     public bool IsKillSwitchActive => _killSwitchActive;
@@ -230,7 +233,49 @@ public class RiskManager : IRiskManager
                 }
             }
 
-            // ── 2. Trailing Stop ───────────────────────────────────────
+            // ── 2. Partial Close (Phase 6.4) ─────────────────────────────
+            if (Settings.PartialClosePercent > 0
+                && gainPips >= Settings.PartialCloseTriggerPips
+                && pos.BrokerPositionId != null
+                && !_partialClosedPositions.Contains(pos.BrokerPositionId))
+            {
+                var closeQty = Math.Round(pos.Quantity * (decimal)Settings.PartialClosePercent, 2);
+                if (closeQty >= 0.01m)
+                {
+                    var success = await _broker.ClosePositionAsync(pos.BrokerPositionId, closeQty, ct);
+                    if (success)
+                    {
+                        _partialClosedPositions.Add(pos.BrokerPositionId);
+                        _logger.LogInformation(
+                            "Partial Close: {Pct:P0} von {Symbol} geschlossen ({CloseQty:F2} von {TotalQty:F2} Lots, Gewinn: {Gain:F1} Pips)",
+                            Settings.PartialClosePercent, pos.Symbol, closeQty, pos.Quantity, gainPips);
+
+                        using var scope = _scopeFactory.CreateScope();
+                        var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
+                        db.Trades.Add(new Trade
+                        {
+                            Symbol = pos.Symbol,
+                            Action = isBuy ? TradeAction.Sell : TradeAction.Buy,
+                            Status = TradeStatus.Executed,
+                            Quantity = closeQty,
+                            Price = currentPrice,
+                            ExecutedPrice = currentPrice,
+                            ExecutedAt = DateTime.UtcNow,
+                            ClaudeReasoning = $"Partial Close ({Settings.PartialClosePercent:P0}) bei {gainPips:F1} Pips Gewinn",
+                            ClaudeConfidence = 1.0,
+                            BrokerPositionId = pos.BrokerPositionId
+                        });
+                        db.TradingLogs.Add(new TradingLog
+                        {
+                            Source = "RiskManager",
+                            Message = $"Partial Close: {closeQty:F2} Lots {pos.Symbol} @ {currentPrice:F4} ({gainPips:F1} Pips Gewinn)"
+                        });
+                        await db.SaveChangesAsync(ct);
+                    }
+                }
+            }
+
+            // ── 3. Trailing Stop ───────────────────────────────────────
             if (Settings.TrailingStopPips > 0 && gainPips > Settings.TrailingStopPips && pos.BrokerPositionId != null)
             {
                 var trailDistance = PipCalculator.PipsToPrice(pos.Symbol, (decimal)Settings.TrailingStopPips);
@@ -255,7 +300,7 @@ public class RiskManager : IRiskManager
                 }
             }
 
-            // ── 3. Lokaler Stop-Loss (Fallback) ───────────────────────
+            // ── 4. Lokaler Stop-Loss (Fallback) ───────────────────────
             if (priceDiff < 0 && lossPercent >= Settings.StopLossPercent)
             {
                 _logger.LogWarning(

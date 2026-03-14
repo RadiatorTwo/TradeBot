@@ -329,6 +329,16 @@ public class RiskSettings
     public double ConfidenceLossStreakFactor { get; set; } = 0.05;
     /// <summary>Maximaler dynamischer Confidence-Wert (Obergrenze).</summary>
     public double MaxDynamicConfidence { get; set; } = 0.85;
+
+    // ── Phase 6.4: Partial Close / Pyramiding ───────────────────────
+    /// <summary>Anteil der Position der bei TP1 geschlossen wird (0.0–1.0). 0 = deaktiviert.</summary>
+    public double PartialClosePercent { get; set; } = 0;
+    /// <summary>Gewinn in Pips ab dem Partial Close ausgeloest wird.</summary>
+    public double PartialCloseTriggerPips { get; set; } = 30;
+    /// <summary>Max. Anzahl Pyramid-Levels (Nachkaufen bei Trend-Bestaetigung). 0 = deaktiviert.</summary>
+    public int MaxPyramidLevels { get; set; } = 0;
+    /// <summary>Mindest-Confidence fuer Pyramiding (hoeher als normale Trades).</summary>
+    public double PyramidMinConfidence { get; set; } = 0.75;
 }
 
 /// <summary>Statische Korrelationsmatrix fuer gaengige Forex/CFD-Pairs.</summary>
