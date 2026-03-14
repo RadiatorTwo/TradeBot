@@ -6,6 +6,7 @@ using ClaudeTradingBot.Models;
 using ClaudeTradingBot.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Radzen;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -47,7 +48,7 @@ builder.Services.AddHttpClient(TradeLockerService.HttpClientName)
 builder.Services.AddSingleton<TechnicalAnalysisService>();
 builder.Services.AddSingleton<TradingSessionService>();
 builder.Services.AddSingleton<MarketHoursService>();
-builder.Services.AddSingleton<NotificationService>();
+builder.Services.AddSingleton<ClaudeTradingBot.Services.NotificationService>();
 builder.Services.AddSingleton<EconomicCalendarService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<EconomicCalendarService>());
 builder.Services.AddHttpClient(NewsSentimentService.HttpClientName, client =>
@@ -89,7 +90,8 @@ builder.Services.AddHealthChecks()
     .AddCheck<DatabaseHealthCheck>("database", tags: new[] { "db" })
     .AddCheck<TradingActivityHealthCheck>("trading-activity", tags: new[] { "activity" });
 
-// ── Blazor Server ──────────────────────────────────────────────────────
+// ── Blazor Server + Radzen ────────────────────────────────────────────
+builder.Services.AddRadzenComponents();
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 

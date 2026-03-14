@@ -1,20 +1,46 @@
 @inherits LayoutComponentBase
+@inject NavigationManager Navigation
 
-<div class="container">
-    <nav>
-        <h1><span>Claude</span> Trading Bot</h1>
-        <div class="nav-links">
-            <NavLink href="/" Match="NavLinkMatch.All">Dashboard</NavLink>
-            <NavLink href="/trades">Trades</NavLink>
-            <NavLink href="/journal">Journal</NavLink>
-            <NavLink href="/backtest">Backtest</NavLink>
-            <NavLink href="/correlations">Korrelationen</NavLink>
-            <NavLink href="/strategies">Vergleich</NavLink>
-            <NavLink href="/accounts">Accounts</NavLink>
-            <NavLink href="/settings">Einstellungen</NavLink>
-            <NavLink href="/health-dashboard">Health</NavLink>
+<RadzenLayout>
+    <RadzenHeader>
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="12px" class="rz-px-4" Style="height: 48px;">
+            <RadzenSidebarToggle Click="@(() => _sidebarExpanded = !_sidebarExpanded)" />
+            <RadzenText TextStyle="TextStyle.H6" Style="margin: 0; white-space: nowrap;">
+                <span style="color: var(--accent);">Claude</span> Trading Bot
+            </RadzenText>
+        </RadzenStack>
+    </RadzenHeader>
+
+    <RadzenSidebar @bind-Expanded="_sidebarExpanded" Style="width: 240px;">
+        <RadzenPanelMenu>
+            <RadzenPanelMenuItem Text="Dashboard" Icon="dashboard" Path="/" />
+
+            <RadzenPanelMenuItem Text="Trading" Icon="candlestick_chart" Expanded="true">
+                <RadzenPanelMenuItem Text="Trades" Icon="swap_vert" Path="/trades" />
+                <RadzenPanelMenuItem Text="Journal" Icon="menu_book" Path="/journal" />
+                <RadzenPanelMenuItem Text="Backtest" Icon="science" Path="/backtest" />
+            </RadzenPanelMenuItem>
+
+            <RadzenPanelMenuItem Text="Analyse" Icon="analytics" Expanded="true">
+                <RadzenPanelMenuItem Text="Korrelationen" Icon="grid_on" Path="/correlations" />
+                <RadzenPanelMenuItem Text="Vergleich" Icon="compare_arrows" Path="/strategies" />
+            </RadzenPanelMenuItem>
+
+            <RadzenPanelMenuItem Text="Verwaltung" Icon="settings" Expanded="true">
+                <RadzenPanelMenuItem Text="Accounts" Icon="account_circle" Path="/accounts" />
+                <RadzenPanelMenuItem Text="Einstellungen" Icon="tune" Path="/settings" />
+                <RadzenPanelMenuItem Text="System-Status" Icon="monitor_heart" Path="/health-dashboard" />
+            </RadzenPanelMenuItem>
+        </RadzenPanelMenu>
+    </RadzenSidebar>
+
+    <RadzenBody>
+        <div class="rz-p-4" style="max-width: 1400px;">
+            @Body
         </div>
-    </nav>
+    </RadzenBody>
+</RadzenLayout>
 
-    @Body
-</div>
+@code {
+    private bool _sidebarExpanded = true;
+}
