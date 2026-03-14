@@ -60,6 +60,10 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<NewsSentimentServi
 // ── Performance-Reports (Telegram, taeglich/woechentlich) ────────────
 builder.Services.AddHostedService<ReportService>();
 
+// ── Dynamische Korrelationsmatrix (taeglich aus historischen Preisen) ─
+builder.Services.AddSingleton<CorrelationService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<CorrelationService>());
+
 // ── Backtesting Engine ────────────────────────────────────────────────
 builder.Services.AddTransient<BacktestEngine>();
 

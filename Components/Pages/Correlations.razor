@@ -1,0 +1,137 @@
+@page "/correlations"
+@using ClaudeTradingBot.Models
+@using ClaudeTradingBot.Services
+@inject CorrelationService CorrelationSvc
+
+<PageTitle>Korrelationen - Claude Trading Bot</PageTitle>
+
+<h2 style="margin-bottom: 24px;">Korrelationsmatrix</h2>
+
+@if (CorrelationSvc.LastCalculated.HasValue)
+{
+    <div class="hint" style="margin-bottom: 16px;">
+        Letzte Berechnung: @CorrelationSvc.LastCalculated.Value.ToString("dd.MM.yyyy HH:mm") UTC
+        – @CorrelationSvc.PairCount Paare
+        @if (!CorrelationMatrix.HasDynamicData)
+        {
+            <span> (nur statische Fallback-Werte)</span>
+        }
+    </div>
+}
+else
+{
+    <div class="warning-banner" style="margin-bottom: 16px;">
+        Korrelationen werden beim naechsten Zyklus berechnet (ca. 1 Min nach Start). Aktuell werden statische Fallback-Werte verwendet.
+    </div>
+}
+
+@if (_entries.Count > 0)
+{
+    <!-- Heatmap-Tabelle -->
+    @if (_symbols.Count > 0)
+    {
+        <div class="section" style="margin-bottom: 24px; overflow-x: auto;">
+            <h3>Heatmap</h3>
+            <table style="text-align: center;">
+                <thead>
+                    <tr>
+                        <th></th>
+                        @foreach (var s in _symbols)
+                        {
+                            <th style="font-size: 0.75rem; writing-mode: vertical-lr; transform: rotate(180deg); height: 80px;">@s</th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _symbols)
+                    {
+                        <tr>
+                            <td style="font-weight: 600; font-size: 0.8rem; text-align: left; white-space: nowrap;">@row</td>
+                            @foreach (var col in _symbols)
+                            {
+                                var corr = GetCorrelation(row, col);
+                                var bg = GetHeatmapColor(corr);
+                                <td style="background: @bg; color: #1e1e2e; font-size: 0.75rem; font-weight: 600; padding: 6px; min-width: 50px;">
+                                    @(row == col ? "1.00" : corr.ToString("F2"))
+                                </td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <!-- Detail-Liste -->
+    <div class="section">
+        <h3>Korrelationspaare (sortiert nach Staerke)</h3>
+        <table>
+            <thead>
+                <tr><th>Symbol 1</th><th>Symbol 2</th><th>Korrelation</th><th>Staerke</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var e in _entries)
+                {
+                    var strength = Math.Abs(e.Correlation) switch
+                    {
+                        >= 0.8 => "Sehr stark",
+                        >= 0.6 => "Stark",
+                        >= 0.4 => "Moderat",
+                        >= 0.2 => "Schwach",
+                        _ => "Sehr schwach"
+                    };
+                    var cls = e.Correlation >= 0 ? "pnl-positive" : "pnl-negative";
+                    <tr>
+                        <td><strong>@e.Symbol1</strong></td>
+                        <td><strong>@e.Symbol2</strong></td>
+                        <td class="@cls" style="font-weight: 600;">@e.Correlation.ToString("F2")</td>
+                        <td>@strength</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+else
+{
+    <div class="empty-state">Keine Korrelationsdaten verfuegbar. Stellen Sie sicher, dass mindestens 2 Symbole in der Watchlist sind und der Broker verbunden ist.</div>
+}
+
+@code {
+    private List<CorrelationEntry> _entries = new();
+    private List<string> _symbols = new();
+
+    protected override void OnInitialized()
+    {
+        _entries = CorrelationSvc.GetCorrelationEntries();
+
+        // Alle einzigartigen Symbole fuer die Heatmap sammeln
+        var symbolSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var e in _entries)
+        {
+            symbolSet.Add(e.Symbol1);
+            symbolSet.Add(e.Symbol2);
+        }
+        _symbols = symbolSet.OrderBy(s => s).ToList();
+    }
+
+    private double GetCorrelation(string s1, string s2)
+    {
+        if (s1 == s2) return 1.0;
+        var entry = _entries.FirstOrDefault(e =>
+            (e.Symbol1 == s1 && e.Symbol2 == s2) ||
+            (e.Symbol1 == s2 && e.Symbol2 == s1));
+        return entry?.Correlation ?? 0.0;
+    }
+
+    private static string GetHeatmapColor(double corr)
+    {
+        // Rot (negativ) → Weiss (0) → Gruen (positiv)
+        var abs = Math.Abs(corr);
+        var intensity = (int)(abs * 200);
+
+        if (corr >= 0)
+            return $"rgba(166, 227, 161, {abs:F2})"; // Gruen (Catppuccin green)
+        return $"rgba(243, 139, 168, {abs:F2})"; // Rot (Catppuccin red)
+    }
+}

@@ -407,38 +407,38 @@ public class RiskSettings
     public double PyramidMinConfidence { get; set; } = 0.75;
 }
 
-/// <summary>Statische Korrelationsmatrix fuer gaengige Forex/CFD-Pairs.</summary>
+/// <summary>Korrelationsmatrix: dynamische Werte (aus historischen Preisen) mit statischem Fallback.</summary>
 public static class CorrelationMatrix
 {
-    /// <summary>Korrelationskoeffizienten zwischen Instrumenten (-1.0 bis 1.0).</summary>
-    private static readonly Dictionary<(string, string), double> _correlations = new()
+    /// <summary>Dynamisch berechnete Korrelationen (Phase 8.4). Werden taeglich vom CorrelationService aktualisiert.</summary>
+    private static volatile Dictionary<(string, string), double> _dynamic = new();
+
+    /// <summary>Statische Fallback-Korrelationen fuer gaengige Forex/CFD-Pairs.</summary>
+    private static readonly Dictionary<(string, string), double> _static = new()
     {
-        // Stark korrelierte Paare
         { ("EURUSD", "GBPUSD"), 0.85 },
         { ("EURUSD", "AUDUSD"), 0.70 },
         { ("EURUSD", "NZDUSD"), 0.65 },
         { ("GBPUSD", "AUDUSD"), 0.60 },
         { ("GBPUSD", "NZDUSD"), 0.55 },
         { ("AUDUSD", "NZDUSD"), 0.90 },
-
-        // Invers korrelierte Paare (USD auf der anderen Seite)
         { ("EURUSD", "USDCHF"), -0.90 },
         { ("EURUSD", "USDJPY"), -0.50 },
         { ("GBPUSD", "USDCHF"), -0.80 },
         { ("GBPUSD", "USDJPY"), -0.40 },
-
-        // Gold-Korrelationen
         { ("XAUUSD", "EURUSD"), 0.40 },
         { ("XAUUSD", "USDJPY"), -0.30 },
         { ("XAUUSD", "USDCHF"), -0.35 },
-
-        // Indizes
         { ("US100", "US500"), 0.95 },
         { ("US100", "US30"), 0.85 },
         { ("US500", "US30"), 0.90 },
     };
 
-    /// <summary>Korrelation zwischen zwei Symbolen. 0 wenn unbekannt.</summary>
+    /// <summary>Dynamische Korrelationen setzen (vom CorrelationService aufgerufen).</summary>
+    public static void UpdateDynamic(Dictionary<(string, string), double> correlations)
+        => _dynamic = correlations;
+
+    /// <summary>Korrelation zwischen zwei Symbolen. Dynamisch bevorzugt, statisch als Fallback, 0 wenn unbekannt.</summary>
     public static double GetCorrelation(string symbol1, string symbol2)
     {
         var s1 = symbol1.ToUpperInvariant();
@@ -446,13 +446,24 @@ public static class CorrelationMatrix
 
         if (s1 == s2) return 1.0;
 
-        if (_correlations.TryGetValue((s1, s2), out var corr))
+        // Dynamische Korrelationen priorisieren
+        var dyn = _dynamic;
+        if (dyn.TryGetValue((s1, s2), out var dynCorr))
+            return dynCorr;
+        if (dyn.TryGetValue((s2, s1), out var dynCorrReverse))
+            return dynCorrReverse;
+
+        // Statischer Fallback
+        if (_static.TryGetValue((s1, s2), out var corr))
             return corr;
-        if (_correlations.TryGetValue((s2, s1), out var corrReverse))
+        if (_static.TryGetValue((s2, s1), out var corrReverse))
             return corrReverse;
 
         return 0.0;
     }
+
+    /// <summary>True wenn dynamische Korrelationen verfuegbar sind.</summary>
+    public static bool HasDynamicData => _dynamic.Count > 0;
 }
 
 /// <summary>Pip-Berechnungen fuer Forex/CFD-Instrumente.</summary>
