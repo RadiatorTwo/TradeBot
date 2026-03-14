@@ -7,17 +7,17 @@ mit technischen Indikatoren kombiniert und ueber TradeLocker Forex/CFD handelt.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│          Blazor Server Dashboard + SignalR (Echtzeit)         │
+│          Blazor Server Dashboard + SignalR (Echtzeit)        │
 │  Dashboard · Trades · Backtest · Einstellungen               │
 ├──────────────────────────────────────────────────────────────┤
-│              TradingEngine (BackgroundService)                │
+│              TradingEngine (BackgroundService)               │
 │  ┌────────────┐ ┌────────────┐ ┌──────────────────────────┐  │
 │  │ LLM        │ │ TradeLocker│ │ RiskManager              │  │
 │  │ (Claude/   │ │ Broker     │ │ · Trailing/Breakeven SL  │  │
 │  │  Gemini/   │ │ Service    │ │ · Drawdown-Tracking      │  │
 │  │  Ollama)   │ │ + Paper    │ │ · Korrelationscheck      │  │
-│  │            │ │   Trading  │ │ · Weekly/Monthly Limits   │  │
-│  │            │ │   Decorator│ │ · Kill Switch             │  │
+│  │            │ │   Trading  │ │ · Weekly/Monthly Limits  │  │
+│  │            │ │   Decorator│ │ · Kill Switch            │  │
 │  └────────────┘ └────────────┘ └──────────────────────────┘  │
 │  ┌────────────┐ ┌────────────┐ ┌──────────────────────────┐  │
 │  │ Technische │ │ Session-   │ │ Multi-Timeframe-Filter   │  │
@@ -29,7 +29,7 @@ mit technischen Indikatoren kombiniert und ueber TradeLocker Forex/CFD handelt.
 ├──────────────────────────────────────────────────────────────┤
 │  Backtesting Engine · Telegram Notifications · CSV-Export    │
 ├──────────────────────────────────────────────────────────────┤
-│              SQLite (Trades, PnL, Positionen, Logs)           │
+│              SQLite (Trades, PnL, Positionen, Logs)          │
 └──────────────────────────────────────────────────────────────┘
 ```
 
