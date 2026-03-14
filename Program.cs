@@ -1,5 +1,6 @@
 using ClaudeTradingBot.Components;
 using ClaudeTradingBot.Data;
+using ClaudeTradingBot.HealthChecks;
 using ClaudeTradingBot.Hubs;
 using ClaudeTradingBot.Models;
 using ClaudeTradingBot.Services;
@@ -81,6 +82,13 @@ builder.Services.AddHostedService<PositionSyncService>();
 builder.Services.AddSingleton<DashboardBroadcastService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<DashboardBroadcastService>());
 
+// ── Health Checks ────────────────────────────────────────────────────
+builder.Services.AddHealthChecks()
+    .AddCheck<TradeLockerHealthCheck>("tradelocker", tags: new[] { "broker" })
+    .AddCheck<LlmHealthCheck>("llm", tags: new[] { "llm" })
+    .AddCheck<DatabaseHealthCheck>("database", tags: new[] { "db" })
+    .AddCheck<TradingActivityHealthCheck>("trading-activity", tags: new[] { "activity" });
+
 // ── Blazor Server ──────────────────────────────────────────────────────
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
@@ -120,6 +128,28 @@ app.UseAntiforgery();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 app.MapHub<TradingHub>("/tradinghub");
+
+// ── Health Check Endpunkt ──────────────────────────────────────────────
+app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.ContentType = "application/json";
+        var result = new
+        {
+            status = report.Status.ToString(),
+            duration = report.TotalDuration.TotalMilliseconds,
+            checks = report.Entries.Select(e => new
+            {
+                name = e.Key,
+                status = e.Value.Status.ToString(),
+                description = e.Value.Description,
+                duration = e.Value.Duration.TotalMilliseconds
+            })
+        };
+        await context.Response.WriteAsJsonAsync(result);
+    }
+});
 
 // ── Interne API-Endpunkte (fuer Dashboard-Komponenten) ───────────────────
 

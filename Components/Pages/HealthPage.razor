@@ -1,0 +1,87 @@
+@page "/health-dashboard"
+@using Microsoft.Extensions.Diagnostics.HealthChecks
+@inject HealthCheckService HealthCheckSvc
+
+<PageTitle>Health - Claude Trading Bot</PageTitle>
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <h2 style="margin: 0;">System-Status</h2>
+    <button class="btn btn-outline" @onclick="RefreshAsync">Aktualisieren</button>
+</div>
+
+@if (_report != null)
+{
+    <div class="@GetOverallBannerClass()" style="margin-bottom: 24px;">
+        <strong>Gesamt-Status: @GetStatusText(_report.Status)</strong>
+        – Pruefung in @_report.TotalDuration.TotalMilliseconds.ToString("F0") ms
+    </div>
+
+    <div style="display: grid; gap: 12px;">
+        @foreach (var entry in _report.Entries)
+        {
+            var status = entry.Value.Status;
+            var borderColor = status switch
+            {
+                HealthStatus.Healthy => "var(--green, #a6e3a1)",
+                HealthStatus.Degraded => "var(--yellow, #f9e2af)",
+                _ => "var(--red, #f38ba8)"
+            };
+
+            <div class="section" style="border-left: 4px solid @borderColor; padding: 12px 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <strong style="font-size: 1.05rem;">@entry.Key</strong>
+                        <span style="margin-left: 12px; font-size: 0.85rem; color: var(--muted, #6c7086);">
+                            @entry.Value.Duration.TotalMilliseconds.ToString("F0") ms
+                        </span>
+                    </div>
+                    <span style="background: @borderColor; color: #1e1e2e; padding: 2px 10px; border-radius: 4px; font-size: 0.8rem; font-weight: 600;">
+                        @GetStatusText(status)
+                    </span>
+                </div>
+                @if (!string.IsNullOrEmpty(entry.Value.Description))
+                {
+                    <div style="margin-top: 6px; font-size: 0.85rem; color: var(--muted, #6c7086);">
+                        @entry.Value.Description
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="hint" style="margin-top: 16px;">
+        JSON-API: <a href="/health" style="color: var(--blue, #89b4fa);">/health</a> (fuer externe Monitoring-Tools wie UptimeRobot)
+    </div>
+}
+else
+{
+    <div class="empty-state">Lade Health-Status...</div>
+}
+
+@code {
+    private HealthReport? _report;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        _report = await HealthCheckSvc.CheckHealthAsync();
+    }
+
+    private string GetOverallBannerClass() => _report?.Status switch
+    {
+        HealthStatus.Healthy => "success-banner",
+        HealthStatus.Degraded => "warning-banner",
+        _ => "error-banner"
+    };
+
+    private static string GetStatusText(HealthStatus status) => status switch
+    {
+        HealthStatus.Healthy => "Gesund",
+        HealthStatus.Degraded => "Eingeschraenkt",
+        _ => "Fehlerhaft"
+    };
+}
