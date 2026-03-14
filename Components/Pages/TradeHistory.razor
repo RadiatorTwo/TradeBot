@@ -51,7 +51,7 @@
     <table>
         <thead>
             <tr>
-                <th>Zeit</th><th>Symbol</th><th>Aktion</th>
+                <th>Zeit</th><th>Symbol</th><th>Aktion</th><th>Setup</th>
                 <th>Menge</th><th>Preis</th><th>Confidence</th>
                 <th>Status</th><th>Begruendung</th>
             </tr>
@@ -65,6 +65,7 @@
                     <td class="@(t.Action == TradeAction.Buy ? "pnl-positive" : "pnl-negative")">
                         @t.Action.ToString().ToUpper()
                     </td>
+                    <td style="font-size:0.8rem;">@(t.SetupType ?? "—")</td>
                     <td>@t.Quantity.ToString("F2")</td>
                     <td>$@t.Price.ToString("F4")</td>
                     <td>@t.ClaudeConfidence.ToString("P0")</td>

@@ -359,7 +359,8 @@ public class TradingEngine : BackgroundService
                     ClaudeReasoning = $"Position geschlossen: LLM empfiehlt {recommendation.Action.ToUpper()} (Confidence: {recommendation.Confidence:P0}). {recommendation.Reasoning}",
                     ClaudeConfidence = recommendation.Confidence,
                     BrokerPositionId = pos.BrokerPositionId,
-                    ErrorMessage = closeSuccess ? null : "Close-Order fehlgeschlagen"
+                    ErrorMessage = closeSuccess ? null : "Close-Order fehlgeschlagen",
+                    SetupType = recommendation.SetupType
                 });
 
                 db.TradingLogs.Add(new TradingLog
@@ -401,7 +402,8 @@ public class TradingEngine : BackgroundService
                     ClaudeReasoning = recommendation.Reasoning,
                     ClaudeConfidence = recommendation.Confidence,
                     Status = TradeStatus.Rejected,
-                    ErrorMessage = "Trade rejected by RiskManager"
+                    ErrorMessage = "Trade rejected by RiskManager",
+                    SetupType = recommendation.SetupType
                 });
             }
             db.TradingLogs.Add(new TradingLog
@@ -480,7 +482,8 @@ public class TradingEngine : BackgroundService
             SpreadAtEntry = spreadPips > 0 ? spreadPips : null,
             ClaudeReasoning = recommendation.Reasoning,
             ClaudeConfidence = recommendation.Confidence,
-            Status = TradeStatus.Pending
+            Status = TradeStatus.Pending,
+            SetupType = recommendation.SetupType
         };
 
         var result = await _broker.PlaceOrderAsync(

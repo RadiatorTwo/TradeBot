@@ -69,6 +69,14 @@ public class Trade
     /// <summary>Realisierter Gewinn/Verlust nach Schließung.</summary>
     [Column(TypeName = "decimal(18,4)")]
     public decimal? RealizedPnL { get; set; }
+
+    // ── Phase 8.2: Trade-Journal ────────────────────────────────────
+    /// <summary>LLM-erkannter Setup-Typ (z.B. "EMA-Cross", "Breakout", "RSI-Oversold").</summary>
+    public string? SetupType { get; set; }
+    /// <summary>Komma-separierte Tags (z.B. "london-session,high-volatility").</summary>
+    public string? Tags { get; set; }
+    /// <summary>Freitext-Notizen des Benutzers.</summary>
+    public string? Notes { get; set; }
 }
 
 public class Position
@@ -259,6 +267,8 @@ public class ClaudeTradeRecommendation
     public string Reasoning { get; set; } = string.Empty;
     public decimal? StopLossPrice { get; set; }
     public decimal? TakeProfitPrice { get; set; }
+    /// <summary>LLM-erkannter Setup-Typ (Phase 8.2).</summary>
+    public string? SetupType { get; set; }
 }
 
 // ── Konfigurationsklassen ──────────────────────────────────────────────
@@ -818,6 +828,18 @@ public record TradingStatsViewModel
     public double MaxDrawdownPercent { get; init; }
     public double SharpeRatio { get; init; }
     public double TradesPerDay { get; init; }
+}
+
+/// <summary>Performance-Kennzahlen pro Setup-Typ (Phase 8.2).</summary>
+public record SetupTypeStatsViewModel
+{
+    public string SetupType { get; init; } = string.Empty;
+    public int TradeCount { get; init; }
+    public int WinCount { get; init; }
+    public double WinRate { get; init; }
+    public decimal TotalPnL { get; init; }
+    public decimal AvgPnL { get; init; }
+    public decimal ProfitFactor { get; init; }
 }
 
 public class UpcomingEventViewModel

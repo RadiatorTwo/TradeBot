@@ -22,6 +22,7 @@ builder.Services.Configure<GeminiSettings>(builder.Configuration.GetSection("Gem
 builder.Services.Configure<OpenAICompatibleSettings>(builder.Configuration.GetSection("OpenAICompatible"));
 builder.Services.Configure<TelegramSettings>(builder.Configuration.GetSection("Telegram"));
 builder.Services.Configure<NewsSettings>(builder.Configuration.GetSection("News"));
+builder.Services.Configure<ReportSettings>(builder.Configuration.GetSection("Report"));
 // Leere Defaults fuer DI – echte Werte kommen per-Account aus DB via MutableOptionsMonitor
 builder.Services.Configure<RiskSettings>(_ => { });
 builder.Services.Configure<MultiTimeframeSettings>(_ => { });
@@ -55,6 +56,9 @@ builder.Services.AddHttpClient(NewsSentimentService.HttpClientName, client =>
 });
 builder.Services.AddSingleton<NewsSentimentService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<NewsSentimentService>());
+
+// ── Performance-Reports (Telegram, taeglich/woechentlich) ────────────
+builder.Services.AddHostedService<ReportService>();
 
 // ── Backtesting Engine ────────────────────────────────────────────────
 builder.Services.AddTransient<BacktestEngine>();

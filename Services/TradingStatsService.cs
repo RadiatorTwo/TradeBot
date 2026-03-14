@@ -169,6 +169,39 @@ public static class TradingStatsService
         };
     }
 
+    /// <summary>Performance-Kennzahlen pro SetupType (Phase 8.2). Client-seitige Aggregation wegen SQLite decimal-Limitierung.</summary>
+    public static async Task<List<SetupTypeStatsViewModel>> CalculatePerSetupTypeAsync(
+        TradingDbContext db, CancellationToken ct = default)
+    {
+        var trades = await db.Trades
+            .Where(t => t.SetupType != null && t.Status == TradeStatus.Executed && t.RealizedPnL != null)
+            .Select(t => new { t.SetupType, PnL = t.RealizedPnL!.Value })
+            .ToListAsync(ct);
+
+        return trades
+            .GroupBy(t => t.SetupType!)
+            .Select(g =>
+            {
+                var totalPnL = g.Sum(t => t.PnL);
+                var totalProfit = g.Where(t => t.PnL > 0).Sum(t => t.PnL);
+                var absLoss = Math.Abs(g.Where(t => t.PnL < 0).Sum(t => t.PnL));
+                var winCount = g.Count(t => t.PnL > 0);
+                var count = g.Count();
+                return new SetupTypeStatsViewModel
+                {
+                    SetupType = g.Key,
+                    TradeCount = count,
+                    WinCount = winCount,
+                    WinRate = count > 0 ? Math.Round((double)winCount / count * 100, 1) : 0,
+                    TotalPnL = Math.Round(totalPnL, 2),
+                    AvgPnL = count > 0 ? Math.Round(totalPnL / count, 2) : 0,
+                    ProfitFactor = absLoss > 0 ? Math.Round(totalProfit / absLoss, 2) : totalProfit > 0 ? 999m : 0m
+                };
+            })
+            .OrderByDescending(s => s.TradeCount)
+            .ToList();
+    }
+
     private static (decimal MaxDrawdown, double MaxDrawdownPercent) CalculateMaxDrawdown(List<DailyPnL> pnlHistory)
     {
         if (pnlHistory.Count < 2)

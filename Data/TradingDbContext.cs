@@ -22,6 +22,7 @@ public class TradingDbContext : DbContext
             e.HasIndex(t => t.CreatedAt);
             e.HasIndex(t => t.Status);
             e.HasIndex(t => t.AccountId);
+            e.HasIndex(t => t.SetupType);
         });
 
         modelBuilder.Entity<Position>(e =>

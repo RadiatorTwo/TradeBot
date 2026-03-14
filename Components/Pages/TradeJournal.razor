@@ -1,0 +1,185 @@
+@page "/journal"
+@using ClaudeTradingBot.Data
+@using ClaudeTradingBot.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<TradingDbContext> DbFactory
+
+<PageTitle>Trade-Journal - Claude Trading Bot</PageTitle>
+
+<h2 style="margin-bottom: 24px;">Trade-Journal</h2>
+
+<!-- Filter -->
+<div class="filter-bar">
+    <div class="filter-group">
+        <label>Von</label>
+        <input type="date" @bind="_filterFrom" />
+    </div>
+    <div class="filter-group">
+        <label>Bis</label>
+        <input type="date" @bind="_filterTo" />
+    </div>
+    <div class="filter-group">
+        <label>Symbol</label>
+        <select @bind="_filterSymbol">
+            <option value="">Alle</option>
+            @foreach (var s in _availableSymbols)
+            {
+                <option value="@s">@s</option>
+            }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Setup-Typ</label>
+        <select @bind="_filterSetupType">
+            <option value="">Alle</option>
+            @foreach (var st in _availableSetupTypes)
+            {
+                <option value="@st">@st</option>
+            }
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Status</label>
+        <select @bind="_filterStatus">
+            <option value="">Alle</option>
+            <option value="Executed">Ausgefuehrt</option>
+            <option value="Rejected">Abgelehnt</option>
+        </select>
+    </div>
+    <div class="filter-group" style="justify-content: end;">
+        <button class="btn btn-primary" @onclick="ApplyFilter">Filtern</button>
+    </div>
+</div>
+
+<!-- Per-SetupType Performance -->
+@if (_setupStats.Count > 0)
+{
+    <div class="section" style="margin-bottom: 24px;">
+        <h3>Performance pro Setup-Typ</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Setup-Typ</th><th>Trades</th><th>Win-Rate</th>
+                    <th>PnL</th><th>Avg PnL</th><th>Profit-Faktor</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var s in _setupStats)
+                {
+                    <tr>
+                        <td><strong>@s.SetupType</strong></td>
+                        <td>@s.TradeCount</td>
+                        <td>@s.WinRate.ToString("F1")%</td>
+                        <td class="@(s.TotalPnL >= 0 ? "pnl-positive" : "pnl-negative")">
+                            @(s.TotalPnL >= 0 ? "+" : "")$@s.TotalPnL.ToString("F2")
+                        </td>
+                        <td class="@(s.AvgPnL >= 0 ? "pnl-positive" : "pnl-negative")">
+                            @(s.AvgPnL >= 0 ? "+" : "")$@s.AvgPnL.ToString("F2")
+                        </td>
+                        <td>@s.ProfitFactor.ToString("F2")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+<!-- Trade-Liste -->
+@if (_trades.Count > 0)
+{
+    <table>
+        <thead>
+            <tr>
+                <th>Zeit</th><th>Symbol</th><th>Aktion</th><th>Setup</th>
+                <th>Menge</th><th>Preis</th><th>PnL</th><th>Confidence</th>
+                <th>Tags</th><th>Status</th><th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var t in _trades)
+            {
+                <tr>
+                    <td style="font-size:0.75rem;color:var(--muted)">@t.CreatedAt.ToString("dd.MM.yyyy HH:mm")</td>
+                    <td><strong>@t.Symbol</strong></td>
+                    <td class="@(t.Action == TradeAction.Buy ? "pnl-positive" : "pnl-negative")">
+                        @t.Action.ToString().ToUpper()
+                    </td>
+                    <td style="font-size:0.8rem;">@(t.SetupType ?? "—")</td>
+                    <td>@t.Quantity.ToString("F2")</td>
+                    <td>$@t.Price.ToString("F4")</td>
+                    <td class="@(t.RealizedPnL >= 0 ? "pnl-positive" : t.RealizedPnL < 0 ? "pnl-negative" : "")">
+                        @if (t.RealizedPnL.HasValue)
+                        {
+                            @($"{(t.RealizedPnL >= 0 ? "+" : "")}${t.RealizedPnL:F2}")
+                        }
+                        else
+                        {
+                            <span style="color:var(--muted)">—</span>
+                        }
+                    </td>
+                    <td>@t.ClaudeConfidence.ToString("P0")</td>
+                    <td style="font-size:0.75rem;color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                        @(t.Tags ?? "")
+                    </td>
+                    <td><TradeStatusBadge Status="t.Status" ErrorMessage="@t.ErrorMessage" /></td>
+                    <td><a href="/journal/@t.Id" style="color:var(--blue, #89b4fa);font-size:0.8rem;">Details</a></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else
+{
+    <div class="empty-state">Keine Trades gefunden</div>
+}
+
+@code {
+    private DateTime? _filterFrom;
+    private DateTime? _filterTo;
+    private string _filterSymbol = string.Empty;
+    private string _filterSetupType = string.Empty;
+    private string _filterStatus = string.Empty;
+
+    private List<Trade> _trades = new();
+    private List<string> _availableSymbols = new();
+    private List<string> _availableSetupTypes = new();
+    private List<SetupTypeStatsViewModel> _setupStats = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        _availableSymbols = await db.Trades
+            .Select(t => t.Symbol).Distinct().OrderBy(s => s).ToListAsync();
+
+        _availableSetupTypes = await db.Trades
+            .Where(t => t.SetupType != null)
+            .Select(t => t.SetupType!).Distinct().OrderBy(s => s).ToListAsync();
+
+        _setupStats = await TradingStatsService.CalculatePerSetupTypeAsync(db);
+
+        await ApplyFilter();
+    }
+
+    private async Task ApplyFilter()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var query = db.Trades.AsQueryable();
+
+        if (_filterFrom.HasValue)
+            query = query.Where(t => t.CreatedAt >= _filterFrom.Value);
+        if (_filterTo.HasValue)
+            query = query.Where(t => t.CreatedAt <= _filterTo.Value.Date.AddDays(1));
+        if (!string.IsNullOrEmpty(_filterSymbol))
+            query = query.Where(t => t.Symbol == _filterSymbol);
+        if (!string.IsNullOrEmpty(_filterSetupType))
+            query = query.Where(t => t.SetupType == _filterSetupType);
+        if (!string.IsNullOrEmpty(_filterStatus) && Enum.TryParse<TradeStatus>(_filterStatus, out var status))
+            query = query.Where(t => t.Status == status);
+
+        _trades = await query
+            .OrderByDescending(t => t.CreatedAt)
+            .Take(500)
+            .ToListAsync();
+    }
+}

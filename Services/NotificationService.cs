@@ -72,7 +72,14 @@ public class NotificationService
         await SendMessageAsync(message);
     }
 
-    private async Task SendMessageAsync(string text)
+    /// <summary>Sendet eine Nachricht mit beliebigem parse_mode (z.B. "MarkdownV2" fuer Reports).</summary>
+    public async Task SendRawMessageAsync(string text, string parseMode = "Markdown")
+    {
+        if (!IsConfigured) return;
+        await SendMessageAsync(text, parseMode);
+    }
+
+    private async Task SendMessageAsync(string text, string parseMode = "Markdown")
     {
         try
         {
@@ -84,7 +91,7 @@ public class NotificationService
             {
                 chat_id = Settings.ChatId,
                 text = text.Trim(),
-                parse_mode = "Markdown",
+                parse_mode = parseMode,
                 disable_web_page_preview = true
             };
 

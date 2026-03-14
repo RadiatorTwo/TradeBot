@@ -27,7 +27,8 @@ public static class ClaudePromptBuilder
           "confidence": <0.0 bis 1.0>,
           "reasoning": "Kurze Begründung",
           "stopLossPrice": <Preis für Stop-Loss oder null>,
-          "takeProfitPrice": <Preis für Take-Profit oder null>
+          "takeProfitPrice": <Preis für Take-Profit oder null>,
+          "setupType": "Name des erkannten Setups (z.B. EMA-Cross, Breakout, RSI-Oversold, MACD-Divergence, Bollinger-Squeeze, Trend-Following, Mean-Reversion, News-Driven) oder null bei hold"
         }
 
         WICHTIGE REGELN FÜR POSITIONSGRÖSSE:

@@ -1,0 +1,140 @@
+@page "/journal/{TradeId:int}"
+@using ClaudeTradingBot.Data
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<TradingDbContext> DbFactory
+@inject NavigationManager Navigation
+
+<PageTitle>Trade #@TradeId - Claude Trading Bot</PageTitle>
+
+@if (_trade == null)
+{
+    <div class="empty-state">Trade #@TradeId nicht gefunden.</div>
+}
+else
+{
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+        <h2 style="margin: 0;">Trade #@_trade.Id – @_trade.Symbol @_trade.Action.ToString().ToUpper()</h2>
+        <a href="/journal" class="btn btn-outline">Zurueck zum Journal</a>
+    </div>
+
+    @if (_saveSuccess)
+    {
+        <div class="success-banner">Notizen gespeichert.</div>
+    }
+
+    <!-- Trade-Details -->
+    <div class="section" style="margin-bottom: 24px;">
+        <h3>Details</h3>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; font-size: 0.9rem;">
+            <div>Symbol: <strong>@_trade.Symbol</strong></div>
+            <div>Aktion: <strong class="@(_trade.Action == TradeAction.Buy ? "pnl-positive" : "pnl-negative")">@_trade.Action.ToString().ToUpper()</strong></div>
+            <div>Menge: <strong>@_trade.Quantity.ToString("F2") Lots</strong></div>
+            <div>Status: <strong><TradeStatusBadge Status="_trade.Status" ErrorMessage="@_trade.ErrorMessage" /></strong></div>
+            <div>Preis: <strong>$@_trade.Price.ToString("F4")</strong></div>
+            <div>Ausgefuehrt: <strong>@(_trade.ExecutedPrice?.ToString("F4") ?? "—")</strong></div>
+            <div>Confidence: <strong>@_trade.ClaudeConfidence.ToString("P0")</strong></div>
+            <div>Setup-Typ: <strong>@(_trade.SetupType ?? "—")</strong></div>
+            <div>Erstellt: <strong>@_trade.CreatedAt.ToString("dd.MM.yyyy HH:mm:ss")</strong></div>
+            <div>Ausgefuehrt: <strong>@(_trade.ExecutedAt?.ToString("dd.MM.yyyy HH:mm:ss") ?? "—")</strong></div>
+            <div>Geschlossen: <strong>@(_trade.ClosedAt?.ToString("dd.MM.yyyy HH:mm:ss") ?? "—")</strong></div>
+            <div>
+                PnL:
+                @if (_trade.RealizedPnL.HasValue)
+                {
+                    <strong class="@(_trade.RealizedPnL >= 0 ? "pnl-positive" : "pnl-negative")">
+                        @($"{(_trade.RealizedPnL >= 0 ? "+" : "")}${_trade.RealizedPnL:F2}")
+                    </strong>
+                }
+                else
+                {
+                    <strong>—</strong>
+                }
+            </div>
+            @if (_trade.SpreadAtEntry.HasValue)
+            {
+                <div>Spread: <strong>@_trade.SpreadAtEntry?.ToString("F1") Pips</strong></div>
+            }
+        </div>
+    </div>
+
+    <!-- LLM-Begruendung -->
+    <div class="section" style="margin-bottom: 24px;">
+        <h3>LLM-Begruendung</h3>
+        <div style="background: var(--card-bg, #1e1e2e); border: 1px solid var(--border, #45475a); border-radius: 8px; padding: 16px; white-space: pre-wrap; font-size: 0.85rem; line-height: 1.5;">@_trade.ClaudeReasoning</div>
+    </div>
+
+    <!-- Tags & Notizen -->
+    <div class="section" style="margin-bottom: 24px;">
+        <h3>Tags & Notizen</h3>
+
+        @if (_tagList.Count > 0)
+        {
+            <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px;">
+                @foreach (var tag in _tagList)
+                {
+                    <span style="background: var(--surface0, #313244); color: var(--text, #cdd6f4); padding: 2px 10px; border-radius: 12px; font-size: 0.8rem;">@tag</span>
+                }
+            </div>
+        }
+
+        <div class="form-group" style="margin-bottom: 12px;">
+            <label>Tags (komma-separiert)</label>
+            <input type="text" @bind="_editTags" placeholder="z.B. london-session, high-volatility, news-driven" />
+        </div>
+
+        <div class="form-group" style="margin-bottom: 12px;">
+            <label>Notizen</label>
+            <textarea rows="4" @bind="_editNotes" placeholder="Freitext-Notizen zu diesem Trade..."></textarea>
+        </div>
+
+        <button class="btn btn-primary" @onclick="SaveNotesAsync">Speichern</button>
+    </div>
+}
+
+@code {
+    [Parameter] public int TradeId { get; set; }
+
+    private Trade? _trade;
+    private string _editTags = string.Empty;
+    private string _editNotes = string.Empty;
+    private bool _saveSuccess;
+
+    private List<string> _tagList => _editTags
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Where(t => !string.IsNullOrWhiteSpace(t))
+        .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _trade = await db.Trades.FindAsync(TradeId);
+
+        if (_trade != null)
+        {
+            _editTags = _trade.Tags ?? string.Empty;
+            _editNotes = _trade.Notes ?? string.Empty;
+        }
+    }
+
+    private async Task SaveNotesAsync()
+    {
+        _saveSuccess = false;
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        var normalizedTags = string.Join(", ", _tagList);
+
+        await db.Trades
+            .Where(t => t.Id == TradeId)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(t => t.Tags, normalizedTags)
+                .SetProperty(t => t.Notes, _editNotes));
+
+        if (_trade != null)
+        {
+            _trade.Tags = normalizedTags;
+            _trade.Notes = _editNotes;
+        }
+
+        _saveSuccess = true;
+    }
+}
