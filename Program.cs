@@ -116,40 +116,7 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 app.MapHub<TradingHub>("/tradinghub");
 
-// ── API-Endpunkte für externe Steuerung ─────────────────────────────────
-app.MapPost("/api/engine/pause", (TradingEngine engine) =>
-{
-    engine.Pause();
-    return Results.Ok(new { status = "paused" });
-});
-
-app.MapPost("/api/engine/resume", (TradingEngine engine) =>
-{
-    engine.Resume();
-    return Results.Ok(new { status = "running" });
-});
-
-app.MapPost("/api/killswitch/activate", (IRiskManager risk) =>
-{
-    risk.ActivateKillSwitch("Manually activated via dashboard");
-    return Results.Ok(new { status = "activated" });
-});
-
-app.MapPost("/api/killswitch/reset", (IRiskManager risk) =>
-{
-    risk.ResetKillSwitch();
-    return Results.Ok(new { status = "reset" });
-});
-
-app.MapGet("/api/status", (TradingEngine engine, IBrokerService broker, IRiskManager risk, MarketHoursService marketHours) =>
-    Results.Ok(new
-    {
-        engineRunning = engine.IsRunning,
-        brokerConnected = broker.IsConnected,
-        killSwitchActive = risk.IsKillSwitchActive,
-        marketOpen = marketHours.IsMarketOpen(),
-        marketStatus = marketHours.GetMarketStatus()
-    }));
+// ── Interne API-Endpunkte (fuer Dashboard-Komponenten) ───────────────────
 
 // ── PnL-History API (fuer Equity-Kurve) ──────────────────────────────────
 app.MapGet("/api/pnl-history", async (TradingDbContext db) =>

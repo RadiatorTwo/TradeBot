@@ -103,26 +103,7 @@ Ziel: Mehrere Konten und Strategien gleichzeitig verwalten.
 
 **Aufwand:** ~6h
 
-### 7.2 REST-API fuer externe Integration
-
-**Problem:** Kein programmatischer Zugang zu Bot-Daten. Kein Webhook-Support fuer TradingView-Alerts.
-
-**Loesung:**
-- Minimal API Endpunkte:
-  - `GET /api/status` – Bot-Status, Positionen, PnL
-  - `GET /api/trades` – Trade-Historie mit Filtern
-  - `GET /api/stats` – Performance-Kennzahlen
-  - `POST /api/webhook/tradingview` – TradingView-Alert empfangen und als Trade ausfuehren
-  - `POST /api/control/pause` / `POST /api/control/resume` – Bot steuern
-- API-Key-Authentifizierung (einfacher Bearer Token)
-
-**Dateien:**
-- `Endpoints/ApiEndpoints.cs` – NEU: Minimal API Mapping
-- `Endpoints/WebhookEndpoints.cs` – NEU: TradingView Webhook
-- `Services/ApiKeyAuthMiddleware.cs` – NEU: API-Key-Validierung
-- `appsettings.json` – API-Key, Webhook-Secret
-
-**Aufwand:** ~4h
+### ~~7.2 REST-API fuer externe Integration~~ (ENTFERNT – kein externer Zugriff, alles ueber WebInterface)
 
 ### 7.3 Strategie-Rotation / A-B-Testing
 
@@ -345,7 +326,7 @@ Ziel: Ueber einfache LLM-Empfehlungen hinausgehen.
 | 6.3 | Dynamischer Confidence-Threshold | ~2h | HOCH |
 | 6.4 | Partial Close / Pyramiding | ~4h | HOCH |
 | 7.1 | Multi-Account-Support | ~6h | HOCH |
-| 7.2 | REST-API & Webhooks | ~4h | HOCH |
+| ~~7.2~~ | ~~REST-API & Webhooks~~ | ~~~4h~~ | ENTFERNT |
 | 7.3 | Strategie-Rotation / A-B-Testing | ~5h | HOCH |
 | 8.1 | Spread-Tracking & Filter | ~1.5h | MITTEL |
 | 8.2 | Trade-Journal | ~3h | MITTEL |
@@ -358,8 +339,8 @@ Ziel: Ueber einfache LLM-Empfehlungen hinausgehen.
 | 10.2 | Limit/Stop Orders | ~4h | NIEDRIG |
 | 10.3 | Portfolio-Rebalancing | ~3h | NIEDRIG |
 | 10.4 | Backtesting mit LLM | ~6h | NIEDRIG |
-| | **Gesamt** | **~60h** | |
+| | **Gesamt** | **~56h** | |
 
-Empfohlene Reihenfolge: **6.1 → 8.1 → 6.3 → 6.2 → 6.4 → 7.2 → Rest nach Bedarf.**
+Empfohlene Reihenfolge: **6.1 → 8.1 → 6.3 → 6.2 → 6.4 → 7.1 → 7.3 → Rest nach Bedarf.**
 
-Begruendung: Zuerst die Entscheidungsqualitaet verbessern (Feedback-Loop, Spread-Filter, dynamische Confidence), dann Skalierung (API), dann erweiterte Features.
+Begruendung: Zuerst die Entscheidungsqualitaet verbessern (Feedback-Loop, Spread-Filter, dynamische Confidence), dann Skalierung (Multi-Account), dann erweiterte Features.
