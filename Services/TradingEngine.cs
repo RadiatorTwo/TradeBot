@@ -151,7 +151,7 @@ public class TradingEngine : BackgroundService
         var portfolioValue = await _broker.GetPortfolioValueAsync(ct);
         var positions = await _broker.GetPositionsAsync(ct);
 
-        _logger.LogInformation(
+        _logger.LogDebug(
             "Starting analysis cycle: {Count} symbols, Cash: ${Cash:F2}, Portfolio: ${PV:F2}",
             watchList.Length, cash, portfolioValue);
 

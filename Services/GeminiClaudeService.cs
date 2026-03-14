@@ -69,7 +69,7 @@ public class GeminiClaudeService : IClaudeService
 
         try
         {
-            _logger.LogInformation("Sending analysis request to Gemini for {Symbol} (model: {Model})", request.Symbol, _settings.Model);
+            _logger.LogDebug("Sending analysis request to Gemini for {Symbol} (model: {Model})", request.Symbol, _settings.Model);
 
             var url = $"models/{_settings.Model}:generateContent?key={Uri.EscapeDataString(apiKey)}";
             HttpResponseMessage? response = null;
@@ -127,7 +127,7 @@ public class GeminiClaudeService : IClaudeService
 
             var recommendation = JsonSerializer.Deserialize<ClaudeTradeRecommendation>(cleanJson, JsonOpts);
 
-            _logger.LogInformation(
+            _logger.LogDebug(
                 "Gemini recommends {Action} {Qty:F2} Lots {Symbol} (confidence: {Conf:P0}, SL: {SL}, TP: {TP})",
                 recommendation?.Action, recommendation?.Quantity,
                 recommendation?.Symbol, recommendation?.Confidence,

@@ -63,7 +63,7 @@ public class ClaudeService : IClaudeService
 
         try
         {
-            _logger.LogInformation("Sending analysis request to Claude for {Symbol}", request.Symbol);
+            _logger.LogDebug("Sending analysis request to Claude for {Symbol}", request.Symbol);
 
             var response = await _http.PostAsync("v1/messages", content, ct);
             var responseBody = await response.Content.ReadAsStringAsync(ct);
@@ -98,7 +98,7 @@ public class ClaudeService : IClaudeService
 
             var recommendation = JsonSerializer.Deserialize<ClaudeTradeRecommendation>(cleanJson, JsonOpts);
 
-            _logger.LogInformation(
+            _logger.LogDebug(
                 "Claude recommends {Action} {Qty:F2} Lots {Symbol} (confidence: {Conf:P0}, SL: {SL}, TP: {TP})",
                 recommendation?.Action, recommendation?.Quantity,
                 recommendation?.Symbol, recommendation?.Confidence,

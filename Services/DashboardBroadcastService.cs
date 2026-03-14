@@ -139,9 +139,8 @@ public class DashboardBroadcastService : BackgroundService
             .Take(30)
             .ToListAsync(ct);
 
-        // Trade-Statistiken berechnen
-        var allTradesForStats = await db.Trades.ToListAsync(ct);
-        var stats = TradingStatsService.Calculate(allTradesForStats, pnlHistory);
+        // Trade-Statistiken berechnen (DB-Aggregation statt alle Trades laden)
+        var stats = await TradingStatsService.CalculateFromDbAsync(db, pnlHistory, ct);
 
         return new DashboardViewModel
         {

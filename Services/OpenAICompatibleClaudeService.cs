@@ -71,7 +71,7 @@ public class OpenAICompatibleClaudeService : IClaudeService
 
         try
         {
-            _logger.LogInformation("Sending analysis request to OpenAI-compatible LLM for {Symbol} (model: {Model})", request.Symbol, _settings.Model);
+            _logger.LogDebug("Sending analysis request to OpenAI-compatible LLM for {Symbol} (model: {Model})", request.Symbol, _settings.Model);
 
             var response = await _http.PostAsync("chat/completions", content, ct);
             var responseBody = await response.Content.ReadAsStringAsync(ct);
@@ -113,7 +113,7 @@ public class OpenAICompatibleClaudeService : IClaudeService
 
             var recommendation = JsonSerializer.Deserialize<ClaudeTradeRecommendation>(cleanJson, DeserializeOpts);
 
-            _logger.LogInformation(
+            _logger.LogDebug(
                 "LLM recommends {Action} {Qty:F2} Lots {Symbol} (confidence: {Conf:P0}, SL: {SL}, TP: {TP})",
                 recommendation?.Action, recommendation?.Quantity,
                 recommendation?.Symbol, recommendation?.Confidence,

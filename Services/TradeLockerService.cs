@@ -46,6 +46,16 @@ public class TradeLockerService : IBrokerService
     private DateTime _lastRequestUtc = DateTime.MinValue;
     private const int MinDelayMs = 500; // ~2 Req/s
 
+    // ── Caching ────────────────────────────────────────────────────────────
+    private AccountDetails? _cachedAccountDetails;
+    private List<Position>? _cachedPositions;
+    private DateTime _accountDetailsCacheExpiry = DateTime.MinValue;
+    private DateTime _positionsCacheExpiry = DateTime.MinValue;
+    private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(5);
+
+    /// <summary>true wenn /details einmal 404 geliefert hat – wird nie wieder versucht.</summary>
+    private bool _detailsEndpointIs404;
+
     // ── Auto-Reconnect (Phase 5.4) ──────────────────────────────────────
     private int _reconnectAttempt;
     private static readonly int[] ReconnectBackoffSeconds = { 5, 10, 30, 60 };
@@ -255,11 +265,11 @@ public class TradeLockerService : IBrokerService
                 {
                     var details = await GetAccountDetailsInternalAsync(ct);
                     if (details != null)
-                        _logger.LogInformation("TradeLocker account: Balance={Balance}, Equity={Equity}, Instrumente={Count}",
+                        _logger.LogDebug("TradeLocker account: Balance={Balance}, Equity={Equity}, Instrumente={Count}",
                             details.Balance, details.Equity, _symbolToInstrumentId.Count);
                     var eurUsdQuote = await GetCurrentPriceAsync("EURUSD", ct);
                     if (eurUsdQuote > 0)
-                        _logger.LogInformation("TradeLocker EURUSD Quote: {Quote}", eurUsdQuote);
+                        _logger.LogDebug("TradeLocker EURUSD Quote: {Quote}", eurUsdQuote);
                 }
                 catch (Exception ex)
                 {
@@ -542,7 +552,7 @@ public class TradeLockerService : IBrokerService
                     }
                 }
             }
-            _logger.LogInformation("TradeLocker loaded {Count} instruments. Beispiele: {Samples}",
+            _logger.LogDebug("TradeLocker loaded {Count} instruments. Beispiele: {Samples}",
                 _symbolToInstrumentId.Count,
                 string.Join(", ", _symbolToInstrumentId.Take(10).Select(kv => $"{kv.Key}={kv.Value}")));
         }
@@ -591,6 +601,10 @@ public class TradeLockerService : IBrokerService
     private async Task<TradeLockerAccountDetails?> GetAccountDetailsInternalAsync(CancellationToken ct)
     {
         if (string.IsNullOrEmpty(_accountId)) return null;
+
+        // Endpoint lieferte 404 – nie wieder versuchen
+        if (_detailsEndpointIs404) return null;
+
         await ThrottleAsync(ct);
         try
         {
@@ -600,7 +614,10 @@ public class TradeLockerService : IBrokerService
             if (!response.IsSuccessStatusCode)
             {
                 if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
-                    _logger.LogInformation("TradeLocker: Endpunkt account/details nicht verfügbar (404). Nutze Balance aus all-accounts.");
+                {
+                    _detailsEndpointIs404 = true;
+                    _logger.LogDebug("TradeLocker: Endpunkt account/details nicht verfuegbar (404). Nutze Balance aus all-accounts.");
+                }
                 else
                     _logger.LogWarning("TradeLocker account details failed: Status {StatusCode}, Response: {Body}",
                         (int)response.StatusCode, Truncate(body, 500));
@@ -984,7 +1001,7 @@ public class TradeLockerService : IBrokerService
             return new List<OhlcCandle>();
         }
 
-        _logger.LogInformation(
+        _logger.LogDebug(
             "GetHistoricalCandles: {Symbol} {Res} von {From:dd.MM.yyyy} bis {To:dd.MM.yyyy} (~{Count} Candles erwartet)",
             symbol, resolution, from, to, estimatedCandles);
 
@@ -1039,7 +1056,7 @@ public class TradeLockerService : IBrokerService
                 // TradeLocker gibt {"s":"no_data"} wenn keine Daten verfuegbar
                 if (body.Contains("\"no_data\"", StringComparison.OrdinalIgnoreCase))
                 {
-                    _logger.LogInformation(
+                    _logger.LogDebug(
                         "GetHistoricalCandles Chunk {Chunk}: API meldet 'no_data'. " +
                         "TradeLocker liefert moeglicherweise keine historischen Daten wenn der Markt geschlossen ist (Wochenende).",
                         chunkCount);
@@ -1086,7 +1103,7 @@ public class TradeLockerService : IBrokerService
             .OrderBy(c => c.Time)
             .ToList();
 
-        _logger.LogInformation("GetHistoricalCandles: {Symbol} fertig, {Count} Candles total", symbol, final.Count);
+        _logger.LogDebug("GetHistoricalCandles: {Symbol} fertig, {Count} Candles total", symbol, final.Count);
         return final;
     }
 
@@ -1118,6 +1135,10 @@ public class TradeLockerService : IBrokerService
 
     public async Task<AccountDetails> GetAccountDetailsAsync(CancellationToken ct = default)
     {
+        // Cache pruefen
+        if (_cachedAccountDetails != null && DateTime.UtcNow < _accountDetailsCacheExpiry)
+            return _cachedAccountDetails;
+
         var result = new AccountDetails();
 
         // Versuch 1: /trade/accounts/{id}/details
@@ -1158,6 +1179,8 @@ public class TradeLockerService : IBrokerService
         _logger.LogDebug("AccountDetails: Balance={Balance}, Equity={Equity}, Margin={Margin}, FreeMargin={FreeMargin}",
             result.Balance, result.Equity, result.Margin, result.FreeMargin);
 
+        _cachedAccountDetails = result;
+        _accountDetailsCacheExpiry = DateTime.UtcNow + CacheTtl;
         return result;
     }
 
@@ -1264,7 +1287,7 @@ public class TradeLockerService : IBrokerService
                 }
             }
 
-            _logger.LogInformation("ParsePositions: {Count} Positionen geparst", result.Count);
+            _logger.LogDebug("ParsePositions: {Count} Positionen geparst", result.Count);
             return result;
         }
         catch (Exception ex)
@@ -1276,6 +1299,10 @@ public class TradeLockerService : IBrokerService
 
     public async Task<List<Position>> GetPositionsAsync(CancellationToken ct = default)
     {
+        // Cache pruefen
+        if (_cachedPositions != null && DateTime.UtcNow < _positionsCacheExpiry)
+            return _cachedPositions;
+
         var list = new List<Position>();
         if (!_isConnected || string.IsNullOrEmpty(_accountId)) return list;
         await ThrottleAsync(ct);
@@ -1315,6 +1342,9 @@ public class TradeLockerService : IBrokerService
         {
             _logger.LogDebug(ex, "GetPositions failed.");
         }
+
+        _cachedPositions = list;
+        _positionsCacheExpiry = DateTime.UtcNow + CacheTtl;
         return list;
     }
 

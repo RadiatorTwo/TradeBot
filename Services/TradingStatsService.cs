@@ -1,22 +1,116 @@
+using ClaudeTradingBot.Data;
 using ClaudeTradingBot.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace ClaudeTradingBot.Services;
 
 /// <summary>Berechnet Performance-Kennzahlen aus Trades und PnL-History.</summary>
 public static class TradingStatsService
 {
+    /// <summary>Berechnet Stats direkt per DB-Aggregation (vermeidet ToListAsync auf alle Trades).</summary>
+    public static async Task<TradingStatsViewModel> CalculateFromDbAsync(
+        TradingDbContext db, List<DailyPnL> pnlHistory, CancellationToken ct = default)
+    {
+        var totalCount = await db.Trades.CountAsync(ct);
+        if (totalCount == 0)
+            return new TradingStatsViewModel();
+
+        var executed = await db.Trades.CountAsync(t => t.Status == TradeStatus.Executed, ct);
+        var rejected = await db.Trades.CountAsync(t => t.Status == TradeStatus.Rejected, ct);
+        var failed = await db.Trades.CountAsync(t => t.Status == TradeStatus.Failed, ct);
+        var avgConfidence = await db.Trades.AverageAsync(t => t.ClaudeConfidence, ct);
+
+        // PnL-basierte Stats via DB
+        var closedCount = await db.Trades
+            .CountAsync(t => t.Status == TradeStatus.Executed && t.RealizedPnL != null, ct);
+
+        var winCount = await db.Trades
+            .CountAsync(t => t.Status == TradeStatus.Executed && t.RealizedPnL > 0, ct);
+
+        var lossCount = await db.Trades
+            .CountAsync(t => t.Status == TradeStatus.Executed && t.RealizedPnL < 0, ct);
+
+        var totalProfit = closedCount > 0
+            ? await db.Trades
+                .Where(t => t.Status == TradeStatus.Executed && t.RealizedPnL > 0)
+                .SumAsync(t => t.RealizedPnL!.Value, ct)
+            : 0m;
+
+        var totalLossRaw = closedCount > 0
+            ? await db.Trades
+                .Where(t => t.Status == TradeStatus.Executed && t.RealizedPnL < 0)
+                .SumAsync(t => t.RealizedPnL!.Value, ct)
+            : 0m;
+        var totalLoss = Math.Abs(totalLossRaw);
+
+        var avgWin = winCount > 0
+            ? await db.Trades
+                .Where(t => t.Status == TradeStatus.Executed && t.RealizedPnL > 0)
+                .AverageAsync(t => t.RealizedPnL!.Value, ct)
+            : 0m;
+
+        var avgLoss = lossCount > 0
+            ? Math.Abs(await db.Trades
+                .Where(t => t.Status == TradeStatus.Executed && t.RealizedPnL < 0)
+                .AverageAsync(t => t.RealizedPnL!.Value, ct))
+            : 0m;
+
+        var winRate = closedCount > 0 ? (double)winCount / closedCount * 100 : 0;
+        var netPnL = totalProfit - totalLoss;
+        var profitFactor = totalLoss > 0 ? totalProfit / totalLoss : totalProfit > 0 ? 999m : 0;
+
+        // Trades pro Tag
+        var tradesPerDay = 0.0;
+        if (executed >= 2)
+        {
+            var firstDate = await db.Trades
+                .Where(t => t.Status == TradeStatus.Executed)
+                .MinAsync(t => t.CreatedAt, ct);
+            var lastDate = await db.Trades
+                .Where(t => t.Status == TradeStatus.Executed)
+                .MaxAsync(t => t.CreatedAt, ct);
+            var days = (lastDate - firstDate).TotalDays;
+            tradesPerDay = days > 0 ? executed / days : executed;
+        }
+
+        var (maxDrawdown, maxDrawdownPercent) = CalculateMaxDrawdown(pnlHistory);
+        var sharpeRatio = CalculateSharpeRatio(pnlHistory);
+
+        return new TradingStatsViewModel
+        {
+            TotalExecuted = executed,
+            TotalRejected = rejected,
+            TotalFailed = failed,
+            AvgConfidence = Math.Round(avgConfidence * 100, 1),
+            HasPnLData = closedCount > 0,
+            ClosedTrades = closedCount,
+            WinningTrades = winCount,
+            LosingTrades = lossCount,
+            WinRate = Math.Round(winRate, 1),
+            AvgWin = Math.Round(avgWin, 2),
+            AvgLoss = Math.Round(avgLoss, 2),
+            ProfitFactor = Math.Round(profitFactor, 2),
+            TotalProfit = Math.Round(totalProfit, 2),
+            TotalLoss = Math.Round(totalLoss, 2),
+            NetPnL = Math.Round(netPnL, 2),
+            MaxDrawdown = Math.Round(maxDrawdown, 2),
+            MaxDrawdownPercent = Math.Round(maxDrawdownPercent, 2),
+            SharpeRatio = Math.Round(sharpeRatio, 2),
+            TradesPerDay = Math.Round(tradesPerDay, 1)
+        };
+    }
+
+    /// <summary>Legacy: Berechnet Stats aus einer vollstaendigen Trade-Liste (fuer Backtesting).</summary>
     public static TradingStatsViewModel Calculate(List<Trade> allTrades, List<DailyPnL> pnlHistory)
     {
         if (allTrades.Count == 0)
             return new TradingStatsViewModel();
 
-        // Allgemeine Uebersicht (immer verfuegbar)
         var executed = allTrades.Where(t => t.Status == TradeStatus.Executed).ToList();
         var rejected = allTrades.Count(t => t.Status == TradeStatus.Rejected);
         var failed = allTrades.Count(t => t.Status == TradeStatus.Failed);
         var avgConfidence = allTrades.Average(t => t.ClaudeConfidence);
 
-        // PnL-basierte Stats
         var closedWithPnl = executed
             .Where(t => t.RealizedPnL.HasValue)
             .ToList();
@@ -39,13 +133,9 @@ public static class TradingStatsService
 
         var profitFactor = totalLoss > 0 ? totalProfit / totalLoss : totalProfit > 0 ? 999m : 0;
 
-        // Max Drawdown aus PnL-History
         var (maxDrawdown, maxDrawdownPercent) = CalculateMaxDrawdown(pnlHistory);
-
-        // Sharpe Ratio (annualisiert)
         var sharpeRatio = CalculateSharpeRatio(pnlHistory);
 
-        // Trades pro Tag
         var tradesPerDay = 0.0;
         if (executed.Count >= 2)
         {
@@ -61,7 +151,6 @@ public static class TradingStatsService
             TotalRejected = rejected,
             TotalFailed = failed,
             AvgConfidence = Math.Round(avgConfidence * 100, 1),
-
             HasPnLData = hasPnlData,
             ClosedTrades = closedWithPnl.Count,
             WinningTrades = wins.Count,

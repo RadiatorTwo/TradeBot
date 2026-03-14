@@ -210,10 +210,10 @@
     private DashboardViewModel vm = new();
     private HubConnection? _hubConnection;
 
+    private bool _dataLoaded;
+
     protected override async Task OnInitializedAsync()
     {
-        await LoadDataAsync();
-
         _hubConnection = new HubConnectionBuilder()
             .WithUrl(Navigation.ToAbsoluteUri("/tradinghub"))
             .WithAutomaticReconnect()
@@ -232,6 +232,23 @@
         catch (Exception)
         {
             // Hub nicht verfuegbar, Fallback auf initiale Daten
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_dataLoaded)
+        {
+            _dataLoaded = true;
+            try
+            {
+                await LoadDataAsync();
+                StateHasChanged();
+            }
+            catch (Exception)
+            {
+                // SignalR liefert Updates als Fallback
+            }
         }
     }
 
@@ -272,8 +289,7 @@
             .Take(30)
             .ToListAsync();
 
-        var allTradesForStats = await db.Trades.ToListAsync();
-        var stats = TradingStatsService.Calculate(allTradesForStats, pnlHistory);
+        var stats = await TradingStatsService.CalculateFromDbAsync(db, pnlHistory);
 
         vm = new DashboardViewModel
         {
