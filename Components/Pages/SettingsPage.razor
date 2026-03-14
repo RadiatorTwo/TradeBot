@@ -87,6 +87,51 @@
         </div>
     </div>
 
+    <!-- Paper-Trading -->
+    <div class="form-section">
+        <h3>Paper-Trading</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" @bind="PaperTradingEnabled" style="margin-right: 8px;" />
+                    Paper-Trading aktivieren
+                </label>
+                <div class="hint">Wenn aktiv werden keine echten Orders platziert. Echte Marktdaten fliessen weiterhin.</div>
+            </div>
+            <div class="form-group">
+                <label>Startkapital (Paper)</label>
+                <input type="number" @bind="PaperTradingBalance" step="100" min="100" />
+                <div class="hint">Simuliertes Startkapital fuer Paper-Trading</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Multi-Timeframe -->
+    <div class="form-section">
+        <h3>Multi-Timeframe Bestaetigung</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" @bind="MultiTimeframeEnabled" style="margin-right: 8px;" />
+                    Multi-Timeframe-Filter aktivieren
+                </label>
+                <div class="hint">Trades nur in Richtung des hoeheren Timeframe-Trends</div>
+            </div>
+            <div class="form-group">
+                <label>Hoeherer Timeframe</label>
+                <select @bind="MultiTimeframeHigherTf">
+                    <option value="4H">4H</option>
+                    <option value="1D">1D</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>EMA-Periode</label>
+                <input type="number" @bind="MultiTimeframeEmaPeriod" min="10" max="500" />
+                <div class="hint">z.B. 200 fuer EMA200</div>
+            </div>
+        </div>
+    </div>
+
     <button type="submit" class="btn btn-primary">Einstellungen Speichern</button>
 </EditForm>
 
@@ -127,6 +172,15 @@
     private int MaxOpenPositions { get; set; }
     private int TradingIntervalMinutes { get; set; }
     private decimal MaxDailyLossAbsolute { get; set; }
+
+    // Paper-Trading
+    private bool PaperTradingEnabled { get; set; }
+    private decimal PaperTradingBalance { get; set; } = 10000m;
+
+    // Multi-Timeframe
+    private bool MultiTimeframeEnabled { get; set; }
+    private string MultiTimeframeHigherTf { get; set; } = "4H";
+    private int MultiTimeframeEmaPeriod { get; set; } = 200;
 
     private string _llmProvider = string.Empty;
     private string _anthropicKeyMasked = string.Empty;
@@ -187,6 +241,17 @@
         riskNode["TradingIntervalMinutes"] = TradingIntervalMinutes;
         riskNode["MaxDailyLossAbsolute"] = MaxDailyLossAbsolute;
 
+        // Paper-Trading
+        var paperNode = doc["PaperTrading"] ??= new JsonObject();
+        paperNode["Enabled"] = PaperTradingEnabled;
+        paperNode["InitialBalance"] = PaperTradingBalance;
+
+        // Multi-Timeframe
+        var mtfNode = doc["MultiTimeframe"] ??= new JsonObject();
+        mtfNode["Enabled"] = MultiTimeframeEnabled;
+        mtfNode["HigherTimeframe"] = MultiTimeframeHigherTf;
+        mtfNode["EmaPeriod"] = MultiTimeframeEmaPeriod;
+
         var options = new JsonSerializerOptions { WriteIndented = true };
         await File.WriteAllTextAsync(appSettingsPath, doc.ToJsonString(options));
 
@@ -206,6 +271,15 @@
         MaxOpenPositions = Configuration.GetValue("RiskManagement:MaxOpenPositions", 10);
         TradingIntervalMinutes = Configuration.GetValue("RiskManagement:TradingIntervalMinutes", 15);
         MaxDailyLossAbsolute = Configuration.GetValue("RiskManagement:MaxDailyLossAbsolute", 500m);
+
+        // Paper-Trading
+        PaperTradingEnabled = Configuration.GetValue("PaperTrading:Enabled", false);
+        PaperTradingBalance = Configuration.GetValue("PaperTrading:InitialBalance", 10000m);
+
+        // Multi-Timeframe
+        MultiTimeframeEnabled = Configuration.GetValue("MultiTimeframe:Enabled", true);
+        MultiTimeframeHigherTf = Configuration.GetValue<string>("MultiTimeframe:HigherTimeframe") ?? "4H";
+        MultiTimeframeEmaPeriod = Configuration.GetValue("MultiTimeframe:EmaPeriod", 200);
 
         _llmProvider = Configuration.GetValue<string>("Llm:Provider") ?? "Gemini";
         _anthropicKeyMasked = MaskKey(Configuration.GetValue<string>("Anthropic:ApiKey"));

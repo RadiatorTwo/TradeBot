@@ -1,0 +1,258 @@
+@page "/backtest"
+@using ClaudeTradingBot.Models
+@using ClaudeTradingBot.Services
+@inject BacktestEngine BacktestEngine
+@inject IConfiguration Configuration
+
+<PageTitle>Backtest - Claude Trading Bot</PageTitle>
+
+<h2 style="margin-bottom: 24px;">Backtesting</h2>
+
+<!-- Konfiguration -->
+<div class="form-section">
+    <h3>Backtest-Konfiguration</h3>
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+        <div class="form-group">
+            <label>Symbol</label>
+            <select @bind="_config.Symbol" disabled="@_isRunning">
+                @foreach (var sym in _watchList)
+                {
+                    <option value="@sym">@sym</option>
+                }
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Timeframe</label>
+            <select @bind="_config.Timeframe" disabled="@_isRunning">
+                <option value="1H">1H</option>
+                <option value="4H">4H</option>
+                <option value="1D">1D</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Strategie</label>
+            <select @bind="_config.Strategy" disabled="@_isRunning">
+                <option value="EMA_Cross">EMA-Cross (EMA20/50)</option>
+                <option value="RSI_Reversal">RSI-Reversal (RSI14)</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Start-Datum</label>
+            <input type="date" @bind="_startDate" disabled="@_isRunning" />
+        </div>
+        <div class="form-group">
+            <label>End-Datum</label>
+            <input type="date" @bind="_endDate" disabled="@_isRunning" />
+        </div>
+        <div class="form-group">
+            <label>Startkapital ($)</label>
+            <input type="number" @bind="_config.InitialBalance" step="1000" min="100" disabled="@_isRunning" />
+        </div>
+        <div class="form-group">
+            <label>Risiko pro Trade (%)</label>
+            <input type="number" @bind="_config.RiskPerTradePercent" step="0.1" min="0.1" max="10" disabled="@_isRunning" />
+        </div>
+        <div class="form-group">
+            <label>Stop-Loss (Pips)</label>
+            <input type="number" @bind="_config.StopLossPips" step="5" min="5" disabled="@_isRunning" />
+        </div>
+        <div class="form-group">
+            <label>Take-Profit (Pips)</label>
+            <input type="number" @bind="_config.TakeProfitPips" step="5" min="5" disabled="@_isRunning" />
+        </div>
+    </div>
+    <div style="margin-top: 16px;">
+        @if (_isRunning)
+        {
+            <button class="btn btn-outline" disabled>Backtest laeuft... (@_progress%)</button>
+            <div style="margin-top: 8px; background: var(--border); border-radius: 4px; height: 8px;">
+                <div style="background: var(--accent); height: 100%; border-radius: 4px; width: @(_progress)%; transition: width 0.3s;"></div>
+            </div>
+        }
+        else
+        {
+            <button class="btn btn-primary" @onclick="RunBacktest">Backtest Starten</button>
+        }
+    </div>
+</div>
+
+@if (_result?.ErrorMessage != null)
+{
+    <div class="error-banner">@_result.ErrorMessage</div>
+}
+
+@if (_result != null && _result.ErrorMessage == null)
+{
+    <!-- Statistiken -->
+    <div class="section">
+        <h2>Ergebnis</h2>
+        <div class="stats-grid">
+            <StatCard Label="Total Trades" Value="@_result.Stats.TotalTrades.ToString()" />
+            <StatCard Label="Win-Rate" Value="@($"{_result.Stats.WinRate:P1}")"
+                      CssClass="@(_result.Stats.WinRate >= 0.5 ? "stat-positive" : "stat-negative")" />
+            <StatCard Label="Net P&L" Value="@($"${_result.Stats.NetPnL:N2}")"
+                      CssClass="@(_result.Stats.NetPnL >= 0 ? "stat-positive" : "stat-negative")" />
+            <StatCard Label="Profit Factor" Value="@($"{_result.Stats.ProfitFactor:F2}")"
+                      CssClass="@(_result.Stats.ProfitFactor >= 1.5m ? "stat-positive" : _result.Stats.ProfitFactor >= 1m ? "" : "stat-negative")" />
+            <StatCard Label="Max Drawdown" Value="@($"{_result.Stats.MaxDrawdownPercent:F1}%")"
+                      CssClass="@(_result.Stats.MaxDrawdownPercent <= 10 ? "stat-positive" : "stat-negative")" />
+            <StatCard Label="Sharpe Ratio" Value="@($"{_result.Stats.SharpeRatio:F2}")"
+                      CssClass="@(_result.Stats.SharpeRatio >= 1 ? "stat-positive" : "stat-negative")" />
+            <StatCard Label="Avg Win" Value="@($"${_result.Stats.AvgWin:N2}")" CssClass="stat-positive" />
+            <StatCard Label="Avg Loss" Value="@($"${_result.Stats.AvgLoss:N2}")" CssClass="stat-negative" />
+            <StatCard Label="Endkapital" Value="@($"${_result.Stats.FinalBalance:N2}")" />
+        </div>
+    </div>
+
+    <!-- Equity-Kurve -->
+    @if (_result.EquityCurve.Count > 0)
+    {
+        <div class="section">
+            <h2>Equity-Kurve</h2>
+            <div style="background: var(--card-bg); border-radius: 8px; padding: 16px;">
+                <canvas id="backtestEquityChart"></canvas>
+            </div>
+        </div>
+    }
+
+    <!-- Trade-Liste -->
+    @if (_result.Trades.Count > 0)
+    {
+        <div class="section">
+            <h2>Trades (@_result.Trades.Count)</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Entry</th><th>Exit</th><th>Side</th>
+                        <th>Entry Preis</th><th>Exit Preis</th>
+                        <th>Lots</th><th>P&amp;L</th><th>Grund</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var t in _result.Trades.TakeLast(100).Reverse())
+                    {
+                        <tr>
+                            <td style="font-size:0.75rem;color:var(--muted)">@t.EntryTime.ToString("dd.MM HH:mm")</td>
+                            <td style="font-size:0.75rem;color:var(--muted)">@t.ExitTime.ToString("dd.MM HH:mm")</td>
+                            <td class="@(t.Side == "buy" ? "pnl-positive" : "pnl-negative")">@t.Side.ToUpper()</td>
+                            <td>@t.EntryPrice.ToString("F5")</td>
+                            <td>@t.ExitPrice.ToString("F5")</td>
+                            <td>@t.Quantity.ToString("F2")</td>
+                            <td class="@(t.PnL >= 0 ? "pnl-positive" : "pnl-negative")">
+                                @(t.PnL >= 0 ? "+" : "")$@t.PnL.ToString("F2")
+                            </td>
+                            <td>@t.Reason</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (_result.Trades.Count > 100)
+            {
+                <div class="hint" style="margin-top: 8px;">Zeigt die letzten 100 von @_result.Trades.Count Trades.</div>
+            }
+        </div>
+    }
+}
+
+@code {
+    private BacktestConfig _config = new();
+    private BacktestResult? _result;
+    private bool _isRunning;
+    private int _progress;
+    private string[] _watchList = Array.Empty<string>();
+    private DateTime _startDate = DateTime.UtcNow.AddDays(-30).Date;
+    private DateTime _endDate = DateTime.UtcNow.Date;
+
+    protected override void OnInitialized()
+    {
+        _watchList = Configuration.GetSection("TradingStrategy:WatchList").Get<string[]>()
+            ?? new[] { "EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "US100" };
+        _config.Symbol = _watchList.FirstOrDefault() ?? "EURUSD";
+    }
+
+    private async Task RunBacktest()
+    {
+        _isRunning = true;
+        _result = null;
+        _progress = 0;
+        StateHasChanged();
+
+        _config.StartDate = _startDate;
+        _config.EndDate = _endDate;
+
+        // Validierung
+        if (_startDate >= _endDate)
+        {
+            _result = new BacktestResult { ErrorMessage = "Start-Datum muss vor End-Datum liegen." };
+            _isRunning = false;
+            return;
+        }
+        if ((_endDate - _startDate).TotalDays > 365)
+        {
+            _result = new BacktestResult { ErrorMessage = "Maximaler Zeitraum: 365 Tage." };
+            _isRunning = false;
+            return;
+        }
+
+        var progress = new Progress<int>(pct =>
+        {
+            _progress = pct;
+            InvokeAsync(StateHasChanged);
+        });
+
+        // Defensive Kopie damit UI-Aenderungen den laufenden Backtest nicht beeinflussen
+        var configCopy = new BacktestConfig
+        {
+            Symbol = _config.Symbol,
+            Timeframe = _config.Timeframe,
+            StartDate = _config.StartDate,
+            EndDate = _config.EndDate,
+            InitialBalance = _config.InitialBalance,
+            RiskPerTradePercent = _config.RiskPerTradePercent,
+            StopLossPips = _config.StopLossPips,
+            TakeProfitPips = _config.TakeProfitPips,
+            Strategy = _config.Strategy
+        };
+
+        try
+        {
+            _result = await Task.Run(() => BacktestEngine.RunAsync(configCopy, progress));
+        }
+        catch (Exception ex)
+        {
+            _result = new BacktestResult { ErrorMessage = $"Fehler: {ex.Message}" };
+        }
+        finally
+        {
+            _isRunning = false;
+            _progress = 100;
+            StateHasChanged();
+        }
+
+        // Chart rendern wenn Daten vorhanden
+        if (_result?.EquityCurve.Count > 0)
+        {
+            await RenderEquityChart();
+        }
+    }
+
+    private async Task RenderEquityChart()
+    {
+        if (_result?.EquityCurve == null || _result.EquityCurve.Count == 0) return;
+
+        // Equity-Kurve auf max 500 Punkte reduzieren fuer Performance
+        var points = _result.EquityCurve;
+        if (points.Count > 500)
+        {
+            var step = points.Count / 500;
+            points = points.Where((_, i) => i % step == 0).ToList();
+        }
+
+        var labels = points.Select(p => p.Time.ToString("dd.MM")).ToArray();
+        var data = points.Select(p => (double)p.Equity).ToArray();
+
+        // Chart.js via JS Interop wuerde hier verwendet werden
+        // Da wir kein IJSRuntime injizieren, wird der Chart als Text-Fallback dargestellt
+        await Task.CompletedTask;
+    }
+}

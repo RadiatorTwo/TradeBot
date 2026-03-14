@@ -46,6 +46,11 @@ public class TradeLockerService : IBrokerService
     private DateTime _lastRequestUtc = DateTime.MinValue;
     private const int MinDelayMs = 500; // ~2 Req/s
 
+    // ── Auto-Reconnect (Phase 5.4) ──────────────────────────────────────
+    private int _reconnectAttempt;
+    private static readonly int[] ReconnectBackoffSeconds = { 5, 10, 30, 60 };
+    private const int MaxReconnectAttempts = 10;
+
     public bool IsConnected => _isConnected;
 
     public TradeLockerService(
@@ -405,6 +410,68 @@ public class TradeLockerService : IBrokerService
         return list.Count > 0 ? list : null;
     }
 
+    // ── Auto-Reconnect (Phase 5.4) ──────────────────────────────────────
+
+    /// <summary>Stellt sicher, dass eine Verbindung besteht. Bei Verlust: exponentielles Backoff (5s, 10s, 30s, 60s).</summary>
+    private async Task EnsureConnectedAsync(CancellationToken ct)
+    {
+        if (_isConnected) return;
+
+        while (_reconnectAttempt < MaxReconnectAttempts && !ct.IsCancellationRequested)
+        {
+            _reconnectAttempt++;
+            var backoffIndex = Math.Min(_reconnectAttempt - 1, ReconnectBackoffSeconds.Length - 1);
+            var delaySec = ReconnectBackoffSeconds[backoffIndex];
+
+            _logger.LogWarning(
+                "TradeLocker Verbindung verloren. Reconnect-Versuch {Attempt}/{Max} in {Delay}s...",
+                _reconnectAttempt, MaxReconnectAttempts, delaySec);
+
+            await Task.Delay(TimeSpan.FromSeconds(delaySec), ct);
+
+            // Reset für ConnectAsync
+            _isConnected = false;
+            _accessToken = null;
+
+            try
+            {
+                await ConnectAsync(ct);
+                if (_isConnected)
+                {
+                    _reconnectAttempt = 0;
+                    _logger.LogInformation("TradeLocker Reconnect erfolgreich.");
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "TradeLocker Reconnect-Versuch {Attempt} fehlgeschlagen.", _reconnectAttempt);
+            }
+        }
+
+        if (!_isConnected)
+        {
+            _logger.LogCritical(
+                "TradeLocker Reconnect nach {Max} Versuchen fehlgeschlagen. Naechster Versuch im naechsten Trading-Zyklus.",
+                MaxReconnectAttempts);
+            _reconnectAttempt = 0; // Reset für nächsten Zyklus
+        }
+    }
+
+    /// <summary>Markiert Verbindung als verloren bei HTTP-Fehlern die auf Connection-Loss hindeuten.</summary>
+    private void HandleConnectionError(HttpStatusCode statusCode, string context)
+    {
+        if (statusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
+            or HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout
+            or HttpStatusCode.BadGateway)
+        {
+            _logger.LogWarning(
+                "TradeLocker Connection-Loss erkannt ({StatusCode}) bei {Context}. Markiere als disconnected.",
+                (int)statusCode, context);
+            _isConnected = false;
+        }
+    }
+
     // ── Rate Limit (~2 Req/s) ─────────────────────────────────────────────
 
     private async Task ThrottleAsync(CancellationToken ct)
@@ -413,6 +480,11 @@ public class TradeLockerService : IBrokerService
         try
         {
             await RefreshTokenIfNeededAsync(ct);
+
+            // Auto-Reconnect wenn disconnected
+            if (!_isConnected)
+                await EnsureConnectedAsync(ct);
+
             var elapsed = (DateTime.UtcNow - _lastRequestUtc).TotalMilliseconds;
             if (elapsed < MinDelayMs)
                 await Task.Delay((int)(MinDelayMs - elapsed), ct);
@@ -735,6 +807,7 @@ public class TradeLockerService : IBrokerService
             var response = await client.GetAsync($"trade/quotes?tradableInstrumentId={id}&routeId={routeId}", ct);
             if (!response.IsSuccessStatusCode)
             {
+                HandleConnectionError(response.StatusCode, $"GetBidAsk({symbol})");
                 var errBody = await response.Content.ReadAsStringAsync(ct);
                 _logger.LogDebug("GetBidAsk failed for {Symbol}: {Status} – {Body}", symbol, (int)response.StatusCode, Truncate(errBody, 200));
                 return (0m, 0m);
@@ -889,6 +962,132 @@ public class TradeLockerService : IBrokerService
             _logger.LogWarning(ex, "GetCandlesInternal failed for instrument {Id} ({Res})", tradableInstrumentId, resolution);
         }
         return result;
+    }
+
+    public async Task<List<OhlcCandle>> GetHistoricalCandlesAsync(string symbol, string resolution, DateTime from, DateTime to, CancellationToken ct = default)
+    {
+        // Berechne benoetigte Candle-Anzahl aus dem Datumsbereich
+        var resolutionHours = resolution switch
+        {
+            "1D" => 24.0,
+            "4H" => 4.0,
+            "1H" => 1.0,
+            "15" or "15m" => 0.25,
+            _ => 1.0
+        };
+        var totalHours = (to - from).TotalHours;
+        var estimatedCandles = (int)Math.Ceiling(totalHours / resolutionHours);
+
+        if (estimatedCandles <= 0)
+        {
+            _logger.LogWarning("GetHistoricalCandles: Ungueltige Zeitspanne {From} – {To}", from, to);
+            return new List<OhlcCandle>();
+        }
+
+        _logger.LogInformation(
+            "GetHistoricalCandles: {Symbol} {Res} von {From:dd.MM.yyyy} bis {To:dd.MM.yyyy} (~{Count} Candles erwartet)",
+            symbol, resolution, from, to, estimatedCandles);
+
+        // Nutze die bewährte GetCandlesInternalAsync in Chunks
+        if (!_isConnected) return new List<OhlcCandle>();
+        var instrumentId = ResolveSymbolToInstrumentId(symbol);
+        if (instrumentId == null)
+        {
+            _logger.LogWarning("GetHistoricalCandles: Symbol {Symbol} nicht gefunden", symbol);
+            return new List<OhlcCandle>();
+        }
+
+        var result = new List<OhlcCandle>();
+        var resolutionMs = (long)(resolutionHours * 60 * 60 * 1000);
+        var chunkSize = 500;
+        var fromMs = new DateTimeOffset(from, TimeSpan.Zero).ToUnixTimeMilliseconds();
+        var toMs = new DateTimeOffset(to, TimeSpan.Zero).ToUnixTimeMilliseconds();
+
+        var currentFrom = fromMs;
+        var chunkCount = 0;
+        while (currentFrom < toMs && !ct.IsCancellationRequested)
+        {
+            var currentTo = Math.Min(currentFrom + chunkSize * resolutionMs, toMs);
+            chunkCount++;
+
+            await ThrottleAsync(ct);
+            try
+            {
+                var routeId = GetInfoRouteId(instrumentId.Value);
+                if (routeId == null)
+                {
+                    _logger.LogWarning("GetHistoricalCandles: Keine INFO-Route fuer {Symbol}", symbol);
+                    break;
+                }
+
+                var url = $"trade/history?tradableInstrumentId={instrumentId.Value}&routeId={routeId}&resolution={resolution}&from={currentFrom}&to={currentTo}";
+                using var client = GetHttpClient();
+                var response = await client.GetAsync(url, ct);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errBody = await response.Content.ReadAsStringAsync(ct);
+                    _logger.LogWarning(
+                        "GetHistoricalCandles Chunk {Chunk} fehlgeschlagen: {Status} – {Body}",
+                        chunkCount, (int)response.StatusCode, Truncate(errBody, 300));
+                    HandleConnectionError(response.StatusCode, $"GetHistoricalCandles({symbol})");
+                    break;
+                }
+
+                var body = await response.Content.ReadAsStringAsync(ct);
+
+                // TradeLocker gibt {"s":"no_data"} wenn keine Daten verfuegbar
+                if (body.Contains("\"no_data\"", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogInformation(
+                        "GetHistoricalCandles Chunk {Chunk}: API meldet 'no_data'. " +
+                        "TradeLocker liefert moeglicherweise keine historischen Daten wenn der Markt geschlossen ist (Wochenende).",
+                        chunkCount);
+
+                    if (result.Count == 0)
+                    {
+                        // Erster Chunk hat keine Daten — abbrechen
+                        break;
+                    }
+                    // Spaetere Chunks: Luecke moeglich, weiter versuchen
+                    currentFrom = currentTo;
+                    continue;
+                }
+
+                var parsed = ParseCandles(body);
+                if (parsed != null && parsed.Count > 0)
+                {
+                    result.AddRange(parsed.Select(c => new OhlcCandle
+                    {
+                        Open = c.Open, High = c.High, Low = c.Low, Close = c.Close, Time = c.Time
+                    }));
+                    _logger.LogDebug("GetHistoricalCandles Chunk {Chunk}: {Count} Candles geladen", chunkCount, parsed.Count);
+                }
+                else
+                {
+                    _logger.LogDebug("GetHistoricalCandles Chunk {Chunk}: Keine Candles, Response (200c): {Body}",
+                        chunkCount, Truncate(body, 200));
+                    break;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "GetHistoricalCandles Chunk {Chunk} Exception fuer {Symbol}", chunkCount, symbol);
+                break;
+            }
+
+            currentFrom = currentTo;
+        }
+
+        // Deduplizieren und sortieren
+        var final = result
+            .GroupBy(c => c.Time)
+            .Select(g => g.First())
+            .OrderBy(c => c.Time)
+            .ToList();
+
+        _logger.LogInformation("GetHistoricalCandles: {Symbol} fertig, {Count} Candles total", symbol, final.Count);
+        return final;
     }
 
     public async Task<decimal> GetAccountCashAsync(CancellationToken ct = default)
@@ -1084,7 +1283,11 @@ public class TradeLockerService : IBrokerService
         {
             using var client = GetHttpClient();
             var response = await client.GetAsync($"trade/accounts/{_accountId}/positions", ct);
-            if (!response.IsSuccessStatusCode) return list;
+            if (!response.IsSuccessStatusCode)
+            {
+                HandleConnectionError(response.StatusCode, "GetPositions");
+                return list;
+            }
             var body = await response.Content.ReadAsStringAsync(ct);
             var parsedPositions = ParsePositions(body);
             if (parsedPositions == null || parsedPositions.Count == 0) return list;
@@ -1166,6 +1369,7 @@ public class TradeLockerService : IBrokerService
             _logger.LogDebug("TradeLocker PlaceOrder response: {Status} – {Body}", (int)response.StatusCode, Truncate(responseBody, 400));
             if (!response.IsSuccessStatusCode)
             {
+                HandleConnectionError(response.StatusCode, $"PlaceOrder({symbol})");
                 _logger.LogWarning("TradeLocker PlaceOrder failed: {StatusCode} – {Body}", (int)response.StatusCode, Truncate(responseBody, 400));
                 return new PlaceOrderResult { Success = false };
             }
@@ -1244,6 +1448,7 @@ public class TradeLockerService : IBrokerService
             var responseBody = await response.Content.ReadAsStringAsync(ct);
             if (!response.IsSuccessStatusCode)
             {
+                HandleConnectionError(response.StatusCode, $"ClosePosition({positionId})");
                 _logger.LogWarning("TradeLocker ClosePosition failed: {StatusCode} – {Body}", (int)response.StatusCode, Truncate(responseBody, 400));
                 return false;
             }

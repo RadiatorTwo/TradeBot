@@ -16,6 +16,7 @@ public class DashboardBroadcastService : BackgroundService
     private readonly IRiskManager _risk;
     private readonly MarketHoursService _marketHours;
     private readonly EconomicCalendarService _calendar;
+    private readonly PaperTradingBrokerDecorator _paperTrading;
     private readonly ILogger<DashboardBroadcastService> _logger;
 
     private static readonly TimeSpan ActiveInterval = TimeSpan.FromSeconds(3);
@@ -31,6 +32,7 @@ public class DashboardBroadcastService : BackgroundService
         IRiskManager risk,
         MarketHoursService marketHours,
         EconomicCalendarService calendar,
+        PaperTradingBrokerDecorator paperTrading,
         ILogger<DashboardBroadcastService> logger)
     {
         _hubContext = hubContext;
@@ -40,6 +42,7 @@ public class DashboardBroadcastService : BackgroundService
         _risk = risk;
         _marketHours = marketHours;
         _calendar = calendar;
+        _paperTrading = paperTrading;
         _logger = logger;
     }
 
@@ -152,6 +155,7 @@ public class DashboardBroadcastService : BackgroundService
             IsKillSwitchActive = _risk.IsKillSwitchActive,
             IsTradeLockerConnected = _broker.IsConnected,
             IsMarketOpen = _marketHours.IsMarketOpen(),
+            IsPaperTrading = _paperTrading.IsPaperTradingActive,
             MarketStatus = _marketHours.GetMarketStatus(),
             UpcomingEvents = _calendar.GetUpcomingHighImpactEvents(5)
                 .Select(e => new UpcomingEventViewModel

@@ -34,6 +34,9 @@ public interface IBrokerService
 
     /// <summary>Stop-Loss einer Position beim Broker aktualisieren (Trailing/Breakeven).</summary>
     Task<bool> UpdatePositionStopLossAsync(string positionId, decimal newStopLoss, CancellationToken ct = default);
+
+    /// <summary>Historische Candles fuer einen Datumsbereich laden (fuer Backtesting).</summary>
+    Task<List<OhlcCandle>> GetHistoricalCandlesAsync(string symbol, string resolution, DateTime from, DateTime to, CancellationToken ct = default);
 }
 
 // ── Simulierte Implementierung für Paper Trading / Entwicklung ─────────
@@ -249,6 +252,18 @@ public class SimulatedBrokerService : IBrokerService
 
     public Task<bool> UpdatePositionStopLossAsync(string positionId, decimal newStopLoss, CancellationToken ct = default)
         => Task.FromResult(true);
+
+    public async Task<List<OhlcCandle>> GetHistoricalCandlesAsync(string symbol, string resolution, DateTime from, DateTime to, CancellationToken ct = default)
+    {
+        var hours = (to - from).TotalHours;
+        var count = resolution switch
+        {
+            "1D" => (int)(hours / 24),
+            "4H" => (int)(hours / 4),
+            _ => (int)hours
+        };
+        return await GetCandlesAsync(symbol, resolution, Math.Max(count, 1), ct);
+    }
 }
 
 // ── Echte IB Gateway Implementierung (Platzhalter) ────────────────────

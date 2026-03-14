@@ -8,6 +8,7 @@
 @inject MarketHoursService MarketHours
 @inject EconomicCalendarService Calendar
 @inject IDbContextFactory<TradingDbContext> DbFactory
+@inject PaperTradingBrokerDecorator PaperTrading
 @inject NavigationManager Navigation
 @implements IAsyncDisposable
 
@@ -19,6 +20,10 @@
     <StatusBadge Text="@engineText" Color="@engineColor" />
     <StatusBadge Text="@(vm.IsTradeLockerConnected ? "TradeLocker Verbunden" : "TradeLocker Getrennt")"
                  Color="@(vm.IsTradeLockerConnected ? "green" : "red")" />
+    @if (vm.IsPaperTrading)
+    {
+        <StatusBadge Text="Paper-Trading Aktiv" Color="yellow" />
+    }
     @if (vm.IsKillSwitchActive)
     {
         <StatusBadge Text="Kill Switch Aktiv" Color="red" />
@@ -282,6 +287,7 @@
             IsKillSwitchActive = Risk.IsKillSwitchActive,
             IsTradeLockerConnected = Broker.IsConnected,
             IsMarketOpen = MarketHours.IsMarketOpen(),
+            IsPaperTrading = PaperTrading.IsPaperTradingActive,
             MarketStatus = MarketHours.GetMarketStatus(),
             UpcomingEvents = Calendar.GetUpcomingHighImpactEvents(5)
                 .Select(e => new UpcomingEventViewModel

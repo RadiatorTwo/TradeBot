@@ -625,6 +625,27 @@ public class TradeLockerCandle
     public long T { get => Time; set => Time = value; }
 }
 
+// ── Phase 5: Paper-Trading ─────────────────────────────────────────────
+
+/// <summary>Konfiguration fuer den Paper-Trading-Modus (simulierter Handel mit echten Marktdaten).</summary>
+public class PaperTradingSettings
+{
+    public bool Enabled { get; set; }
+    public decimal InitialBalance { get; set; } = 10000m;
+}
+
+// ── Phase 5: Multi-Timeframe ──────────────────────────────────────────
+
+/// <summary>Multi-Timeframe-Bestaetigung: EMA-Trend auf hoeherem Timeframe als Filter.</summary>
+public class MultiTimeframeSettings
+{
+    public bool Enabled { get; set; }
+    /// <summary>Hoeherer Timeframe fuer Trend-Bestaetigung (z.B. "4H", "1D").</summary>
+    public string HigherTimeframe { get; set; } = "4H";
+    /// <summary>EMA-Periode fuer Trend-Erkennung (z.B. 200).</summary>
+    public int EmaPeriod { get; set; } = 200;
+}
+
 // ── Dashboard View Models ──────────────────────────────────────────────
 
 public record DashboardViewModel
@@ -641,6 +662,7 @@ public record DashboardViewModel
     public bool IsKillSwitchActive { get; set; }
     public bool IsTradeLockerConnected { get; set; }
     public bool IsMarketOpen { get; set; }
+    public bool IsPaperTrading { get; set; }
     public string MarketStatus { get; set; } = string.Empty;
     public List<Position> Positions { get; set; } = new();
     public List<Trade> RecentTrades { get; set; } = new();

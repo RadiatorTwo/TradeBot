@@ -1,6 +1,6 @@
 # Claude Trading Bot - Feature Roadmap
 
-Stand: 13.03.2026
+Stand: 14.03.2026
 
 ---
 
@@ -349,10 +349,10 @@ Ziel: Ueberblick ob die Strategie funktioniert, ohne staendig das Dashboard zu c
 | 4.1 | Drawdown-Tracking | ~1h | MITTEL |
 | 4.2 | Korrelationscheck | ~2h | MITTEL |
 | 4.3 | Weekly/Monthly Loss Limits | ~1h | MITTEL |
-| 5.1 | Backtesting | ~8h | NIEDRIG |
-| 5.2 | Paper-Trading-Modus | ~3h | NIEDRIG |
-| 5.3 | Multi-Timeframe-Bestaetigung | ~3h | NIEDRIG |
-| 5.4 | Auto-Reconnect | ~1h | NIEDRIG |
+| 5.1 | Backtesting | ~8h | ~~NIEDRIG~~ FERTIG |
+| 5.2 | Paper-Trading-Modus | ~3h | ~~NIEDRIG~~ FERTIG |
+| 5.3 | Multi-Timeframe-Bestaetigung | ~3h | ~~NIEDRIG~~ FERTIG |
+| 5.4 | Auto-Reconnect | ~1h | ~~NIEDRIG~~ FERTIG |
 | | **Gesamt** | **~41h** | |
 
 Empfohlene Reihenfolge: Phase 1 → 2.3 → 2.1 → 3.3 → 3.1+3.2 → Rest nach Bedarf.

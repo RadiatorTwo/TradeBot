@@ -84,8 +84,8 @@ public class TechnicalAnalysisService
         return Math.Round(100m - (100m / (1m + rs)), 2);
     }
 
-    /// <summary>EMA (Exponential Moving Average).</summary>
-    private static decimal? CalculateEMA(List<decimal> closes, int period)
+    /// <summary>EMA (Exponential Moving Average). Public fuer Multi-Timeframe-Filter.</summary>
+    public static decimal? CalculateEMA(List<decimal> closes, int period)
     {
         if (closes.Count < period)
             return null;

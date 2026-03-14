@@ -16,6 +16,7 @@ public class TradingEngine : BackgroundService
     private readonly NotificationService _notification;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IOptionsMonitor<RiskSettings> _settingsMonitor;
+    private readonly IOptionsMonitor<MultiTimeframeSettings> _mtfSettings;
     private readonly IConfiguration _config;
     private readonly ILogger<TradingEngine> _logger;
 
@@ -41,6 +42,7 @@ public class TradingEngine : BackgroundService
         NotificationService notification,
         IServiceScopeFactory scopeFactory,
         IOptionsMonitor<RiskSettings> settingsMonitor,
+        IOptionsMonitor<MultiTimeframeSettings> mtfSettings,
         IConfiguration config,
         ILogger<TradingEngine> logger)
     {
@@ -54,6 +56,7 @@ public class TradingEngine : BackgroundService
         _notification = notification;
         _scopeFactory = scopeFactory;
         _settingsMonitor = settingsMonitor;
+        _mtfSettings = mtfSettings;
         _config = config;
         _logger = logger;
     }
@@ -106,6 +109,20 @@ public class TradingEngine : BackgroundService
             {
                 _logger.LogError(ex, "Error in trading cycle");
                 await LogAsync("Error", "TradingEngine", $"Fehler im Trading-Zyklus: {ex.Message}");
+
+                // Auto-Reconnect: bei Verbindungsverlust erneut verbinden
+                if (!_broker.IsConnected)
+                {
+                    _logger.LogWarning("Broker-Verbindung verloren. Versuche Reconnect...");
+                    try
+                    {
+                        await _broker.ConnectAsync(stoppingToken);
+                    }
+                    catch (Exception reconnectEx)
+                    {
+                        _logger.LogWarning(reconnectEx, "Reconnect im TradingEngine fehlgeschlagen.");
+                    }
+                }
             }
 
             // Interval bei jedem Durchlauf neu lesen (Config-Reload)
@@ -258,6 +275,23 @@ public class TradingEngine : BackgroundService
         {
             _logger.LogWarning("No recommendation received for {Symbol}", symbol);
             return;
+        }
+
+        // ── Multi-Timeframe-Filter (Phase 5.3) ──────────────────────────
+        if (!recommendation.Action.Equals("hold", StringComparison.OrdinalIgnoreCase))
+        {
+            var mtf = _mtfSettings.CurrentValue;
+            if (mtf.Enabled)
+            {
+                var blocked = await CheckMultiTimeframeFilter(symbol, recommendation.Action, mtf, ct);
+                if (blocked)
+                {
+                    _logger.LogInformation(
+                        "Multi-Timeframe-Filter: {Action} {Symbol} blockiert – gegen hoeheren Timeframe-Trend",
+                        recommendation.Action.ToUpper(), symbol);
+                    return;
+                }
+            }
         }
 
         using var scope = _scopeFactory.CreateScope();
@@ -421,6 +455,56 @@ public class TradingEngine : BackgroundService
 
         // Telegram-Notification
         _ = _notification.SendTradeNotificationAsync(trade);
+    }
+
+    /// <summary>
+    /// Multi-Timeframe-Filter: Prueft ob die LLM-Empfehlung mit dem hoeheren Timeframe-Trend uebereinstimmt.
+    /// Gibt true zurueck wenn der Trade blockiert werden soll.
+    /// </summary>
+    private async Task<bool> CheckMultiTimeframeFilter(
+        string symbol, string action, MultiTimeframeSettings mtf, CancellationToken ct)
+    {
+        try
+        {
+            var candleCount = mtf.EmaPeriod + 10;
+            var candles = await _broker.GetCandlesAsync(symbol, mtf.HigherTimeframe, candleCount, ct);
+
+            if (candles.Count < mtf.EmaPeriod)
+            {
+                _logger.LogDebug(
+                    "Multi-Timeframe: Nicht genuegend Candles fuer {Symbol} ({Count}/{Required}) – Filter uebersprungen",
+                    symbol, candles.Count, mtf.EmaPeriod);
+                return false; // Nicht blockieren wenn nicht genug Daten
+            }
+
+            var closes = candles.Select(c => c.Close).ToList();
+            var ema = TechnicalAnalysisService.CalculateEMA(closes, mtf.EmaPeriod);
+
+            if (!ema.HasValue)
+                return false;
+
+            var currentPrice = closes.Last();
+            var isUptrend = currentPrice > ema.Value;
+            var isBuy = action.Equals("buy", StringComparison.OrdinalIgnoreCase);
+
+            _logger.LogDebug(
+                "Multi-Timeframe {Symbol}: EMA{Period}={EMA:F5}, Price={Price:F5}, Trend={Trend}, Action={Action}",
+                symbol, mtf.EmaPeriod, ema.Value, currentPrice,
+                isUptrend ? "UP" : "DOWN", action.ToUpper());
+
+            // Blockiere Counter-Trend-Trades
+            if (isBuy && !isUptrend)
+                return true; // Buy blockiert bei Abwaertstrend
+            if (!isBuy && isUptrend)
+                return true; // Sell blockiert bei Aufwaertstrend
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Multi-Timeframe-Filter Fehler fuer {Symbol} – Filter uebersprungen", symbol);
+            return false;
+        }
     }
 
     /// <summary>

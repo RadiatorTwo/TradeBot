@@ -4,6 +4,7 @@ using ClaudeTradingBot.Hubs;
 using ClaudeTradingBot.Models;
 using ClaudeTradingBot.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -22,6 +23,8 @@ builder.Services.Configure<OpenAICompatibleSettings>(builder.Configuration.GetSe
 builder.Services.Configure<TradeLockerSettings>(builder.Configuration.GetSection("TradeLocker"));
 builder.Services.Configure<RiskSettings>(builder.Configuration.GetSection("RiskManagement"));
 builder.Services.Configure<TelegramSettings>(builder.Configuration.GetSection("Telegram"));
+builder.Services.Configure<PaperTradingSettings>(builder.Configuration.GetSection("PaperTrading"));
+builder.Services.Configure<MultiTimeframeSettings>(builder.Configuration.GetSection("MultiTimeframe"));
 
 // ── Datenbank ──────────────────────────────────────────────────────────
 // AddDbContextFactory fuer Blazor-Komponenten (kurzlebige Kontexte)
@@ -44,7 +47,12 @@ builder.Services.AddHttpClient(TradeLockerService.HttpClientName, (sp, client) =
 })
 .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddSingleton<TradeLockerService>();
-builder.Services.AddSingleton<IBrokerService>(sp => sp.GetRequiredService<TradeLockerService>());
+builder.Services.AddSingleton<PaperTradingBrokerDecorator>(sp =>
+    new PaperTradingBrokerDecorator(
+        sp.GetRequiredService<TradeLockerService>(),
+        sp.GetRequiredService<IOptionsMonitor<PaperTradingSettings>>(),
+        sp.GetRequiredService<ILogger<PaperTradingBrokerDecorator>>()));
+builder.Services.AddSingleton<IBrokerService>(sp => sp.GetRequiredService<PaperTradingBrokerDecorator>());
 builder.Services.AddSingleton<IRiskManager, RiskManager>();
 builder.Services.AddSingleton<TechnicalAnalysisService>();
 builder.Services.AddSingleton<TradingSessionService>();
@@ -52,6 +60,9 @@ builder.Services.AddSingleton<MarketHoursService>();
 builder.Services.AddSingleton<NotificationService>();
 builder.Services.AddSingleton<EconomicCalendarService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<EconomicCalendarService>());
+
+// ── Backtesting Engine ────────────────────────────────────────────────
+builder.Services.AddTransient<BacktestEngine>();
 
 // ── Trading Engine (Background Service) ────────────────────────────────
 builder.Services.AddSingleton<TradingEngine>();
