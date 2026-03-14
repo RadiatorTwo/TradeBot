@@ -8,16 +8,18 @@ namespace ClaudeTradingBot.Services;
 /// </summary>
 public class BacktestEngine
 {
-    private readonly IBrokerService _broker;
+    private readonly AccountManager _accountMgr;
     private readonly TechnicalAnalysisService _ta;
     private readonly ILogger<BacktestEngine> _logger;
 
+    private IBrokerService? Broker => _accountMgr.DefaultAccount?.EffectiveBroker;
+
     public BacktestEngine(
-        IBrokerService broker,
+        AccountManager accountMgr,
         TechnicalAnalysisService ta,
         ILogger<BacktestEngine> logger)
     {
-        _broker = broker;
+        _accountMgr = accountMgr;
         _ta = ta;
         _logger = logger;
     }
@@ -34,13 +36,13 @@ public class BacktestEngine
                 "Backtest Start: {Symbol} {Timeframe} von {From:dd.MM.yyyy} bis {To:dd.MM.yyyy}, Strategie={Strategy}",
                 config.Symbol, config.Timeframe, config.StartDate, config.EndDate, config.Strategy);
 
-            if (!_broker.IsConnected)
+            if (Broker == null || !Broker.IsConnected)
             {
-                result.ErrorMessage = "Broker nicht verbunden. Bitte sicherstellen, dass TradeLocker verbunden ist.";
+                result.ErrorMessage = "Kein Account konfiguriert oder Broker nicht verbunden. Bitte unter /accounts einen Account anlegen.";
                 return result;
             }
 
-            var candles = await _broker.GetHistoricalCandlesAsync(
+            var candles = await Broker.GetHistoricalCandlesAsync(
                 config.Symbol, config.Timeframe, config.StartDate, config.EndDate, ct);
 
             if (candles.Count < 50)

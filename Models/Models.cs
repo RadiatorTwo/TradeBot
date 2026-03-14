@@ -151,6 +151,32 @@ public class TradingLog
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 }
 
+// ── Settings-Entities (DB statt appsettings.json) ────────────────────
+
+/// <summary>Per-Account Einstellungen in der DB. JSON-Spalten statt 30+ Einzelspalten.</summary>
+public class AccountSettingsEntity
+{
+    [Key]
+    public string AccountId { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
+    public string TradeLockerJson { get; set; } = "{}";
+    public string RiskSettingsJson { get; set; } = "{}";
+    public string PaperTradingJson { get; set; } = "{}";
+    public string WatchListJson { get; set; } = "[]";
+    public string StrategyPrompt { get; set; } = string.Empty;
+    public string StrategyLabel { get; set; } = string.Empty;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>Globale Key-Value-Settings in der DB.</summary>
+public class GlobalSettingsEntity
+{
+    [Key]
+    public string Key { get; set; } = string.Empty;
+    public string ValueJson { get; set; } = "{}";
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
 // ── Claude API DTOs ────────────────────────────────────────────────────
 
 public class ClaudeAnalysisRequest
@@ -283,7 +309,7 @@ public class AccountConfig
     public PaperTradingSettings PaperTrading { get; set; } = new();
 
     // ── Phase 7.3: Strategie-Profil ─────────────────────────────────
-    /// <summary>Per-Account Watchlist. Leer = globale Watchlist aus TradingStrategy:WatchList.</summary>
+    /// <summary>Per-Account Watchlist. Leer = globale Watchlist aus DB (GlobalSettings).</summary>
     public List<string> WatchList { get; set; } = new();
     /// <summary>Optionaler Custom-System-Prompt fuer das LLM. Leer = Standard-Prompt.</summary>
     public string StrategyPrompt { get; set; } = string.Empty;

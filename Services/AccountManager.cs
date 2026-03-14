@@ -6,62 +6,61 @@ namespace ClaudeTradingBot.Services;
 /// <summary>
 /// Verwaltet alle Account-Kontexte. Erstellt pro konfiguriertem Account einen Satz
 /// von Services (Broker, RiskManager, TradingEngine). Implementiert IHostedService
-/// um die Engines zu starten/stoppen.
+/// um die Engines zu starten/stoppen. Liest Settings aus der DB via ISettingsRepository.
+/// Kann ohne Accounts starten – Accounts werden ueber die UI angelegt.
 /// </summary>
 public class AccountManager : IHostedService
 {
     private readonly List<AccountContext> _accounts = new();
     private readonly IServiceProvider _sp;
     private readonly IConfiguration _config;
+    private readonly ISettingsRepository _settingsRepo;
     private readonly ILogger<AccountManager> _logger;
 
     public IReadOnlyList<AccountContext> Accounts => _accounts;
-    public AccountContext DefaultAccount => _accounts[0];
 
-    public AccountContext GetAccount(string? accountId)
+    /// <summary>Erster Account oder null wenn keine Accounts konfiguriert sind.</summary>
+    public AccountContext? DefaultAccount => _accounts.Count > 0 ? _accounts[0] : null;
+
+    public bool HasAccounts => _accounts.Count > 0;
+
+    public AccountContext? GetAccount(string? accountId)
     {
+        if (!HasAccounts) return null;
         if (string.IsNullOrEmpty(accountId))
             return DefaultAccount;
         return _accounts.FirstOrDefault(a => a.AccountId.Equals(accountId, StringComparison.OrdinalIgnoreCase))
             ?? DefaultAccount;
     }
 
-    public AccountManager(IServiceProvider sp, IConfiguration config, ILogger<AccountManager> logger)
+    public AccountManager(IServiceProvider sp, IConfiguration config, ISettingsRepository settingsRepo, ILogger<AccountManager> logger)
     {
         _sp = sp;
         _config = config;
+        _settingsRepo = settingsRepo;
         _logger = logger;
-
-        BuildAccounts();
     }
 
-    private void BuildAccounts()
+    private async Task BuildAccountsAsync()
     {
-        var accountConfigs = _config.GetSection("Accounts").Get<List<AccountConfig>>();
+        var accountConfigs = await _settingsRepo.GetAllAccountsAsync();
+        var globalWatchList = await _settingsRepo.GetGlobalWatchListAsync();
 
-        if (accountConfigs == null || accountConfigs.Count == 0)
+        if (accountConfigs.Count == 0)
         {
-            // Backwards-Kompatibilitaet: einzelner Account aus Top-Level-Konfiguration
-            var singleConfig = new AccountConfig
-            {
-                Id = "default",
-                DisplayName = "Standard",
-                TradeLocker = _config.GetSection("TradeLocker").Get<TradeLockerSettings>() ?? new(),
-                RiskManagement = _config.GetSection("RiskManagement").Get<RiskSettings>() ?? new(),
-                PaperTrading = _config.GetSection("PaperTrading").Get<PaperTradingSettings>() ?? new()
-            };
-            accountConfigs = new List<AccountConfig> { singleConfig };
+            _logger.LogInformation("Keine Accounts in der Datenbank. Bitte unter /accounts einen Account anlegen.");
+            return;
         }
 
         foreach (var cfg in accountConfigs)
         {
-            var ctx = CreateAccountContext(cfg);
+            var ctx = CreateAccountContext(cfg, globalWatchList);
             _accounts.Add(ctx);
             _logger.LogInformation("Account registriert: {Id} ({Name})", ctx.AccountId, ctx.DisplayName);
         }
     }
 
-    private AccountContext CreateAccountContext(AccountConfig cfg)
+    private AccountContext CreateAccountContext(AccountConfig cfg, List<string> globalWatchList)
     {
         var httpFactory = _sp.GetRequiredService<IHttpClientFactory>();
         var loggerFactory = _sp.GetRequiredService<ILoggerFactory>();
@@ -72,15 +71,15 @@ public class AccountManager : IHostedService
             loggerFactory.CreateLogger<TradeLockerService>());
 
         // Per-Account PaperTrading Decorator
-        var paperSettings = new OptionsWrapper<PaperTradingSettings>(cfg.PaperTrading);
+        var paperMonitor = new MutableOptionsMonitor<PaperTradingSettings>(cfg.PaperTrading);
         var paperTrading = new PaperTradingBrokerDecorator(
-            broker, new OptionsMonitorWrapper<PaperTradingSettings>(paperSettings),
+            broker, paperMonitor,
             loggerFactory.CreateLogger<PaperTradingBrokerDecorator>());
 
         // Per-Account RiskManager
-        var riskSettings = new OptionsWrapper<RiskSettings>(cfg.RiskManagement);
+        var riskMonitor = new MutableOptionsMonitor<RiskSettings>(cfg.RiskManagement);
         var riskManager = new RiskManager(
-            new OptionsMonitorWrapper<RiskSettings>(riskSettings),
+            riskMonitor,
             paperTrading,
             _sp.GetRequiredService<NotificationService>(),
             _sp.GetRequiredService<IServiceScopeFactory>(),
@@ -90,10 +89,9 @@ public class AccountManager : IHostedService
         // Watchlist: per-Account oder Fallback auf globale
         var watchList = cfg.WatchList.Count > 0
             ? cfg.WatchList.ToArray()
-            : _config.GetSection("TradingStrategy:WatchList").Get<string[]>() ?? Array.Empty<string>();
+            : globalWatchList.ToArray();
 
         // Per-Account TradingEngine
-        var riskMonitor = new OptionsMonitorWrapper<RiskSettings>(riskSettings);
         var mtfSettings = _sp.GetRequiredService<IOptionsMonitor<MultiTimeframeSettings>>();
         var engine = new TradingEngine(
             _sp.GetRequiredService<IClaudeService>(),
@@ -128,12 +126,56 @@ public class AccountManager : IHostedService
             RiskSettings = cfg.RiskManagement,
             WatchList = watchList,
             StrategyPrompt = cfg.StrategyPrompt,
-            StrategyLabel = cfg.StrategyLabel
+            StrategyLabel = cfg.StrategyLabel,
+            RiskMonitor = riskMonitor,
+            PaperTradingMonitor = paperMonitor
         };
+    }
+
+    /// <summary>
+    /// Hot-Reload: Liest Account-Settings aus der DB und aktualisiert die laufenden Services.
+    /// Wirksam fuer: RiskSettings, Watchlist, StrategyPrompt, PaperTrading.
+    /// </summary>
+    public async Task ReloadAccountSettingsAsync(string accountId)
+    {
+        var cfg = await _settingsRepo.GetAccountAsync(accountId);
+        if (cfg == null) return;
+
+        var ctx = _accounts.FirstOrDefault(a => a.AccountId == accountId);
+        if (ctx == null) return;
+
+        var globalWatchList = await _settingsRepo.GetGlobalWatchListAsync();
+
+        // RiskSettings hot-reload
+        ctx.RiskMonitor.Update(cfg.RiskManagement);
+
+        // PaperTrading hot-reload
+        ctx.PaperTradingMonitor.Update(cfg.PaperTrading);
+
+        // Watchlist hot-reload (atomarer Array-Swap)
+        var watchList = cfg.WatchList.Count > 0
+            ? cfg.WatchList.ToArray()
+            : globalWatchList.ToArray();
+        ctx.WatchList = watchList;
+        ctx.Engine.AccountWatchList = watchList;
+
+        // StrategyPrompt hot-reload
+        ctx.StrategyPrompt = cfg.StrategyPrompt;
+        ctx.Engine.StrategyPrompt = cfg.StrategyPrompt;
+
+        _logger.LogInformation("Account {Id} Settings aus Datenbank neu geladen", accountId);
+    }
+
+    /// <summary>Hot-Reload fuer alle Accounts.</summary>
+    public async Task ReloadAllAccountSettingsAsync()
+    {
+        await Task.WhenAll(_accounts.Select(ctx => ReloadAccountSettingsAsync(ctx.AccountId)));
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        await BuildAccountsAsync();
+
         foreach (var ctx in _accounts)
         {
             _logger.LogInformation("Starte TradingEngine fuer Account {Id}...", ctx.AccountId);
@@ -151,12 +193,40 @@ public class AccountManager : IHostedService
     }
 }
 
-/// <summary>Einfacher IOptionsMonitor-Wrapper fuer statische Settings (kein Hot-Reload).</summary>
-internal class OptionsMonitorWrapper<T> : IOptionsMonitor<T> where T : class
+/// <summary>Thread-sicherer IOptionsMonitor-Wrapper mit Update()-Methode fuer Hot-Reload.</summary>
+public class MutableOptionsMonitor<T> : IOptionsMonitor<T> where T : class
 {
-    private readonly T _value;
-    public OptionsMonitorWrapper(IOptions<T> options) => _value = options.Value;
+    private volatile T _value;
+    private readonly List<Action<T, string?>> _listeners = new();
+    private readonly object _lock = new();
+
+    public MutableOptionsMonitor(T initial) => _value = initial;
+
     public T CurrentValue => _value;
     public T Get(string? name) => _value;
-    public IDisposable? OnChange(Action<T, string?> listener) => null;
+
+    public IDisposable? OnChange(Action<T, string?> listener)
+    {
+        lock (_lock) { _listeners.Add(listener); }
+        return new ChangeRegistration(() =>
+        {
+            lock (_lock) { _listeners.Remove(listener); }
+        });
+    }
+
+    public void Update(T newValue)
+    {
+        _value = newValue;
+        List<Action<T, string?>> snapshot;
+        lock (_lock) { snapshot = _listeners.ToList(); }
+        foreach (var listener in snapshot)
+        {
+            listener(newValue, null);
+        }
+    }
+
+    private sealed class ChangeRegistration(Action onDispose) : IDisposable
+    {
+        public void Dispose() => onDispose();
+    }
 }

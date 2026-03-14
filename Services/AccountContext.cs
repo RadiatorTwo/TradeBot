@@ -15,7 +15,11 @@ public class AccountContext
     public RiskSettings RiskSettings { get; init; } = new();
 
     // ── Strategie-Profil (Phase 7.3) ────────────────────────────────
-    public string[] WatchList { get; init; } = Array.Empty<string>();
-    public string StrategyPrompt { get; init; } = string.Empty;
+    public string[] WatchList { get; set; } = Array.Empty<string>();
+    public string StrategyPrompt { get; set; } = string.Empty;
     public string StrategyLabel { get; init; } = string.Empty;
+
+    // ── Monitor-Referenzen fuer Hot-Reload ──────────────────────────
+    public MutableOptionsMonitor<RiskSettings> RiskMonitor { get; init; } = null!;
+    public MutableOptionsMonitor<PaperTradingSettings> PaperTradingMonitor { get; init; } = null!;
 }

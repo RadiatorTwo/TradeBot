@@ -15,17 +15,16 @@ Log.Logger = new LoggerConfiguration()
     .CreateLogger();
 builder.Host.UseSerilog();
 
-// ── Konfiguration binden ───────────────────────────────────────────────
+// ── Konfiguration binden (Infrastruktur/Secrets – bleiben in appsettings.json) ──
 builder.Services.Configure<LlmSettings>(builder.Configuration.GetSection("Llm"));
 builder.Services.Configure<AnthropicSettings>(builder.Configuration.GetSection("Anthropic"));
 builder.Services.Configure<GeminiSettings>(builder.Configuration.GetSection("Gemini"));
 builder.Services.Configure<OpenAICompatibleSettings>(builder.Configuration.GetSection("OpenAICompatible"));
-builder.Services.Configure<TradeLockerSettings>(builder.Configuration.GetSection("TradeLocker"));
-builder.Services.Configure<RiskSettings>(builder.Configuration.GetSection("RiskManagement"));
 builder.Services.Configure<TelegramSettings>(builder.Configuration.GetSection("Telegram"));
-builder.Services.Configure<PaperTradingSettings>(builder.Configuration.GetSection("PaperTrading"));
-builder.Services.Configure<MultiTimeframeSettings>(builder.Configuration.GetSection("MultiTimeframe"));
 builder.Services.Configure<NewsSettings>(builder.Configuration.GetSection("News"));
+// Leere Defaults fuer DI – echte Werte kommen per-Account aus DB via MutableOptionsMonitor
+builder.Services.Configure<RiskSettings>(_ => { });
+builder.Services.Configure<MultiTimeframeSettings>(_ => { });
 
 // ── Datenbank ──────────────────────────────────────────────────────────
 // AddDbContextFactory fuer Blazor-Komponenten (kurzlebige Kontexte)
@@ -60,17 +59,14 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<NewsSentimentServi
 // ── Backtesting Engine ────────────────────────────────────────────────
 builder.Services.AddTransient<BacktestEngine>();
 
+// ── Settings-Repository (DB statt appsettings.json) ─────────────────
+builder.Services.AddSingleton<ISettingsRepository, SettingsRepository>();
+
 // ── Multi-Account Manager (erstellt per-Account: Broker, RiskManager, TradingEngine) ──
 builder.Services.AddSingleton<AccountManager>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<AccountManager>());
 
-// Backwards-Kompatibilitaet: Default-Account Services fuer bestehende Injections
-builder.Services.AddSingleton<TradingEngine>(sp => sp.GetRequiredService<AccountManager>().DefaultAccount.Engine);
-builder.Services.AddSingleton<IBrokerService>(sp => sp.GetRequiredService<AccountManager>().DefaultAccount.EffectiveBroker);
-builder.Services.AddSingleton<IRiskManager>(sp => sp.GetRequiredService<AccountManager>().DefaultAccount.Risk);
-builder.Services.AddSingleton<PaperTradingBrokerDecorator>(sp => sp.GetRequiredService<AccountManager>().DefaultAccount.PaperTrading);
-
-// ── Position Sync Service (synchronisiert DB mit Broker) ───────────────
+// ── Position Sync Service (synchronisiert DB mit Broker, iteriert ueber alle Accounts) ──
 builder.Services.AddHostedService<PositionSyncService>();
 
 // ── Dashboard Broadcast (SignalR-Push alle 3s) ─────────────────────────
@@ -98,6 +94,7 @@ using (var scope = app.Services.CreateScope())
         var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
         logger.LogInformation("{Count} alte Trades von 'Failed' auf 'Rejected' migriert", rejectedCount);
     }
+
 }
 
 // ── Middleware ──────────────────────────────────────────────────────────

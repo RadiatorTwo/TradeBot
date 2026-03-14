@@ -3,6 +3,7 @@
 @using ClaudeTradingBot.Services
 @inject BacktestEngine BacktestEngine
 @inject IConfiguration Configuration
+@inject ISettingsRepository SettingsRepo
 
 <PageTitle>Backtest - Claude Trading Bot</PageTitle>
 
@@ -163,10 +164,13 @@
     private DateTime _startDate = DateTime.UtcNow.AddDays(-30).Date;
     private DateTime _endDate = DateTime.UtcNow.Date;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        _watchList = Configuration.GetSection("TradingStrategy:WatchList").Get<string[]>()
-            ?? new[] { "EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "US100" };
+        var dbWatchList = await SettingsRepo.GetGlobalWatchListAsync();
+        _watchList = dbWatchList.Count > 0
+            ? dbWatchList.ToArray()
+            : Configuration.GetSection("TradingStrategy:WatchList").Get<string[]>()
+                ?? new[] { "EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "US100" };
         _config.Symbol = _watchList.FirstOrDefault() ?? "EURUSD";
     }
 

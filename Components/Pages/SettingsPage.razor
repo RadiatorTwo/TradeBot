@@ -1,15 +1,16 @@
 @page "/settings"
-@using System.Text.Json
-@using System.Text.Json.Nodes
+@using ClaudeTradingBot.Models
+@using ClaudeTradingBot.Services
+@inject ISettingsRepository SettingsRepo
+@inject AccountManager AccountMgr
 @inject IConfiguration Configuration
-@inject IWebHostEnvironment Env
 
 <PageTitle>Einstellungen - Claude Trading Bot</PageTitle>
 
 <h2 style="margin-bottom: 24px;">Einstellungen</h2>
 
 <div class="warning-banner">
-    Aenderungen werden sofort in appsettings.json geschrieben und bei Nutzung von IOptionsMonitor automatisch wirksam.
+    Aenderungen werden in die Datenbank geschrieben und sind sofort wirksam (kein Neustart noetig).
 </div>
 
 @if (_saveSuccess)
@@ -191,9 +192,13 @@
     private bool _saveSuccess;
     private List<string> _errors = new();
 
-    protected override void OnInitialized()
+    // Gewaehlter Account (Default-Account fuer globale Settings)
+    private string _selectedAccountId = string.Empty;
+
+    protected override async Task OnInitializedAsync()
     {
-        LoadCurrentValues();
+        _selectedAccountId = AccountMgr.DefaultAccount?.AccountId ?? string.Empty;
+        await LoadCurrentValuesAsync();
     }
 
     private async Task SaveSettings()
@@ -220,67 +225,79 @@
         if (_errors.Any())
             return;
 
-        var appSettingsPath = Path.Combine(Env.ContentRootPath, "appsettings.json");
-        var json = await File.ReadAllTextAsync(appSettingsPath);
-        var doc = JsonNode.Parse(json, documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip })!;
+        try
+        {
+            // Global WatchList in DB speichern
+            var watchItems = WatchList
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
+            await SettingsRepo.SaveGlobalWatchListAsync(watchItems);
 
-        // WatchList
-        var watchItems = WatchList
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .ToArray();
-        var strategyNode = doc["TradingStrategy"] ??= new JsonObject();
-        strategyNode["WatchList"] = new JsonArray(watchItems.Select(w => (JsonNode)JsonValue.Create(w)!).ToArray());
+            // Account-spezifische Settings in DB speichern
+            var account = await SettingsRepo.GetAccountAsync(_selectedAccountId);
+            if (account != null)
+            {
+                account.RiskManagement.MinConfidence = MinConfidence;
+                account.RiskManagement.MaxPositionSizePercent = MaxPositionSizePercent;
+                account.RiskManagement.MaxDailyLossPercent = MaxDailyLossPercent;
+                account.RiskManagement.StopLossPercent = StopLossPercent;
+                account.RiskManagement.MaxOpenPositions = MaxOpenPositions;
+                account.RiskManagement.TradingIntervalMinutes = TradingIntervalMinutes;
+                account.RiskManagement.MaxDailyLossAbsolute = MaxDailyLossAbsolute;
+                account.PaperTrading.Enabled = PaperTradingEnabled;
+                account.PaperTrading.InitialBalance = PaperTradingBalance;
+                await SettingsRepo.SaveAccountAsync(account);
 
-        // RiskManagement
-        var riskNode = doc["RiskManagement"] ??= new JsonObject();
-        riskNode["MinConfidence"] = MinConfidence;
-        riskNode["MaxPositionSizePercent"] = MaxPositionSizePercent;
-        riskNode["MaxDailyLossPercent"] = MaxDailyLossPercent;
-        riskNode["StopLossPercent"] = StopLossPercent;
-        riskNode["MaxOpenPositions"] = MaxOpenPositions;
-        riskNode["TradingIntervalMinutes"] = TradingIntervalMinutes;
-        riskNode["MaxDailyLossAbsolute"] = MaxDailyLossAbsolute;
+                // Hot-Reload
+                await AccountMgr.ReloadAccountSettingsAsync(_selectedAccountId);
+            }
 
-        // Paper-Trading
-        var paperNode = doc["PaperTrading"] ??= new JsonObject();
-        paperNode["Enabled"] = PaperTradingEnabled;
-        paperNode["InitialBalance"] = PaperTradingBalance;
+            // MultiTimeframe in DB speichern
+            var mtf = new MultiTimeframeSettings
+            {
+                Enabled = MultiTimeframeEnabled,
+                HigherTimeframe = MultiTimeframeHigherTf,
+                EmaPeriod = MultiTimeframeEmaPeriod
+            };
+            await SettingsRepo.SaveMultiTimeframeSettingsAsync(mtf);
 
-        // Multi-Timeframe
-        var mtfNode = doc["MultiTimeframe"] ??= new JsonObject();
-        mtfNode["Enabled"] = MultiTimeframeEnabled;
-        mtfNode["HigherTimeframe"] = MultiTimeframeHigherTf;
-        mtfNode["EmaPeriod"] = MultiTimeframeEmaPeriod;
-
-        var options = new JsonSerializerOptions { WriteIndented = true };
-        await File.WriteAllTextAsync(appSettingsPath, doc.ToJsonString(options));
-
-        _saveSuccess = true;
-        LoadCurrentValues();
+            _saveSuccess = true;
+            await LoadCurrentValuesAsync();
+        }
+        catch (Exception ex)
+        {
+            _errors.Add($"Fehler beim Speichern: {ex.Message}");
+        }
     }
 
-    private void LoadCurrentValues()
+    private async Task LoadCurrentValuesAsync()
     {
-        var watchArray = Configuration.GetSection("TradingStrategy:WatchList").Get<string[]>() ?? Array.Empty<string>();
-        WatchList = string.Join(", ", watchArray);
+        // Watchlist aus DB
+        var globalWatchList = await SettingsRepo.GetGlobalWatchListAsync();
+        WatchList = string.Join(", ", globalWatchList);
 
-        MinConfidence = Configuration.GetValue("RiskManagement:MinConfidence", 0.65);
-        MaxPositionSizePercent = Configuration.GetValue("RiskManagement:MaxPositionSizePercent", 10.0);
-        MaxDailyLossPercent = Configuration.GetValue("RiskManagement:MaxDailyLossPercent", 3.0);
-        StopLossPercent = Configuration.GetValue("RiskManagement:StopLossPercent", 5.0);
-        MaxOpenPositions = Configuration.GetValue("RiskManagement:MaxOpenPositions", 10);
-        TradingIntervalMinutes = Configuration.GetValue("RiskManagement:TradingIntervalMinutes", 15);
-        MaxDailyLossAbsolute = Configuration.GetValue("RiskManagement:MaxDailyLossAbsolute", 500m);
+        // Account-Settings aus DB
+        var account = await SettingsRepo.GetAccountAsync(_selectedAccountId);
+        if (account != null)
+        {
+            MinConfidence = account.RiskManagement.MinConfidence;
+            MaxPositionSizePercent = account.RiskManagement.MaxPositionSizePercent;
+            MaxDailyLossPercent = account.RiskManagement.MaxDailyLossPercent;
+            StopLossPercent = account.RiskManagement.StopLossPercent;
+            MaxOpenPositions = account.RiskManagement.MaxOpenPositions;
+            TradingIntervalMinutes = account.RiskManagement.TradingIntervalMinutes;
+            MaxDailyLossAbsolute = account.RiskManagement.MaxDailyLossAbsolute;
+            PaperTradingEnabled = account.PaperTrading.Enabled;
+            PaperTradingBalance = account.PaperTrading.InitialBalance;
+        }
 
-        // Paper-Trading
-        PaperTradingEnabled = Configuration.GetValue("PaperTrading:Enabled", false);
-        PaperTradingBalance = Configuration.GetValue("PaperTrading:InitialBalance", 10000m);
+        // MultiTimeframe aus DB
+        var mtf = await SettingsRepo.GetMultiTimeframeSettingsAsync();
+        MultiTimeframeEnabled = mtf.Enabled;
+        MultiTimeframeHigherTf = mtf.HigherTimeframe;
+        MultiTimeframeEmaPeriod = mtf.EmaPeriod;
 
-        // Multi-Timeframe
-        MultiTimeframeEnabled = Configuration.GetValue("MultiTimeframe:Enabled", true);
-        MultiTimeframeHigherTf = Configuration.GetValue<string>("MultiTimeframe:HigherTimeframe") ?? "4H";
-        MultiTimeframeEmaPeriod = Configuration.GetValue("MultiTimeframe:EmaPeriod", 200);
-
+        // API-Config bleibt in appsettings.json (readonly)
         _llmProvider = Configuration.GetValue<string>("Llm:Provider") ?? "Gemini";
         _anthropicKeyMasked = MaskKey(Configuration.GetValue<string>("Anthropic:ApiKey"));
         _geminiKeyMasked = MaskKey(Configuration.GetValue<string>("Gemini:ApiKey"));

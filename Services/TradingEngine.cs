@@ -29,10 +29,10 @@ public class TradingEngine : BackgroundService
     public string AccountId { get; init; } = "default";
 
     /// <summary>Per-Account Watchlist. Leer = globale Watchlist aus Config.</summary>
-    public string[] AccountWatchList { get; init; } = Array.Empty<string>();
+    public string[] AccountWatchList { get; set; } = Array.Empty<string>();
 
     /// <summary>Optionaler Custom-System-Prompt (Phase 7.3).</summary>
-    public string StrategyPrompt { get; init; } = string.Empty;
+    public string StrategyPrompt { get; set; } = string.Empty;
 
     private volatile bool _isRunning;
     public bool IsRunning => _isRunning;

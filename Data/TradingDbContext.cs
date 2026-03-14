@@ -11,6 +11,8 @@ public class TradingDbContext : DbContext
     public DbSet<Position> Positions => Set<Position>();
     public DbSet<DailyPnL> DailyPnLs => Set<DailyPnL>();
     public DbSet<TradingLog> TradingLogs => Set<TradingLog>();
+    public DbSet<AccountSettingsEntity> AccountSettings => Set<AccountSettingsEntity>();
+    public DbSet<GlobalSettingsEntity> GlobalSettings => Set<GlobalSettingsEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

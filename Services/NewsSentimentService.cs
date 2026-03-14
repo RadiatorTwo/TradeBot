@@ -14,6 +14,7 @@ public class NewsSentimentService : BackgroundService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IOptionsMonitor<NewsSettings> _settingsMonitor;
     private readonly IConfiguration _config;
+    private readonly ISettingsRepository _settingsRepo;
     private readonly ILogger<NewsSentimentService> _logger;
 
     public const string HttpClientName = "Finnhub";
@@ -27,11 +28,13 @@ public class NewsSentimentService : BackgroundService
         IHttpClientFactory httpClientFactory,
         IOptionsMonitor<NewsSettings> settingsMonitor,
         IConfiguration config,
+        ISettingsRepository settingsRepo,
         ILogger<NewsSentimentService> logger)
     {
         _httpClientFactory = httpClientFactory;
         _settingsMonitor = settingsMonitor;
         _config = config;
+        _settingsRepo = settingsRepo;
         _logger = logger;
     }
 
@@ -81,7 +84,10 @@ public class NewsSentimentService : BackgroundService
 
     private async Task RefreshHeadlinesAsync(CancellationToken ct)
     {
-        var watchList = _config.GetSection("TradingStrategy:WatchList").Get<string[]>() ?? Array.Empty<string>();
+        var dbWatchList = await _settingsRepo.GetGlobalWatchListAsync();
+        var watchList = dbWatchList.Count > 0
+            ? dbWatchList.ToArray()
+            : _config.GetSection("TradingStrategy:WatchList").Get<string[]>() ?? Array.Empty<string>();
 
         // Einzigartige Waehrungen/Symbole extrahieren
         var currencies = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

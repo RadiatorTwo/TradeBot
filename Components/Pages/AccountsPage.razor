@@ -1,9 +1,8 @@
 @page "/accounts"
-@using System.Text.Json
-@using System.Text.Json.Nodes
+@using ClaudeTradingBot.Models
+@using ClaudeTradingBot.Services
 @inject AccountManager AccountMgr
-@inject IConfiguration Configuration
-@inject IWebHostEnvironment Env
+@inject ISettingsRepository SettingsRepo
 
 <PageTitle>Accounts - Claude Trading Bot</PageTitle>
 
@@ -17,7 +16,7 @@
 
 @if (_saveSuccess)
 {
-    <div class="success-banner">Gespeichert. Neustart erforderlich damit Aenderungen wirksam werden.</div>
+    <div class="success-banner">Gespeichert. Neustart erforderlich damit neue/geloeschte Accounts wirksam werden. Risiko-/Watchlist-Aenderungen sind sofort aktiv.</div>
 }
 
 @if (_errors.Any())
@@ -41,8 +40,8 @@
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
                 <div class="form-group">
                     <label>Kurzname (ID)</label>
-                    <input type="text" @bind="_editId" disabled="@_editMode" placeholder="Demo1" />
-                    <div class="hint">Wird intern als Bezeichner verwendet</div>
+                    <input type="text" @bind="_editId" placeholder="Demo1" />
+                    <div class="hint">Wird intern als Bezeichner verwendet. @(_editMode ? "Aendern erfordert Neustart." : "")</div>
                 </div>
                 <div class="form-group">
                     <label>Anzeigename</label>
@@ -117,6 +116,13 @@
 }
 
 @* ── Account-Karten ──────────────────────────────────────────────────── *@
+@if (_accounts.Count == 0 && !_showForm)
+{
+    <div class="warning-banner">
+        Noch keine Accounts vorhanden. Legen Sie oben einen neuen Account an um den Trading Bot zu starten.
+    </div>
+}
+
 @foreach (var acc in _accounts)
 {
     var liveCtx = AccountMgr.Accounts.FirstOrDefault(a => a.AccountId == acc.Id);
@@ -191,6 +197,7 @@
 
     // Form-Felder
     private string _editId = string.Empty;
+    private string? _editOriginalId; // Original-ID beim Bearbeiten (fuer Rename)
     private string _editDisplayName = string.Empty;
     private string _editBaseUrl = "https://demo.tradelocker.com/backend-api";
     private string _editServer = string.Empty;
@@ -202,29 +209,11 @@
     private double _editMaxPosSize = 10.0;
     private int _editMaxOpenPos = 10;
 
-    protected override void OnInitialized() => LoadAccounts();
+    protected override async Task OnInitializedAsync() => await LoadAccountsAsync();
 
-    private void LoadAccounts()
+    private async Task LoadAccountsAsync()
     {
-        var configured = Configuration.GetSection("Accounts").Get<List<AccountConfig>>();
-        if (configured != null && configured.Count > 0)
-        {
-            _accounts = configured;
-        }
-        else
-        {
-            _accounts = new List<AccountConfig>
-            {
-                new AccountConfig
-                {
-                    Id = "default",
-                    DisplayName = "Standard",
-                    TradeLocker = Configuration.GetSection("TradeLocker").Get<TradeLockerSettings>() ?? new(),
-                    RiskManagement = Configuration.GetSection("RiskManagement").Get<RiskSettings>() ?? new(),
-                    PaperTrading = Configuration.GetSection("PaperTrading").Get<PaperTradingSettings>() ?? new()
-                }
-            };
-        }
+        _accounts = await SettingsRepo.GetAllAccountsAsync();
     }
 
     private void ShowAddForm()
@@ -250,11 +239,12 @@
         _saveSuccess = false;
         _errors.Clear();
         _editId = acc.Id;
+        _editOriginalId = acc.Id;
         _editDisplayName = acc.DisplayName;
         _editBaseUrl = acc.TradeLocker.BaseUrl;
         _editServer = acc.TradeLocker.Server;
         _editEmail = acc.TradeLocker.Email;
-        _editPassword = acc.TradeLocker.Password;
+        _editPassword = string.Empty; // Passwort nicht vorbelegen aus Sicherheitsgruenden
         _editPaperEnabled = acc.PaperTrading.Enabled;
         _editPaperBalance = acc.PaperTrading.InitialBalance;
         _editMinConfidence = acc.RiskManagement.MinConfidence;
@@ -265,6 +255,7 @@
     private void ResetFormFields()
     {
         _editId = string.Empty;
+        _editOriginalId = null;
         _editDisplayName = string.Empty;
         _editBaseUrl = "https://demo.tradelocker.com/backend-api";
         _editServer = string.Empty;
@@ -282,56 +273,77 @@
         _saveSuccess = false;
         _errors = new();
 
-        if (string.IsNullOrWhiteSpace(_editId))
+        var trimmedId = _editId?.Trim() ?? string.Empty;
+        var isRenamed = _editMode && _editOriginalId != null
+            && !trimmedId.Equals(_editOriginalId, StringComparison.OrdinalIgnoreCase);
+
+        if (string.IsNullOrWhiteSpace(trimmedId))
             _errors.Add("Kurzname (ID) ist erforderlich.");
-        else if (_editId.Contains(' '))
+        else if (trimmedId.Contains(' '))
             _errors.Add("Kurzname darf keine Leerzeichen enthalten.");
-        else if (!_editMode && _accounts.Any(a => a.Id.Equals(_editId.Trim(), StringComparison.OrdinalIgnoreCase)))
-            _errors.Add($"Ein Account mit ID \"{_editId}\" existiert bereits.");
+        else if ((!_editMode || isRenamed) && _accounts.Any(a => a.Id.Equals(trimmedId, StringComparison.OrdinalIgnoreCase)))
+            _errors.Add($"Ein Account mit ID \"{trimmedId}\" existiert bereits.");
         if (string.IsNullOrWhiteSpace(_editEmail))
             _errors.Add("Email ist erforderlich.");
         if (string.IsNullOrWhiteSpace(_editServer))
             _errors.Add("Server-Name ist erforderlich.");
+        if (!_editMode && string.IsNullOrWhiteSpace(_editPassword))
+            _errors.Add("Passwort ist erforderlich.");
 
         if (_errors.Any()) return;
 
+        var existingAccount = _editMode && _editOriginalId != null
+            ? _accounts.FirstOrDefault(a => a.Id == _editOriginalId)
+            : null;
+
         var acc = new AccountConfig
         {
-            Id = _editId.Trim(),
-            DisplayName = string.IsNullOrWhiteSpace(_editDisplayName) ? _editId.Trim() : _editDisplayName.Trim(),
+            Id = trimmedId,
+            DisplayName = string.IsNullOrWhiteSpace(_editDisplayName) ? trimmedId : _editDisplayName.Trim(),
             TradeLocker = new TradeLockerSettings
             {
                 BaseUrl = _editBaseUrl.Trim(),
                 Server = _editServer.Trim(),
                 Email = _editEmail.Trim(),
-                Password = _editPassword
+                Password = string.IsNullOrEmpty(_editPassword) && existingAccount != null
+                    ? existingAccount.TradeLocker.Password
+                    : _editPassword
             },
             PaperTrading = new PaperTradingSettings
             {
                 Enabled = _editPaperEnabled,
                 InitialBalance = _editPaperBalance
             },
-            RiskManagement = _editMode
-                ? _accounts.First(a => a.Id == _editId).RiskManagement
-                : new RiskSettings()
+            RiskManagement = existingAccount?.RiskManagement ?? new RiskSettings()
         };
         acc.RiskManagement.MinConfidence = _editMinConfidence;
         acc.RiskManagement.MaxPositionSizePercent = _editMaxPosSize;
         acc.RiskManagement.MaxOpenPositions = _editMaxOpenPos;
 
-        if (_editMode)
+        try
         {
-            var idx = _accounts.FindIndex(a => a.Id == _editId);
-            if (idx >= 0) _accounts[idx] = acc;
-        }
-        else
-        {
-            _accounts.Add(acc);
-        }
+            // Bei Rename: alte ID loeschen, neue speichern
+            if (isRenamed && _editOriginalId != null)
+            {
+                await SettingsRepo.DeleteAccountAsync(_editOriginalId);
+            }
 
-        await PersistAccountsAsync();
-        _saveSuccess = true;
-        HideForm();
+            await SettingsRepo.SaveAccountAsync(acc);
+
+            // Hot-Reload fuer bestehende Accounts (nur wenn nicht umbenannt)
+            if (_editMode && !isRenamed)
+            {
+                await AccountMgr.ReloadAccountSettingsAsync(acc.Id);
+            }
+
+            _saveSuccess = true;
+            HideForm();
+            await LoadAccountsAsync();
+        }
+        catch (Exception ex)
+        {
+            _errors.Add($"Fehler beim Speichern: {ex.Message}");
+        }
     }
 
     private void ConfirmRemove(string id) => _confirmRemoveId = id;
@@ -340,44 +352,10 @@
     {
         if (_confirmRemoveId != null)
         {
-            _accounts.RemoveAll(a => a.Id == _confirmRemoveId);
-            await PersistAccountsAsync();
+            await SettingsRepo.DeleteAccountAsync(_confirmRemoveId);
             _saveSuccess = true;
             _confirmRemoveId = null;
+            await LoadAccountsAsync();
         }
-    }
-
-    private async Task PersistAccountsAsync()
-    {
-        var path = Path.Combine(Env.ContentRootPath, "appsettings.json");
-        var json = await File.ReadAllTextAsync(path);
-        var doc = JsonNode.Parse(json, documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip })!;
-
-        var arr = new JsonArray();
-        foreach (var acc in _accounts)
-        {
-            arr.Add(new JsonObject
-            {
-                ["Id"] = acc.Id,
-                ["DisplayName"] = acc.DisplayName,
-                ["TradeLocker"] = new JsonObject
-                {
-                    ["BaseUrl"] = acc.TradeLocker.BaseUrl,
-                    ["Email"] = acc.TradeLocker.Email,
-                    ["Password"] = acc.TradeLocker.Password,
-                    ["Server"] = acc.TradeLocker.Server,
-                    ["AccountId"] = acc.TradeLocker.AccountId
-                },
-                ["PaperTrading"] = new JsonObject
-                {
-                    ["Enabled"] = acc.PaperTrading.Enabled,
-                    ["InitialBalance"] = acc.PaperTrading.InitialBalance
-                },
-                ["RiskManagement"] = JsonSerializer.SerializeToNode(acc.RiskManagement)
-            });
-        }
-        doc["Accounts"] = arr;
-
-        await File.WriteAllTextAsync(path, doc.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
     }
 }

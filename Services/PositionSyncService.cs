@@ -9,11 +9,11 @@ namespace ClaudeTradingBot.Services;
 /// 1. Startup: Offene Positionen abgleichen, geschlossene erkennen
 /// 2. Periodisch (30s): Positions-DB aktualisieren, geschlossene Trades markieren
 /// 3. Periodisch (5min): Trade-History von TradeLocker als Source of Truth
+/// Iteriert ueber alle Accounts via AccountManager.
 /// </summary>
 public class PositionSyncService : BackgroundService
 {
-    private readonly IBrokerService _broker;
-    private readonly TradingEngine _engine;
+    private readonly AccountManager _accountMgr;
     private readonly MarketHoursService _marketHours;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<PositionSyncService> _logger;
@@ -23,14 +23,12 @@ public class PositionSyncService : BackgroundService
     private static readonly TimeSpan HistorySyncInterval = TimeSpan.FromMinutes(5);
 
     public PositionSyncService(
-        IBrokerService broker,
-        TradingEngine engine,
+        AccountManager accountMgr,
         MarketHoursService marketHours,
         IServiceScopeFactory scopeFactory,
         ILogger<PositionSyncService> logger)
     {
-        _broker = broker;
-        _engine = engine;
+        _accountMgr = accountMgr;
         _marketHours = marketHours;
         _scopeFactory = scopeFactory;
         _logger = logger;
@@ -38,19 +36,26 @@ public class PositionSyncService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Warten bis Broker verbunden ist
-        for (int i = 0; i < 30 && !_broker.IsConnected; i++)
+        // Warten bis AccountManager Accounts geladen hat
+        for (int i = 0; i < 30 && _accountMgr.Accounts.Count == 0; i++)
             await Task.Delay(2000, stoppingToken);
 
-        if (!_broker.IsConnected)
+        if (_accountMgr.Accounts.Count == 0)
         {
-            _logger.LogWarning("PositionSync: Broker nicht verbunden, Service wird nicht gestartet.");
+            _logger.LogWarning("PositionSync: Keine Accounts verfuegbar, Service wird nicht gestartet.");
             return;
         }
 
-        // Startup-Sync
-        await SyncPositionsAsync(stoppingToken);
-        await SyncClosedTradesAsync(stoppingToken);
+        // Warten bis mindestens ein Broker verbunden ist
+        for (int i = 0; i < 30 && !_accountMgr.Accounts.Any(a => a.EffectiveBroker.IsConnected); i++)
+            await Task.Delay(2000, stoppingToken);
+
+        // Startup-Sync fuer alle verbundenen Accounts
+        foreach (var ctx in _accountMgr.Accounts.Where(a => a.EffectiveBroker.IsConnected))
+        {
+            await SyncPositionsAsync(ctx, stoppingToken);
+            await SyncClosedTradesAsync(ctx, stoppingToken);
+        }
 
         _logger.LogInformation("PositionSync: Initialer Sync abgeschlossen.");
 
@@ -60,25 +65,31 @@ public class PositionSyncService : BackgroundService
         {
             try
             {
-                // Reduzierte Sync-Frequenz wenn Markt geschlossen oder Engine pausiert
-                var interval = !_marketHours.IsMarketOpen() || _engine.IsPaused
+                // Reduzierte Sync-Frequenz wenn Markt geschlossen
+                var anyActive = _accountMgr.Accounts.Any(a =>
+                    a.EffectiveBroker.IsConnected && !a.Engine.IsPaused);
+                var interval = !_marketHours.IsMarketOpen() || !anyActive
                     ? PositionSyncIntervalClosed
                     : PositionSyncInterval;
                 await Task.Delay(interval, stoppingToken);
 
-                // Wenn Engine pausiert: nur selten syncen (offene Positionen koennen sich nicht aendern)
-                if (_engine.IsPaused)
-                    continue;
-
-                // Positionen synchronisieren
-                await SyncPositionsAsync(stoppingToken);
-
-                // History-Sync (alle 5min)
-                if (DateTime.UtcNow - lastHistorySync > HistorySyncInterval)
+                foreach (var ctx in _accountMgr.Accounts)
                 {
-                    await SyncClosedTradesAsync(stoppingToken);
-                    lastHistorySync = DateTime.UtcNow;
+                    if (!ctx.EffectiveBroker.IsConnected || ctx.Engine.IsPaused)
+                        continue;
+
+                    // Positionen synchronisieren
+                    await SyncPositionsAsync(ctx, stoppingToken);
+
+                    // History-Sync (alle 5min)
+                    if (DateTime.UtcNow - lastHistorySync > HistorySyncInterval)
+                    {
+                        await SyncClosedTradesAsync(ctx, stoppingToken);
+                    }
                 }
+
+                if (DateTime.UtcNow - lastHistorySync > HistorySyncInterval)
+                    lastHistorySync = DateTime.UtcNow;
             }
             catch (OperationCanceledException)
             {
@@ -99,11 +110,11 @@ public class PositionSyncService : BackgroundService
     /// - In DB aber nicht mehr beim Broker → entfernen (wurde geschlossen)
     /// - Executed-Trades ohne Broker-Position → als geschlossen markieren
     /// </summary>
-    private async Task SyncPositionsAsync(CancellationToken ct)
+    private async Task SyncPositionsAsync(AccountContext ctx, CancellationToken ct)
     {
         try
         {
-            var brokerPositions = await _broker.GetPositionsAsync(ct);
+            var brokerPositions = await ctx.EffectiveBroker.GetPositionsAsync(ct);
 
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
@@ -185,7 +196,7 @@ public class PositionSyncService : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "PositionSync: SyncPositions fehlgeschlagen");
+            _logger.LogError(ex, "PositionSync: SyncPositions fehlgeschlagen fuer Account {Id}", ctx.AccountId);
         }
     }
 
@@ -195,11 +206,11 @@ public class PositionSyncService : BackgroundService
     /// - Erstellt Trade-Einträge für Broker-initiierte Schließungen
     /// - Aktualisiert RealizedPnL
     /// </summary>
-    private async Task SyncClosedTradesAsync(CancellationToken ct)
+    private async Task SyncClosedTradesAsync(AccountContext ctx, CancellationToken ct)
     {
         try
         {
-            var closedPositions = await _broker.GetClosedPositionsAsync(1, ct);
+            var closedPositions = await ctx.EffectiveBroker.GetClosedPositionsAsync(1, ct);
             if (closedPositions.Count == 0) return;
 
             using var scope = _scopeFactory.CreateScope();
@@ -242,6 +253,7 @@ public class PositionSyncService : BackgroundService
 
                 db.Trades.Add(new Trade
                 {
+                    AccountId = ctx.AccountId,
                     Symbol = closed.Symbol,
                     Action = action,
                     Status = TradeStatus.Executed,
@@ -258,6 +270,7 @@ public class PositionSyncService : BackgroundService
 
                 db.TradingLogs.Add(new TradingLog
                 {
+                    AccountId = ctx.AccountId,
                     Level = "Info",
                     Source = "PositionSync",
                     Message = $"Position {closed.Symbol} ({closed.Side}) geschlossen @ {closed.ClosePrice:F4}, PnL: {closed.PnL:F2}"
@@ -272,7 +285,7 @@ public class PositionSyncService : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "PositionSync: SyncClosedTrades fehlgeschlagen");
+            _logger.LogError(ex, "PositionSync: SyncClosedTrades fehlgeschlagen fuer Account {Id}", ctx.AccountId);
         }
     }
 

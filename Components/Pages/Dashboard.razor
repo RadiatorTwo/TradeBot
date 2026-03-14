@@ -11,6 +11,15 @@
 
 <PageTitle>Dashboard - Claude Trading Bot</PageTitle>
 
+@if (!AccountMgr.HasAccounts)
+{
+    <div class="warning-banner" style="margin-bottom: 24px;">
+        <strong>Kein Account konfiguriert.</strong> Bitte unter <a href="/accounts" style="color: var(--blue, #89b4fa);">/accounts</a> einen Account anlegen um den Trading Bot zu starten.
+    </div>
+}
+else
+{
+
 @if (AccountMgr.Accounts.Count > 1)
 {
     <div style="margin-bottom: 12px;">
@@ -216,17 +225,19 @@
     }
 </div>
 
+} @* end else HasAccounts *@
+
 @code {
     private DashboardViewModel vm = new();
     private HubConnection? _hubConnection;
     private string _selectedAccountId = "default";
     private bool _dataLoaded;
 
-    private AccountContext SelectedAccount => AccountMgr.GetAccount(_selectedAccountId);
+    private AccountContext? SelectedAccount => AccountMgr.GetAccount(_selectedAccountId);
 
     protected override async Task OnInitializedAsync()
     {
-        _selectedAccountId = AccountMgr.DefaultAccount.AccountId;
+        _selectedAccountId = AccountMgr.DefaultAccount?.AccountId ?? "default";
 
         _hubConnection = new HubConnectionBuilder()
             .WithUrl(Navigation.ToAbsoluteUri("/tradinghub"))
@@ -272,7 +283,7 @@
 
     private async Task OnAccountChanged(ChangeEventArgs e)
     {
-        _selectedAccountId = e.Value?.ToString() ?? AccountMgr.DefaultAccount.AccountId;
+        _selectedAccountId = e.Value?.ToString() ?? AccountMgr.DefaultAccount?.AccountId ?? "default";
         await LoadDataAsync();
         StateHasChanged();
     }
@@ -280,6 +291,8 @@
     private async Task LoadDataAsync()
     {
         var ctx = SelectedAccount;
+        if (ctx == null) return;
+
         var positions = new List<Position>();
         decimal cash = 0, portfolioValue = 0;
         var account = new AccountDetails();
@@ -355,25 +368,25 @@
 
     private void PauseEngine()
     {
-        SelectedAccount.Engine.Pause();
+        SelectedAccount?.Engine.Pause();
         vm = vm with { IsEnginePaused = true };
     }
 
     private void ResumeEngine()
     {
-        SelectedAccount.Engine.Resume();
+        SelectedAccount?.Engine.Resume();
         vm = vm with { IsEnginePaused = false };
     }
 
     private void ActivateKillSwitch()
     {
-        SelectedAccount.Risk.ActivateKillSwitch("Manuell via Dashboard aktiviert");
+        SelectedAccount?.Risk.ActivateKillSwitch("Manuell via Dashboard aktiviert");
         vm = vm with { IsKillSwitchActive = true, IsEnginePaused = false };
     }
 
     private void ResetKillSwitch()
     {
-        SelectedAccount.Risk.ResetKillSwitch();
+        SelectedAccount?.Risk.ResetKillSwitch();
         vm = vm with { IsKillSwitchActive = false };
     }
 
