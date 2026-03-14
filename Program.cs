@@ -38,23 +38,11 @@ builder.Services.AddHttpClient<ClaudeService>();
 builder.Services.AddHttpClient<GeminiClaudeService>();
 builder.Services.AddHttpClient<OpenAICompatibleClaudeService>();
 builder.Services.AddSingleton<IClaudeService, LlmProviderResolver>();
-// Ein einziger TradeLockerService (Singleton), damit Engine und Dashboard dieselbe Instanz nutzen (Balance, Verbindung).
-builder.Services.AddHttpClient(TradeLockerService.HttpClientName, (sp, client) =>
-{
-    var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<TradeLockerSettings>>().Value;
-    var baseUrl = (options.BaseUrl ?? "").TrimEnd('/');
-    if (!string.IsNullOrEmpty(baseUrl))
-        client.BaseAddress = new Uri(baseUrl + "/");
-})
-.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
-builder.Services.AddSingleton<TradeLockerService>();
-builder.Services.AddSingleton<PaperTradingBrokerDecorator>(sp =>
-    new PaperTradingBrokerDecorator(
-        sp.GetRequiredService<TradeLockerService>(),
-        sp.GetRequiredService<IOptionsMonitor<PaperTradingSettings>>(),
-        sp.GetRequiredService<ILogger<PaperTradingBrokerDecorator>>()));
-builder.Services.AddSingleton<IBrokerService>(sp => sp.GetRequiredService<PaperTradingBrokerDecorator>());
-builder.Services.AddSingleton<IRiskManager, RiskManager>();
+// ── HttpClient fuer TradeLocker (ohne BaseAddress – wird per Account gesetzt) ──
+builder.Services.AddHttpClient(TradeLockerService.HttpClientName)
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+
+// ── Shared Singletons (alle Accounts teilen sich diese) ─────────────
 builder.Services.AddSingleton<TechnicalAnalysisService>();
 builder.Services.AddSingleton<TradingSessionService>();
 builder.Services.AddSingleton<MarketHoursService>();
@@ -72,9 +60,15 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<NewsSentimentServi
 // ── Backtesting Engine ────────────────────────────────────────────────
 builder.Services.AddTransient<BacktestEngine>();
 
-// ── Trading Engine (Background Service) ────────────────────────────────
-builder.Services.AddSingleton<TradingEngine>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<TradingEngine>());
+// ── Multi-Account Manager (erstellt per-Account: Broker, RiskManager, TradingEngine) ──
+builder.Services.AddSingleton<AccountManager>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<AccountManager>());
+
+// Backwards-Kompatibilitaet: Default-Account Services fuer bestehende Injections
+builder.Services.AddSingleton<TradingEngine>(sp => sp.GetRequiredService<AccountManager>().DefaultAccount.Engine);
+builder.Services.AddSingleton<IBrokerService>(sp => sp.GetRequiredService<AccountManager>().DefaultAccount.EffectiveBroker);
+builder.Services.AddSingleton<IRiskManager>(sp => sp.GetRequiredService<AccountManager>().DefaultAccount.Risk);
+builder.Services.AddSingleton<PaperTradingBrokerDecorator>(sp => sp.GetRequiredService<AccountManager>().DefaultAccount.PaperTrading);
 
 // ── Position Sync Service (synchronisiert DB mit Broker) ───────────────
 builder.Services.AddHostedService<PositionSyncService>();

@@ -25,6 +25,9 @@ public class TradingEngine : BackgroundService
 
     private RiskSettings Settings => _settingsMonitor.CurrentValue;
 
+    /// <summary>Account-ID fuer Multi-Account-Support (Phase 7.1).</summary>
+    public string AccountId { get; init; } = "default";
+
     private volatile bool _isRunning;
     public bool IsRunning => _isRunning;
 
@@ -336,6 +339,7 @@ public class TradingEngine : BackgroundService
 
                 db.Trades.Add(new Trade
                 {
+                    AccountId = AccountId,
                     Symbol = symbol,
                     Action = pos.Side == "buy" ? TradeAction.Sell : TradeAction.Buy,
                     Quantity = pos.Quantity,
@@ -351,6 +355,7 @@ public class TradingEngine : BackgroundService
 
                 db.TradingLogs.Add(new TradingLog
                 {
+                    AccountId = AccountId,
                     Level = closeSuccess ? "Info" : "Error",
                     Source = "TradingEngine",
                     Message = $"{(closeSuccess ? "✅" : "❌")} Close {pos.Side.ToUpper()} {pos.Quantity:F2} Lots {symbol} @ {currentPrice:F4} (LLM: {recommendation.Action.ToUpper()})"
@@ -379,6 +384,7 @@ public class TradingEngine : BackgroundService
             {
                 db.Trades.Add(new Trade
                 {
+                    AccountId = AccountId,
                     Symbol = symbol,
                     Action = action,
                     Quantity = recommendation.Quantity,
@@ -391,6 +397,7 @@ public class TradingEngine : BackgroundService
             }
             db.TradingLogs.Add(new TradingLog
             {
+                AccountId = AccountId,
                 Source = "Claude",
                 Message = $"{symbol}: {recommendation.Action.ToUpper()} (Confidence: {recommendation.Confidence:P0})",
                 Details = recommendation.Reasoning
@@ -419,6 +426,7 @@ public class TradingEngine : BackgroundService
                     maxPyramid > 0 ? $" (max Pyramid: {maxPyramid}, Conf: {recommendation.Confidence:P0})" : "");
                 db.TradingLogs.Add(new TradingLog
                 {
+                    AccountId = AccountId,
                     Source = "TradingEngine",
                     Message = $"{symbol}: {recommendation.Action.ToUpper()} uebersprungen – bereits Position offen",
                     Details = recommendation.Reasoning
@@ -455,6 +463,7 @@ public class TradingEngine : BackgroundService
         // Neue Position eröffnen (Lots, StopLoss, TakeProfit)
         var trade = new Trade
         {
+            AccountId = AccountId,
             Symbol = symbol,
             Action = action,
             Quantity = quantity,
@@ -481,6 +490,7 @@ public class TradingEngine : BackgroundService
 
         db.TradingLogs.Add(new TradingLog
         {
+            AccountId = AccountId,
             Level = result.Success ? "Info" : "Error",
             Source = "TradingEngine",
             Message = $"{(result.Success ? "✅" : "❌")} {action} {quantity:F2} Lots {symbol} @ {currentPrice:F4}",
@@ -630,7 +640,7 @@ public class TradingEngine : BackgroundService
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
-        db.TradingLogs.Add(new TradingLog { Level = level, Source = source, Message = message });
+        db.TradingLogs.Add(new TradingLog { AccountId = AccountId, Level = level, Source = source, Message = message });
         await db.SaveChangesAsync();
     }
 }

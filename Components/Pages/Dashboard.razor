@@ -2,17 +2,27 @@
 @using ClaudeTradingBot.Data
 @using ClaudeTradingBot.Hubs
 @using Microsoft.EntityFrameworkCore
-@inject TradingEngine Engine
-@inject IBrokerService Broker
-@inject IRiskManager Risk
+@inject AccountManager AccountMgr
 @inject MarketHoursService MarketHours
 @inject EconomicCalendarService Calendar
 @inject IDbContextFactory<TradingDbContext> DbFactory
-@inject PaperTradingBrokerDecorator PaperTrading
 @inject NavigationManager Navigation
 @implements IAsyncDisposable
 
 <PageTitle>Dashboard - Claude Trading Bot</PageTitle>
+
+@if (AccountMgr.Accounts.Count > 1)
+{
+    <div style="margin-bottom: 12px;">
+        <label style="margin-right: 8px;">Account:</label>
+        <select value="@_selectedAccountId" @onchange="OnAccountChanged" style="padding: 4px 8px; background: var(--card-bg, #1e1e2e); color: var(--text, #cdd6f4); border: 1px solid var(--border, #45475a); border-radius: 4px;">
+            @foreach (var acc in AccountMgr.Accounts)
+            {
+                <option value="@acc.AccountId">@acc.DisplayName (@acc.AccountId)</option>
+            }
+        </select>
+    </div>
+}
 
 <div class="status-badges" style="margin-bottom: 24px;">
     @{ var engineText = vm.IsEnginePaused ? "Engine Pausiert" : vm.IsEngineRunning ? "Engine Laeuft" : "Engine Wartet"; }
@@ -209,11 +219,15 @@
 @code {
     private DashboardViewModel vm = new();
     private HubConnection? _hubConnection;
-
+    private string _selectedAccountId = "default";
     private bool _dataLoaded;
+
+    private AccountContext SelectedAccount => AccountMgr.GetAccount(_selectedAccountId);
 
     protected override async Task OnInitializedAsync()
     {
+        _selectedAccountId = AccountMgr.DefaultAccount.AccountId;
+
         _hubConnection = new HubConnectionBuilder()
             .WithUrl(Navigation.ToAbsoluteUri("/tradinghub"))
             .WithAutomaticReconnect()
@@ -221,8 +235,12 @@
 
         _hubConnection.On<DashboardViewModel>(TradingHub.DashboardUpdate, update =>
         {
-            vm = update;
-            InvokeAsync(StateHasChanged);
+            // Nur Updates fuer den ausgewaehlten Account anzeigen
+            if (update.AccountId == _selectedAccountId)
+            {
+                vm = update;
+                InvokeAsync(StateHasChanged);
+            }
         });
 
         try
@@ -252,39 +270,51 @@
         }
     }
 
+    private async Task OnAccountChanged(ChangeEventArgs e)
+    {
+        _selectedAccountId = e.Value?.ToString() ?? AccountMgr.DefaultAccount.AccountId;
+        await LoadDataAsync();
+        StateHasChanged();
+    }
+
     private async Task LoadDataAsync()
     {
+        var ctx = SelectedAccount;
         var positions = new List<Position>();
         decimal cash = 0, portfolioValue = 0;
         var account = new AccountDetails();
 
         try
         {
-            positions = await Broker.GetPositionsAsync();
-            account = await Broker.GetAccountDetailsAsync();
+            positions = await ctx.EffectiveBroker.GetPositionsAsync();
+            account = await ctx.EffectiveBroker.GetAccountDetailsAsync();
             cash = account.FreeMargin > 0 ? account.FreeMargin : account.Balance;
             portfolioValue = account.Equity > 0 ? account.Equity : account.Balance;
         }
         catch { }
 
         await using var db = await DbFactory.CreateDbContextAsync();
+        var aid = _selectedAccountId;
 
         var todayStart = DateTime.UtcNow.Date;
         var tradesToday = await db.Trades
-            .Where(t => t.CreatedAt >= todayStart)
+            .Where(t => t.AccountId == aid && t.CreatedAt >= todayStart)
             .CountAsync();
 
         var recentTrades = await db.Trades
+            .Where(t => t.AccountId == aid)
             .OrderByDescending(t => t.CreatedAt)
             .Take(20)
             .ToListAsync();
 
         var recentLogs = await db.TradingLogs
+            .Where(l => l.AccountId == aid)
             .OrderByDescending(l => l.Timestamp)
             .Take(30)
             .ToListAsync();
 
         var pnlHistory = await db.DailyPnLs
+            .Where(d => d.AccountId == aid)
             .OrderByDescending(d => d.Date)
             .Take(30)
             .ToListAsync();
@@ -293,17 +323,19 @@
 
         vm = new DashboardViewModel
         {
+            AccountId = aid,
+            AccountDisplayName = ctx.DisplayName,
             PortfolioValue = portfolioValue,
             AvailableCash = cash,
             Account = account,
             OpenPositions = positions.Count,
             TradesToday = tradesToday,
-            IsEngineRunning = Engine.IsRunning,
-            IsEnginePaused = Engine.IsPaused,
-            IsKillSwitchActive = Risk.IsKillSwitchActive,
-            IsTradeLockerConnected = Broker.IsConnected,
+            IsEngineRunning = ctx.Engine.IsRunning,
+            IsEnginePaused = ctx.Engine.IsPaused,
+            IsKillSwitchActive = ctx.Risk.IsKillSwitchActive,
+            IsTradeLockerConnected = ctx.EffectiveBroker.IsConnected,
             IsMarketOpen = MarketHours.IsMarketOpen(),
-            IsPaperTrading = PaperTrading.IsPaperTradingActive,
+            IsPaperTrading = ctx.PaperTrading.IsPaperTradingActive,
             MarketStatus = MarketHours.GetMarketStatus(),
             UpcomingEvents = Calendar.GetUpcomingHighImpactEvents(5)
                 .Select(e => new UpcomingEventViewModel
@@ -323,25 +355,25 @@
 
     private void PauseEngine()
     {
-        Engine.Pause();
+        SelectedAccount.Engine.Pause();
         vm = vm with { IsEnginePaused = true };
     }
 
     private void ResumeEngine()
     {
-        Engine.Resume();
+        SelectedAccount.Engine.Resume();
         vm = vm with { IsEnginePaused = false };
     }
 
     private void ActivateKillSwitch()
     {
-        Risk.ActivateKillSwitch("Manuell via Dashboard aktiviert");
+        SelectedAccount.Risk.ActivateKillSwitch("Manuell via Dashboard aktiviert");
         vm = vm with { IsKillSwitchActive = true, IsEnginePaused = false };
     }
 
     private void ResetKillSwitch()
     {
-        Risk.ResetKillSwitch();
+        SelectedAccount.Risk.ResetKillSwitch();
         vm = vm with { IsKillSwitchActive = false };
     }
 

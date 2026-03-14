@@ -19,6 +19,7 @@ public class TradingDbContext : DbContext
             e.HasIndex(t => t.Symbol);
             e.HasIndex(t => t.CreatedAt);
             e.HasIndex(t => t.Status);
+            e.HasIndex(t => t.AccountId);
         });
 
         modelBuilder.Entity<Position>(e =>
@@ -29,12 +30,13 @@ public class TradingDbContext : DbContext
 
         modelBuilder.Entity<DailyPnL>(e =>
         {
-            e.HasIndex(d => d.Date).IsUnique();
+            e.HasIndex(d => new { d.Date, d.AccountId }).IsUnique();
         });
 
         modelBuilder.Entity<TradingLog>(e =>
         {
             e.HasIndex(l => l.Timestamp);
+            e.HasIndex(l => l.AccountId);
         });
     }
 }

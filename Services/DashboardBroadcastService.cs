@@ -6,78 +6,70 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ClaudeTradingBot.Services;
 
-/// <summary>Pusht Dashboard-Daten per SignalR an verbundene Clients.</summary>
+/// <summary>Pusht Dashboard-Daten per SignalR an verbundene Clients (Multi-Account).</summary>
 public class DashboardBroadcastService : BackgroundService
 {
     private readonly IHubContext<TradingHub> _hubContext;
     private readonly IDbContextFactory<TradingDbContext> _dbFactory;
-    private readonly TradingEngine _engine;
-    private readonly IBrokerService _broker;
-    private readonly IRiskManager _risk;
+    private readonly AccountManager _accountMgr;
     private readonly MarketHoursService _marketHours;
     private readonly EconomicCalendarService _calendar;
-    private readonly PaperTradingBrokerDecorator _paperTrading;
     private readonly ILogger<DashboardBroadcastService> _logger;
 
     private static readonly TimeSpan ActiveInterval = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan IdleInterval = TimeSpan.FromSeconds(30);
 
-    private DashboardViewModel? _lastViewModel;
+    private readonly Dictionary<string, DashboardViewModel?> _lastViewModels = new();
 
     public DashboardBroadcastService(
         IHubContext<TradingHub> hubContext,
         IDbContextFactory<TradingDbContext> dbFactory,
-        TradingEngine engine,
-        IBrokerService broker,
-        IRiskManager risk,
+        AccountManager accountMgr,
         MarketHoursService marketHours,
         EconomicCalendarService calendar,
-        PaperTradingBrokerDecorator paperTrading,
         ILogger<DashboardBroadcastService> logger)
     {
         _hubContext = hubContext;
         _dbFactory = dbFactory;
-        _engine = engine;
-        _broker = broker;
-        _risk = risk;
+        _accountMgr = accountMgr;
         _marketHours = marketHours;
         _calendar = calendar;
-        _paperTrading = paperTrading;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Warten bis Broker-Verbindung steht
         await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                var isIdle = _engine.IsPaused || _risk.IsKillSwitchActive;
+                foreach (var ctx in _accountMgr.Accounts)
+                {
+                    var isIdle = ctx.Engine.IsPaused || ctx.Risk.IsKillSwitchActive;
+                    _lastViewModels.TryGetValue(ctx.AccountId, out var lastVm);
 
-                if (isIdle && _lastViewModel != null)
-                {
-                    // Im Idle-Modus: nur Status-Flags aktualisieren, keine Broker/DB-Calls
-                    var idleUpdate = _lastViewModel with
+                    if (isIdle && lastVm != null)
                     {
-                        IsEngineRunning = _engine.IsRunning,
-                        IsEnginePaused = _engine.IsPaused,
-                        IsKillSwitchActive = _risk.IsKillSwitchActive,
-                        IsMarketOpen = _marketHours.IsMarketOpen(),
-                        MarketStatus = _marketHours.GetMarketStatus()
-                    };
-                    await _hubContext.Clients.All.SendAsync(
-                        TradingHub.DashboardUpdate, idleUpdate, stoppingToken);
-                }
-                else
-                {
-                    // Aktiv: volle Daten laden
-                    var viewModel = await BuildDashboardViewModelAsync(stoppingToken);
-                    _lastViewModel = viewModel;
-                    await _hubContext.Clients.All.SendAsync(
-                        TradingHub.DashboardUpdate, viewModel, stoppingToken);
+                        var idleUpdate = lastVm with
+                        {
+                            IsEngineRunning = ctx.Engine.IsRunning,
+                            IsEnginePaused = ctx.Engine.IsPaused,
+                            IsKillSwitchActive = ctx.Risk.IsKillSwitchActive,
+                            IsMarketOpen = _marketHours.IsMarketOpen(),
+                            MarketStatus = _marketHours.GetMarketStatus()
+                        };
+                        await _hubContext.Clients.All.SendAsync(
+                            TradingHub.DashboardUpdate, idleUpdate, stoppingToken);
+                    }
+                    else
+                    {
+                        var viewModel = await BuildDashboardViewModelAsync(ctx, stoppingToken);
+                        _lastViewModels[ctx.AccountId] = viewModel;
+                        await _hubContext.Clients.All.SendAsync(
+                            TradingHub.DashboardUpdate, viewModel, stoppingToken);
+                    }
                 }
             }
             catch (OperationCanceledException)
@@ -89,72 +81,77 @@ public class DashboardBroadcastService : BackgroundService
                 _logger.LogDebug(ex, "DashboardBroadcast: Fehler beim Senden");
             }
 
-            var interval = _engine.IsPaused || _risk.IsKillSwitchActive
-                ? IdleInterval
-                : ActiveInterval;
+            // Interval basierend auf einem beliebigen aktiven Account
+            var anyActive = _accountMgr.Accounts.Any(a => !a.Engine.IsPaused && !a.Risk.IsKillSwitchActive);
+            var interval = anyActive ? ActiveInterval : IdleInterval;
             await Task.Delay(interval, stoppingToken);
         }
     }
 
-    private async Task<DashboardViewModel> BuildDashboardViewModelAsync(CancellationToken ct)
+    private async Task<DashboardViewModel> BuildDashboardViewModelAsync(AccountContext ctx, CancellationToken ct)
     {
         var positions = new List<Position>();
         decimal cash = 0, portfolioValue = 0;
         var account = new AccountDetails();
 
-        if (_broker.IsConnected)
+        if (ctx.EffectiveBroker.IsConnected)
         {
             try
             {
-                positions = await _broker.GetPositionsAsync(ct);
-                account = await _broker.GetAccountDetailsAsync(ct);
+                positions = await ctx.EffectiveBroker.GetPositionsAsync(ct);
+                account = await ctx.EffectiveBroker.GetAccountDetailsAsync(ct);
                 cash = account.FreeMargin > 0 ? account.FreeMargin : account.Balance;
                 portfolioValue = account.Equity > 0 ? account.Equity : account.Balance;
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(ex, "DashboardBroadcast: Broker-Daten nicht verfuegbar");
+                _logger.LogDebug(ex, "DashboardBroadcast: Broker-Daten nicht verfuegbar fuer {AccountId}", ctx.AccountId);
             }
         }
 
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var aid = ctx.AccountId;
 
         var todayStart = DateTime.UtcNow.Date;
         var tradesToday = await db.Trades
-            .Where(t => t.CreatedAt >= todayStart)
+            .Where(t => t.AccountId == aid && t.CreatedAt >= todayStart)
             .CountAsync(ct);
 
         var recentTrades = await db.Trades
+            .Where(t => t.AccountId == aid)
             .OrderByDescending(t => t.CreatedAt)
             .Take(20)
             .ToListAsync(ct);
 
         var recentLogs = await db.TradingLogs
+            .Where(l => l.AccountId == aid)
             .OrderByDescending(l => l.Timestamp)
             .Take(30)
             .ToListAsync(ct);
 
         var pnlHistory = await db.DailyPnLs
+            .Where(d => d.AccountId == aid)
             .OrderByDescending(d => d.Date)
             .Take(30)
             .ToListAsync(ct);
 
-        // Trade-Statistiken berechnen (DB-Aggregation statt alle Trades laden)
         var stats = await TradingStatsService.CalculateFromDbAsync(db, pnlHistory, ct);
 
         return new DashboardViewModel
         {
+            AccountId = aid,
+            AccountDisplayName = ctx.DisplayName,
             PortfolioValue = portfolioValue,
             AvailableCash = cash,
             Account = account,
             OpenPositions = positions.Count,
             TradesToday = tradesToday,
-            IsEngineRunning = _engine.IsRunning,
-            IsEnginePaused = _engine.IsPaused,
-            IsKillSwitchActive = _risk.IsKillSwitchActive,
-            IsTradeLockerConnected = _broker.IsConnected,
+            IsEngineRunning = ctx.Engine.IsRunning,
+            IsEnginePaused = ctx.Engine.IsPaused,
+            IsKillSwitchActive = ctx.Risk.IsKillSwitchActive,
+            IsTradeLockerConnected = ctx.EffectiveBroker.IsConnected,
             IsMarketOpen = _marketHours.IsMarketOpen(),
-            IsPaperTrading = _paperTrading.IsPaperTradingActive,
+            IsPaperTrading = ctx.PaperTrading.IsPaperTradingActive,
             MarketStatus = _marketHours.GetMarketStatus(),
             UpcomingEvents = _calendar.GetUpcomingHighImpactEvents(5)
                 .Select(e => new UpcomingEventViewModel

@@ -26,6 +26,9 @@ public class RiskManager : IRiskManager
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<RiskManager> _logger;
 
+    /// <summary>Account-ID fuer Multi-Account-Support (Phase 7.1).</summary>
+    public string AccountId { get; init; } = "default";
+
     private volatile bool _killSwitchActive;
     private string? _killSwitchReason;
 

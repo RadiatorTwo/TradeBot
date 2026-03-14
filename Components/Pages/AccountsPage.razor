@@ -1,0 +1,383 @@
+@page "/accounts"
+@using System.Text.Json
+@using System.Text.Json.Nodes
+@inject AccountManager AccountMgr
+@inject IConfiguration Configuration
+@inject IWebHostEnvironment Env
+
+<PageTitle>Accounts - Claude Trading Bot</PageTitle>
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <h2 style="margin: 0;">Accounts</h2>
+    @if (!_showForm)
+    {
+        <button class="btn btn-primary" @onclick="ShowAddForm">+ Neuer Account</button>
+    }
+</div>
+
+@if (_saveSuccess)
+{
+    <div class="success-banner">Gespeichert. Neustart erforderlich damit Aenderungen wirksam werden.</div>
+}
+
+@if (_errors.Any())
+{
+    <div class="error-banner">
+        @foreach (var err in _errors)
+        {
+            <div>@err</div>
+        }
+    </div>
+}
+
+@* ── Formular (Hinzufuegen oder Bearbeiten) ─────────────────────────── *@
+@if (_showForm)
+{
+    <div class="section" style="border: 1px solid var(--border, #45475a); border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+        <h3 style="margin-top: 0;">@(_editMode ? $"\"{_editDisplayName}\" bearbeiten" : "Neuen Account anlegen")</h3>
+
+        <EditForm Model="this" OnValidSubmit="SaveAccount" FormName="account-form">
+            @* Schritt 1: Grunddaten *@
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
+                <div class="form-group">
+                    <label>Kurzname (ID)</label>
+                    <input type="text" @bind="_editId" disabled="@_editMode" placeholder="Demo1" />
+                    <div class="hint">Wird intern als Bezeichner verwendet</div>
+                </div>
+                <div class="form-group">
+                    <label>Anzeigename</label>
+                    <input type="text" @bind="_editDisplayName" placeholder="Mein Demo-Konto" />
+                </div>
+            </div>
+
+            @* Schritt 2: Broker-Verbindung *@
+            <details open="@(!_editMode)">
+                <summary style="cursor: pointer; font-weight: 600; margin-bottom: 12px;">Broker-Verbindung (TradeLocker)</summary>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                    <div class="form-group">
+                        <label>Server-URL</label>
+                        <select @bind="_editBaseUrl">
+                            <option value="https://demo.tradelocker.com/backend-api">Demo (demo.tradelocker.com)</option>
+                            <option value="https://live.tradelocker.com/backend-api">Live (live.tradelocker.com)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Server-Name</label>
+                        <input type="text" @bind="_editServer" placeholder="z.B. OSP-DEMO" />
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" @bind="_editEmail" placeholder="deine@email.com" />
+                    </div>
+                    <div class="form-group">
+                        <label>Passwort</label>
+                        <input type="password" @bind="_editPassword" />
+                    </div>
+                </div>
+            </details>
+
+            @* Schritt 3: Modus *@
+            <details>
+                <summary style="cursor: pointer; font-weight: 600; margin-bottom: 12px;">Modus und Risiko</summary>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" @bind="_editPaperEnabled" style="margin-right: 8px;" />
+                            Paper-Trading (kein echtes Geld)
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label>Paper-Startkapital ($)</label>
+                        <input type="number" @bind="_editPaperBalance" step="1000" min="100" />
+                    </div>
+                    <div></div>
+                    <div class="form-group">
+                        <label>Min. Confidence</label>
+                        <input type="number" @bind="_editMinConfidence" step="0.05" min="0" max="1" />
+                    </div>
+                    <div class="form-group">
+                        <label>Max. Positionsgroesse (%)</label>
+                        <input type="number" @bind="_editMaxPosSize" step="1" min="1" />
+                    </div>
+                    <div class="form-group">
+                        <label>Max. offene Positionen</label>
+                        <input type="number" @bind="_editMaxOpenPos" min="1" />
+                    </div>
+                </div>
+            </details>
+
+            <div style="display: flex; gap: 8px; margin-top: 8px;">
+                <button type="submit" class="btn btn-primary">
+                    @(_editMode ? "Speichern" : "Account anlegen")
+                </button>
+                <button type="button" class="btn btn-outline" @onclick="HideForm">Abbrechen</button>
+            </div>
+        </EditForm>
+    </div>
+}
+
+@* ── Account-Karten ──────────────────────────────────────────────────── *@
+@foreach (var acc in _accounts)
+{
+    var liveCtx = AccountMgr.Accounts.FirstOrDefault(a => a.AccountId == acc.Id);
+    var isConnected = liveCtx?.EffectiveBroker.IsConnected ?? false;
+    var isRunning = liveCtx?.Engine.IsRunning ?? false;
+    var isPaused = liveCtx?.Engine.IsPaused ?? false;
+
+    <div class="section" style="border: 1px solid var(--border, #45475a); border-radius: 8px; padding: 16px 20px; margin-bottom: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                @* Status-Punkt *@
+                <div style="width: 10px; height: 10px; border-radius: 50%; background: @(isConnected ? "var(--green, #a6e3a1)" : liveCtx != null ? "var(--red, #f38ba8)" : "var(--muted, #6c7086)");" title="@(isConnected ? "Verbunden" : "Getrennt")"></div>
+                <div>
+                    <strong style="font-size: 1.1rem;">@acc.DisplayName</strong>
+                    <span style="color: var(--muted, #6c7086); margin-left: 8px; font-size: 0.85rem;">@acc.Id</span>
+                </div>
+            </div>
+            <div style="display: flex; gap: 6px; align-items: center;">
+                @if (acc.PaperTrading.Enabled)
+                {
+                    <span style="background: var(--yellow, #f9e2af); color: #1e1e2e; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">PAPER</span>
+                }
+                @if (liveCtx != null)
+                {
+                    @if (isPaused)
+                    {
+                        <span style="background: var(--red, #f38ba8); color: #1e1e2e; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">PAUSIERT</span>
+                    }
+                    else if (isRunning)
+                    {
+                        <span style="background: var(--green, #a6e3a1); color: #1e1e2e; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">AKTIV</span>
+                    }
+                }
+                <button class="btn btn-outline btn-sm" @onclick="() => EditAccount(acc)">Bearbeiten</button>
+                @if (_accounts.Count > 1)
+                {
+                    <button class="btn btn-danger btn-sm" @onclick="() => ConfirmRemove(acc.Id)">Entfernen</button>
+                }
+            </div>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; font-size: 0.85rem; color: var(--muted, #6c7086);">
+            <div>Server: <strong style="color: var(--text, #cdd6f4);">@acc.TradeLocker.Server</strong></div>
+            <div>Email: <strong style="color: var(--text, #cdd6f4);">@acc.TradeLocker.Email</strong></div>
+            <div>Confidence: <strong style="color: var(--text, #cdd6f4);">@acc.RiskManagement.MinConfidence.ToString("P0")</strong></div>
+            <div>Max. Positionen: <strong style="color: var(--text, #cdd6f4);">@acc.RiskManagement.MaxOpenPositions</strong></div>
+        </div>
+    </div>
+}
+
+@* ── Loeschen-Bestaetigungsdialog ─────────────────────────────────────── *@
+@if (_confirmRemoveId != null)
+{
+    <div style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 100;">
+        <div style="background: var(--card-bg, #1e1e2e); border: 1px solid var(--border, #45475a); border-radius: 8px; padding: 24px; max-width: 400px;">
+            <h3 style="margin-top: 0;">Account entfernen?</h3>
+            <p>Account <strong>@_confirmRemoveId</strong> wirklich entfernen? Die Aenderung wird erst nach einem Neustart wirksam.</p>
+            <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                <button class="btn btn-outline" @onclick="() => _confirmRemoveId = null">Abbrechen</button>
+                <button class="btn btn-danger" @onclick="DoRemove">Entfernen</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<AccountConfig> _accounts = new();
+    private bool _saveSuccess;
+    private List<string> _errors = new();
+    private bool _showForm;
+    private bool _editMode;
+    private string? _confirmRemoveId;
+
+    // Form-Felder
+    private string _editId = string.Empty;
+    private string _editDisplayName = string.Empty;
+    private string _editBaseUrl = "https://demo.tradelocker.com/backend-api";
+    private string _editServer = string.Empty;
+    private string _editEmail = string.Empty;
+    private string _editPassword = string.Empty;
+    private bool _editPaperEnabled;
+    private decimal _editPaperBalance = 25000m;
+    private double _editMinConfidence = 0.65;
+    private double _editMaxPosSize = 10.0;
+    private int _editMaxOpenPos = 10;
+
+    protected override void OnInitialized() => LoadAccounts();
+
+    private void LoadAccounts()
+    {
+        var configured = Configuration.GetSection("Accounts").Get<List<AccountConfig>>();
+        if (configured != null && configured.Count > 0)
+        {
+            _accounts = configured;
+        }
+        else
+        {
+            _accounts = new List<AccountConfig>
+            {
+                new AccountConfig
+                {
+                    Id = "default",
+                    DisplayName = "Standard",
+                    TradeLocker = Configuration.GetSection("TradeLocker").Get<TradeLockerSettings>() ?? new(),
+                    RiskManagement = Configuration.GetSection("RiskManagement").Get<RiskSettings>() ?? new(),
+                    PaperTrading = Configuration.GetSection("PaperTrading").Get<PaperTradingSettings>() ?? new()
+                }
+            };
+        }
+    }
+
+    private void ShowAddForm()
+    {
+        _editMode = false;
+        _showForm = true;
+        _saveSuccess = false;
+        _errors.Clear();
+        ResetFormFields();
+    }
+
+    private void HideForm()
+    {
+        _showForm = false;
+        _editMode = false;
+        _errors.Clear();
+    }
+
+    private void EditAccount(AccountConfig acc)
+    {
+        _editMode = true;
+        _showForm = true;
+        _saveSuccess = false;
+        _errors.Clear();
+        _editId = acc.Id;
+        _editDisplayName = acc.DisplayName;
+        _editBaseUrl = acc.TradeLocker.BaseUrl;
+        _editServer = acc.TradeLocker.Server;
+        _editEmail = acc.TradeLocker.Email;
+        _editPassword = acc.TradeLocker.Password;
+        _editPaperEnabled = acc.PaperTrading.Enabled;
+        _editPaperBalance = acc.PaperTrading.InitialBalance;
+        _editMinConfidence = acc.RiskManagement.MinConfidence;
+        _editMaxPosSize = acc.RiskManagement.MaxPositionSizePercent;
+        _editMaxOpenPos = acc.RiskManagement.MaxOpenPositions;
+    }
+
+    private void ResetFormFields()
+    {
+        _editId = string.Empty;
+        _editDisplayName = string.Empty;
+        _editBaseUrl = "https://demo.tradelocker.com/backend-api";
+        _editServer = string.Empty;
+        _editEmail = string.Empty;
+        _editPassword = string.Empty;
+        _editPaperEnabled = false;
+        _editPaperBalance = 25000m;
+        _editMinConfidence = 0.65;
+        _editMaxPosSize = 10.0;
+        _editMaxOpenPos = 10;
+    }
+
+    private async Task SaveAccount()
+    {
+        _saveSuccess = false;
+        _errors = new();
+
+        if (string.IsNullOrWhiteSpace(_editId))
+            _errors.Add("Kurzname (ID) ist erforderlich.");
+        else if (_editId.Contains(' '))
+            _errors.Add("Kurzname darf keine Leerzeichen enthalten.");
+        else if (!_editMode && _accounts.Any(a => a.Id.Equals(_editId.Trim(), StringComparison.OrdinalIgnoreCase)))
+            _errors.Add($"Ein Account mit ID \"{_editId}\" existiert bereits.");
+        if (string.IsNullOrWhiteSpace(_editEmail))
+            _errors.Add("Email ist erforderlich.");
+        if (string.IsNullOrWhiteSpace(_editServer))
+            _errors.Add("Server-Name ist erforderlich.");
+
+        if (_errors.Any()) return;
+
+        var acc = new AccountConfig
+        {
+            Id = _editId.Trim(),
+            DisplayName = string.IsNullOrWhiteSpace(_editDisplayName) ? _editId.Trim() : _editDisplayName.Trim(),
+            TradeLocker = new TradeLockerSettings
+            {
+                BaseUrl = _editBaseUrl.Trim(),
+                Server = _editServer.Trim(),
+                Email = _editEmail.Trim(),
+                Password = _editPassword
+            },
+            PaperTrading = new PaperTradingSettings
+            {
+                Enabled = _editPaperEnabled,
+                InitialBalance = _editPaperBalance
+            },
+            RiskManagement = _editMode
+                ? _accounts.First(a => a.Id == _editId).RiskManagement
+                : new RiskSettings()
+        };
+        acc.RiskManagement.MinConfidence = _editMinConfidence;
+        acc.RiskManagement.MaxPositionSizePercent = _editMaxPosSize;
+        acc.RiskManagement.MaxOpenPositions = _editMaxOpenPos;
+
+        if (_editMode)
+        {
+            var idx = _accounts.FindIndex(a => a.Id == _editId);
+            if (idx >= 0) _accounts[idx] = acc;
+        }
+        else
+        {
+            _accounts.Add(acc);
+        }
+
+        await PersistAccountsAsync();
+        _saveSuccess = true;
+        HideForm();
+    }
+
+    private void ConfirmRemove(string id) => _confirmRemoveId = id;
+
+    private async Task DoRemove()
+    {
+        if (_confirmRemoveId != null)
+        {
+            _accounts.RemoveAll(a => a.Id == _confirmRemoveId);
+            await PersistAccountsAsync();
+            _saveSuccess = true;
+            _confirmRemoveId = null;
+        }
+    }
+
+    private async Task PersistAccountsAsync()
+    {
+        var path = Path.Combine(Env.ContentRootPath, "appsettings.json");
+        var json = await File.ReadAllTextAsync(path);
+        var doc = JsonNode.Parse(json, documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip })!;
+
+        var arr = new JsonArray();
+        foreach (var acc in _accounts)
+        {
+            arr.Add(new JsonObject
+            {
+                ["Id"] = acc.Id,
+                ["DisplayName"] = acc.DisplayName,
+                ["TradeLocker"] = new JsonObject
+                {
+                    ["BaseUrl"] = acc.TradeLocker.BaseUrl,
+                    ["Email"] = acc.TradeLocker.Email,
+                    ["Password"] = acc.TradeLocker.Password,
+                    ["Server"] = acc.TradeLocker.Server,
+                    ["AccountId"] = acc.TradeLocker.AccountId
+                },
+                ["PaperTrading"] = new JsonObject
+                {
+                    ["Enabled"] = acc.PaperTrading.Enabled,
+                    ["InitialBalance"] = acc.PaperTrading.InitialBalance
+                },
+                ["RiskManagement"] = JsonSerializer.SerializeToNode(acc.RiskManagement)
+            });
+        }
+        doc["Accounts"] = arr;
+
+        await File.WriteAllTextAsync(path, doc.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    }
+}

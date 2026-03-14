@@ -28,7 +28,10 @@ public class Trade
 {
     [Key]
     public int Id { get; set; }
-    
+
+    /// <summary>Account-ID fuer Multi-Account-Support (Phase 7.1).</summary>
+    public string AccountId { get; set; } = "default";
+
     public string Symbol { get; set; } = string.Empty;
     public TradeAction Action { get; set; }
     public TradeStatus Status { get; set; }
@@ -114,6 +117,8 @@ public class DailyPnL
     [Key]
     public int Id { get; set; }
 
+    public string AccountId { get; set; } = "default";
+
     public DateOnly Date { get; set; }
 
     [Column(TypeName = "decimal(18,4)")]
@@ -136,7 +141,9 @@ public class TradingLog
 {
     [Key]
     public int Id { get; set; }
-    
+
+    public string AccountId { get; set; } = "default";
+
     public string Level { get; set; } = "Info";
     public string Source { get; set; } = string.Empty;
     public string Message { get; set; } = string.Empty;
@@ -259,6 +266,18 @@ public class OpenAICompatibleSettings
     public string Model { get; set; } = "qwen2.5:7b";
     public int MaxTokens { get; set; } = 2048;
     public int TimeoutSeconds { get; set; } = 60;
+}
+
+// ── Phase 7.1: Multi-Account ──────────────────────────────────────────
+
+/// <summary>Konfiguration fuer einen einzelnen Account (Multi-Account-Support).</summary>
+public class AccountConfig
+{
+    public string Id { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
+    public TradeLockerSettings TradeLocker { get; set; } = new();
+    public RiskSettings RiskManagement { get; set; } = new();
+    public PaperTradingSettings PaperTrading { get; set; } = new();
 }
 
 // Legacy-IB-Konfiguration (wird nicht mehr aktiv verwendet,
@@ -713,6 +732,8 @@ public class MultiTimeframeSettings
 
 public record DashboardViewModel
 {
+    public string AccountId { get; set; } = "default";
+    public string AccountDisplayName { get; set; } = string.Empty;
     public decimal PortfolioValue { get; set; }
     public decimal DailyPnL { get; set; }
     public decimal TotalPnL { get; set; }

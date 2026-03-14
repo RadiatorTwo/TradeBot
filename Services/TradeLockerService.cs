@@ -73,10 +73,27 @@ public class TradeLockerService : IBrokerService
         _logger = logger;
     }
 
+    /// <summary>Konstruktor fuer Multi-Account (Phase 7.1) – Settings direkt uebergeben.</summary>
+    internal TradeLockerService(
+        IHttpClientFactory httpClientFactory,
+        TradeLockerSettings settings,
+        ILogger<TradeLockerService> logger)
+    {
+        _httpClientFactory = httpClientFactory;
+        _settings = settings;
+        _logger = logger;
+    }
+
     /// <summary>Erzeugt einen pro Request konfigurierten HttpClient (Auth + accNum). Nicht speichern, nach Verwendung verwerfen.</summary>
     private HttpClient GetHttpClient()
     {
         var client = _httpClientFactory.CreateClient(HttpClientName);
+        // BaseAddress setzen falls nicht vom Factory konfiguriert (Multi-Account)
+        if (client.BaseAddress == null && !string.IsNullOrEmpty(_settings.BaseUrl))
+        {
+            var baseUrl = _settings.BaseUrl.TrimEnd('/');
+            client.BaseAddress = new Uri(baseUrl + "/");
+        }
         if (!string.IsNullOrEmpty(_accessToken))
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
         if (!string.IsNullOrEmpty(_accountNumber))
