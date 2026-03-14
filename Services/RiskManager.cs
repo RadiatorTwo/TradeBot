@@ -13,6 +13,7 @@ public interface IRiskManager
     void ResetKillSwitch();
     Task<bool> ValidateTradeAsync(ClaudeTradeRecommendation recommendation, CancellationToken ct = default);
     Task<bool> ValidateTradeAsync(ClaudeTradeRecommendation recommendation, decimal bid, decimal ask, CancellationToken ct = default);
+    Task<double> GetDynamicMinConfidenceAsync(string symbol, CancellationToken ct = default);
     Task CheckStopLossesAsync(CancellationToken ct = default);
     Task RecordDailyPnLAsync(CancellationToken ct = default);
 }
@@ -77,10 +78,15 @@ public class RiskManager : IRiskManager
         if (rec.Action.Equals("hold", StringComparison.OrdinalIgnoreCase))
             return true;
 
-        // 3. Confidence-Schwelle (konfigurierbar via MinConfidence)
-        if (rec.Confidence < Settings.MinConfidence)
+        // 3. Confidence-Schwelle (statisch oder dynamisch)
+        var minConfidence = Settings.DynamicConfidenceEnabled
+            ? await GetDynamicMinConfidenceAsync(rec.Symbol, ct)
+            : Settings.MinConfidence;
+
+        if (rec.Confidence < minConfidence)
         {
-            _logger.LogInformation("Trade skipped – confidence {Conf:P0} below MinConfidence {Min:P0}", rec.Confidence, Settings.MinConfidence);
+            _logger.LogInformation("Trade skipped – confidence {Conf:P0} below MinConfidence {Min:P0}{Dynamic}",
+                rec.Confidence, minConfidence, Settings.DynamicConfidenceEnabled ? " (dynamisch)" : "");
             return false;
         }
 
@@ -523,5 +529,120 @@ public class RiskManager : IRiskManager
         }
 
         return false;
+    }
+
+    // ── Phase 6.3: Dynamischer Confidence-Threshold ────────────────
+
+    public async Task<double> GetDynamicMinConfidenceAsync(string symbol, CancellationToken ct = default)
+    {
+        var baseConfidence = Settings.MinConfidence;
+
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
+
+        var atrAdjustment = 0.0;
+        var drawdownAdjustment = 0.0;
+        var winRateAdjustment = 0.0;
+
+        // 1. ATR-basiert: hohe Volatilitaet → hoehere Schwelle
+        if (Settings.ConfidenceAtrFactor > 0)
+        {
+            try
+            {
+                var currentPrice = await _broker.GetCurrentPriceAsync(symbol, ct);
+                if (currentPrice > 0)
+                {
+                    var atr = await GetCurrentAtrAsync(symbol, ct);
+                    if (atr > 0)
+                    {
+                        // ATR als % des Preises – wenn ueber 1% = hohe Volatilitaet
+                        var atrPercent = (double)(atr / currentPrice) * 100.0;
+                        if (atrPercent > 0.5)
+                        {
+                            atrAdjustment = Math.Min(Settings.ConfidenceAtrFactor, (atrPercent - 0.5) * Settings.ConfidenceAtrFactor);
+                        }
+                    }
+                }
+            }
+            catch { /* ATR nicht verfuegbar – kein Adjustment */ }
+        }
+
+        // 2. Drawdown-basiert: im Drawdown konservativer
+        if (Settings.ConfidenceDrawdownFactor > 0)
+        {
+            var latestPnl = await db.DailyPnLs
+                .OrderByDescending(d => d.Date)
+                .FirstOrDefaultAsync(ct);
+
+            if (latestPnl != null && latestPnl.PeakEquity > 0)
+            {
+                var portfolioValue = await _broker.GetPortfolioValueAsync(ct);
+                var drawdownPercent = (double)((latestPnl.PeakEquity - portfolioValue) / latestPnl.PeakEquity) * 100.0;
+                if (drawdownPercent > 0)
+                {
+                    drawdownAdjustment = drawdownPercent * Settings.ConfidenceDrawdownFactor;
+                }
+            }
+        }
+
+        // 3. Win-Rate-basiert: schlechte Win-Rate → hoehere Schwelle
+        if (Settings.ConfidenceLossStreakFactor > 0)
+        {
+            var recentTrades = await db.Trades
+                .Where(t => t.Symbol == symbol
+                    && t.Status == TradeStatus.Executed
+                    && t.RealizedPnL != null)
+                .OrderByDescending(t => t.ClosedAt)
+                .Take(10)
+                .ToListAsync(ct);
+
+            if (recentTrades.Count >= 3)
+            {
+                var winRate = (double)recentTrades.Count(t => t.RealizedPnL > 0) / recentTrades.Count;
+                if (winRate < 0.5)
+                {
+                    winRateAdjustment = (0.5 - winRate) * Settings.ConfidenceLossStreakFactor * 2;
+                }
+            }
+        }
+
+        var effective = baseConfidence + atrAdjustment + drawdownAdjustment + winRateAdjustment;
+        effective = Math.Min(effective, Settings.MaxDynamicConfidence);
+
+        if (effective > baseConfidence)
+        {
+            _logger.LogDebug(
+                "Dynamic confidence for {Symbol}: {Effective:P0} (base={Base:P0}, atr=+{Atr:F3}, dd=+{Dd:F3}, wr=+{Wr:F3})",
+                symbol, effective, baseConfidence, atrAdjustment, drawdownAdjustment, winRateAdjustment);
+        }
+
+        return effective;
+    }
+
+    /// <summary>Aktuellen ATR(14) fuer ein Symbol abrufen.</summary>
+    private async Task<decimal> GetCurrentAtrAsync(string symbol, CancellationToken ct)
+    {
+        var candles = await _broker.GetCandlesAsync(symbol, "1H", 30, ct);
+        if (candles.Count < 15)
+            return 0;
+
+        var highs = candles.Select(c => c.High).ToList();
+        var lows = candles.Select(c => c.Low).ToList();
+        var closes = candles.Select(c => c.Close).ToList();
+
+        // ATR(14) berechnen
+        var trueRanges = new List<decimal>();
+        for (int i = 1; i < candles.Count; i++)
+        {
+            var hl = highs[i] - lows[i];
+            var hc = Math.Abs(highs[i] - closes[i - 1]);
+            var lc = Math.Abs(lows[i] - closes[i - 1]);
+            trueRanges.Add(Math.Max(hl, Math.Max(hc, lc)));
+        }
+
+        if (trueRanges.Count < 14)
+            return 0;
+
+        return trueRanges.TakeLast(14).Average();
     }
 }

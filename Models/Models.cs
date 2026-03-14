@@ -317,6 +317,18 @@ public class RiskSettings
     // ── Phase 8.1: Spread-Filter ──────────────────────────────────────
     /// <summary>Max. erlaubter Spread in Pips. Trade wird abgelehnt wenn Spread hoeher. 0 = deaktiviert.</summary>
     public double MaxSpreadPips { get; set; } = 0;
+
+    // ── Phase 6.3: Dynamischer Confidence-Threshold ─────────────────
+    /// <summary>Dynamische Confidence aktivieren. false = statischer MinConfidence-Wert.</summary>
+    public bool DynamicConfidenceEnabled { get; set; }
+    /// <summary>Zusaetzliche Confidence wenn ATR ueber dem Durchschnitt liegt (0.0–0.2).</summary>
+    public double ConfidenceAtrFactor { get; set; } = 0.05;
+    /// <summary>Zusaetzliche Confidence pro % Drawdown vom Peak (0.0–0.1).</summary>
+    public double ConfidenceDrawdownFactor { get; set; } = 0.02;
+    /// <summary>Zusaetzliche Confidence bei Win-Rate unter 50% (0.0–0.15).</summary>
+    public double ConfidenceLossStreakFactor { get; set; } = 0.05;
+    /// <summary>Maximaler dynamischer Confidence-Wert (Obergrenze).</summary>
+    public double MaxDynamicConfidence { get; set; } = 0.85;
 }
 
 /// <summary>Statische Korrelationsmatrix fuer gaengige Forex/CFD-Pairs.</summary>
