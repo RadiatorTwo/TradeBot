@@ -60,7 +60,7 @@ public class OpenAICompatibleClaudeService : IClaudeService
             ["temperature"] = 0.2,
             ["messages"] = new[]
             {
-                new { role = "system", content = ClaudePromptBuilder.SystemPrompt },
+                new { role = "system", content = ClaudePromptBuilder.GetSystemPrompt(request.StrategyPrompt) },
                 new { role = "user", content = userPrompt }
             }
         };

@@ -28,6 +28,12 @@ public class TradingEngine : BackgroundService
     /// <summary>Account-ID fuer Multi-Account-Support (Phase 7.1).</summary>
     public string AccountId { get; init; } = "default";
 
+    /// <summary>Per-Account Watchlist. Leer = globale Watchlist aus Config.</summary>
+    public string[] AccountWatchList { get; init; } = Array.Empty<string>();
+
+    /// <summary>Optionaler Custom-System-Prompt (Phase 7.3).</summary>
+    public string StrategyPrompt { get; init; } = string.Empty;
+
     private volatile bool _isRunning;
     public bool IsRunning => _isRunning;
 
@@ -158,7 +164,9 @@ public class TradingEngine : BackgroundService
             return;
         }
 
-        var watchList = _config.GetSection("TradingStrategy:WatchList").Get<string[]>() ?? Array.Empty<string>();
+        var watchList = AccountWatchList.Length > 0
+            ? AccountWatchList
+            : _config.GetSection("TradingStrategy:WatchList").Get<string[]>() ?? Array.Empty<string>();
         var cash = await _broker.GetAccountCashAsync(ct);
         var portfolioValue = await _broker.GetPortfolioValueAsync(ct);
         var positions = await _broker.GetPositionsAsync(ct);
@@ -279,7 +287,8 @@ public class TradingEngine : BackgroundService
             AvailableCash = cash,
             PortfolioValue = portfolioValue,
             RecentTradeResults = recentTradeResults,
-            NewsHeadlines = _news.GetHeadlines(symbol)
+            NewsHeadlines = _news.GetHeadlines(symbol),
+            StrategyPrompt = StrategyPrompt
         };
 
         _logger.LogDebug(

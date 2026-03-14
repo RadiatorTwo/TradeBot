@@ -6,7 +6,17 @@ namespace ClaudeTradingBot.Services;
 /// <summary>Gemeinsame Prompt-Bausteine für alle LLM-Provider (Anthropic, OpenAI-kompatibel/Cursor).</summary>
 public static class ClaudePromptBuilder
 {
-    public const string SystemPrompt = """
+    /// <summary>System-Prompt mit optionalem Strategie-Zusatz.</summary>
+    public static string GetSystemPrompt(string? strategyPrompt = null)
+    {
+        if (string.IsNullOrWhiteSpace(strategyPrompt))
+            return DefaultSystemPrompt;
+        return DefaultSystemPrompt + "\n\n" + strategyPrompt;
+    }
+
+    public const string SystemPrompt = DefaultSystemPrompt;
+
+    public const string DefaultSystemPrompt = """
         Du bist ein quantitativer Trading-Analyst für Forex und CFDs (z. B. EURUSD, GBPUSD, XAUUSD, US100).
         Du analysierst Kurse, Candles und Kontodaten und gibst strukturierte Handelsempfehlungen.
         Antworte IMMER ausschließlich als valides JSON-Objekt mit folgender Struktur:

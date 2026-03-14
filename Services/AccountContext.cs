@@ -13,4 +13,9 @@ public class AccountContext
     public RiskManager Risk { get; init; } = null!;
     public TradingEngine Engine { get; init; } = null!;
     public RiskSettings RiskSettings { get; init; } = new();
+
+    // ── Strategie-Profil (Phase 7.3) ────────────────────────────────
+    public string[] WatchList { get; init; } = Array.Empty<string>();
+    public string StrategyPrompt { get; init; } = string.Empty;
+    public string StrategyLabel { get; init; } = string.Empty;
 }

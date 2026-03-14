@@ -87,6 +87,11 @@ public class AccountManager : IHostedService
             loggerFactory.CreateLogger<RiskManager>())
         { AccountId = cfg.Id };
 
+        // Watchlist: per-Account oder Fallback auf globale
+        var watchList = cfg.WatchList.Count > 0
+            ? cfg.WatchList.ToArray()
+            : _config.GetSection("TradingStrategy:WatchList").Get<string[]>() ?? Array.Empty<string>();
+
         // Per-Account TradingEngine
         var riskMonitor = new OptionsMonitorWrapper<RiskSettings>(riskSettings);
         var mtfSettings = _sp.GetRequiredService<IOptionsMonitor<MultiTimeframeSettings>>();
@@ -106,7 +111,11 @@ public class AccountManager : IHostedService
             mtfSettings,
             _config,
             loggerFactory.CreateLogger<TradingEngine>())
-        { AccountId = cfg.Id };
+        {
+            AccountId = cfg.Id,
+            AccountWatchList = watchList,
+            StrategyPrompt = cfg.StrategyPrompt
+        };
 
         return new AccountContext
         {
@@ -116,7 +125,10 @@ public class AccountManager : IHostedService
             PaperTrading = paperTrading,
             Risk = riskManager,
             Engine = engine,
-            RiskSettings = cfg.RiskManagement
+            RiskSettings = cfg.RiskManagement,
+            WatchList = watchList,
+            StrategyPrompt = cfg.StrategyPrompt,
+            StrategyLabel = cfg.StrategyLabel
         };
     }
 

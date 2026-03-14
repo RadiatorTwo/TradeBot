@@ -181,6 +181,9 @@ public class ClaudeAnalysisRequest
 
     /// <summary>Aktuelle News-Headlines fuer dieses Symbol (Sentiment-Kontext fuer das LLM).</summary>
     public List<string> NewsHeadlines { get; set; } = new();
+
+    /// <summary>Optionaler Strategie-Prompt (Phase 7.3). Leer = Standard-System-Prompt.</summary>
+    public string StrategyPrompt { get; set; } = string.Empty;
 }
 
 /// <summary>Zusammenfassung eines geschlossenen Trades fuer den LLM-Feedback-Loop.</summary>
@@ -278,6 +281,14 @@ public class AccountConfig
     public TradeLockerSettings TradeLocker { get; set; } = new();
     public RiskSettings RiskManagement { get; set; } = new();
     public PaperTradingSettings PaperTrading { get; set; } = new();
+
+    // ── Phase 7.3: Strategie-Profil ─────────────────────────────────
+    /// <summary>Per-Account Watchlist. Leer = globale Watchlist aus TradingStrategy:WatchList.</summary>
+    public List<string> WatchList { get; set; } = new();
+    /// <summary>Optionaler Custom-System-Prompt fuer das LLM. Leer = Standard-Prompt.</summary>
+    public string StrategyPrompt { get; set; } = string.Empty;
+    /// <summary>Strategie-Label fuer Vergleichs-Dashboard (z.B. "Konservativ", "Aggressiv").</summary>
+    public string StrategyLabel { get; set; } = string.Empty;
 }
 
 // Legacy-IB-Konfiguration (wird nicht mehr aktiv verwendet,

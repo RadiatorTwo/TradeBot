@@ -55,7 +55,7 @@ public class ClaudeService : IClaudeService
             {
                 new { role = "user", content = prompt }
             },
-            system = ClaudePromptBuilder.SystemPrompt
+            system = ClaudePromptBuilder.GetSystemPrompt(request.StrategyPrompt)
         };
 
         var json = JsonSerializer.Serialize(body, JsonOpts);

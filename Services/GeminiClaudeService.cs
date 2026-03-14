@@ -48,7 +48,7 @@ public class GeminiClaudeService : IClaudeService
             },
             systemInstruction = new
             {
-                parts = new[] { new { text = ClaudePromptBuilder.SystemPrompt } }
+                parts = new[] { new { text = ClaudePromptBuilder.GetSystemPrompt(request.StrategyPrompt) } }
             },
             generationConfig = new
             {
