@@ -245,29 +245,45 @@ public class TradeLockerService : IBrokerService
                             _logger.LogWarning(ex, "TradeLocker all-accounts response was not valid JSON. Body: {Body}", Truncate(accountsBody, 400));
                         }
                     }
-                    var account = accounts?.FirstOrDefault();
+                    // Account auswaehlen: konfiguriertes AccountId bevorzugen, sonst ersten nehmen
+                    TradeLockerAccountInfo? account = null;
+                    if (!string.IsNullOrWhiteSpace(_settings.AccountId) && accounts != null)
+                    {
+                        var targetId = _settings.AccountId.Trim();
+                        account = accounts.FirstOrDefault(a =>
+                            a.Id == targetId ||
+                            a.Id == targetId.TrimStart('D', '#') ||
+                            a.Name.Contains(targetId, StringComparison.OrdinalIgnoreCase));
+                    }
+                    account ??= accounts?.FirstOrDefault();
+
                     if (account != null && !string.IsNullOrWhiteSpace(account.Id))
                     {
                         _accountId = account.Id;
                         _accountNumber = !string.IsNullOrWhiteSpace(account.AccNum) ? account.AccNum : "1";
                         _balanceFromAllAccounts = account.AccountBalance;
-                        _logger.LogInformation("TradeLocker login successful. Using account {AccountId} (accNum={AccNum}), Balance from all-accounts: {Balance}", account.Id, _accountNumber, _balanceFromAllAccounts);
+                        _logger.LogInformation("TradeLocker login successful. Using account {AccountId} (accNum={AccNum}), Balance: {Balance}",
+                            account.Id, _accountNumber, _balanceFromAllAccounts);
+
+                        // Andere verfuegbare Accounts loggen
+                        if (accounts != null && accounts.Count > 1)
+                        {
+                            var others = accounts.Where(a => a.Id != account.Id).Select(a => $"{a.Id} ({a.Name})");
+                            _logger.LogInformation("TradeLocker: {Count} weitere Accounts verfuegbar: {Others}",
+                                accounts.Count - 1, string.Join(", ", others));
+                        }
+                    }
+                    else if (!string.IsNullOrWhiteSpace(_settings.AccountId))
+                    {
+                        _accountId = _settings.AccountId.Trim();
+                        _accountNumber = "1";
+                        _balanceFromAllAccounts = 0m;
+                        _logger.LogInformation("TradeLocker using configured AccountId {AccountId} (not found in all-accounts, using as fallback).", _accountId);
                     }
                     else
                     {
-                        // Fallback: konfiguriertes AccountId nutzen (z. B. aus TradeLocker UI #123456)
-                        if (!string.IsNullOrWhiteSpace(_settings.AccountId))
-                        {
-                            _accountId = _settings.AccountId.Trim();
-                            _accountNumber = "1";
-                            _balanceFromAllAccounts = 0m;
-                            _logger.LogInformation("TradeLocker using configured AccountId {AccountId} (accNum=1). all-accounts returned no list.", _accountId);
-                        }
-                        else
-                        {
-                            _logger.LogWarning("TradeLocker returned no accounts for the current user. Raw response (first 500 chars): {Body}",
-                                Truncate(accountsBody ?? string.Empty, 500));
-                        }
+                        _logger.LogWarning("TradeLocker returned no accounts for the current user. Raw response (first 500 chars): {Body}",
+                            Truncate(accountsBody ?? string.Empty, 500));
                     }
                 }
             }
