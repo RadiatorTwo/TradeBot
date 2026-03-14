@@ -160,6 +160,20 @@ public static class ClaudePromptBuilder
             sb.AppendLine("**Bestehende Position:** Keine");
         }
 
+        // ── News-Headlines (Sentiment-Kontext) ─────────────────────────────
+        if (req.NewsHeadlines.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("## Aktuelle Nachrichten");
+            sb.AppendLine();
+            foreach (var headline in req.NewsHeadlines)
+            {
+                sb.AppendLine($"- {headline}");
+            }
+            sb.AppendLine();
+            sb.AppendLine("Beruecksichtige diese Nachrichten bei deiner Analyse. Bewerte selbst ob sie bullisch, baerisch oder neutral fuer dieses Symbol sind.");
+        }
+
         // ── Trade-Historie (Feedback-Loop) ────────────────────────────────
         if (req.RecentTradeResults.Count > 0)
         {

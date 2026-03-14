@@ -14,6 +14,8 @@ public class TradingEngine : BackgroundService
     private readonly TradingSessionService _session;
     private readonly MarketHoursService _marketHours;
     private readonly EconomicCalendarService _calendar;
+    private readonly NewsSentimentService _news;
+    private readonly PaperTradingBrokerDecorator _paperTrading;
     private readonly NotificationService _notification;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IOptionsMonitor<RiskSettings> _settingsMonitor;
@@ -40,6 +42,8 @@ public class TradingEngine : BackgroundService
         TradingSessionService session,
         MarketHoursService marketHours,
         EconomicCalendarService calendar,
+        NewsSentimentService news,
+        PaperTradingBrokerDecorator paperTrading,
         NotificationService notification,
         IServiceScopeFactory scopeFactory,
         IOptionsMonitor<RiskSettings> settingsMonitor,
@@ -54,6 +58,8 @@ public class TradingEngine : BackgroundService
         _session = session;
         _marketHours = marketHours;
         _calendar = calendar;
+        _news = news;
+        _paperTrading = paperTrading;
         _notification = notification;
         _scopeFactory = scopeFactory;
         _settingsMonitor = settingsMonitor;
@@ -137,8 +143,11 @@ public class TradingEngine : BackgroundService
 
     private async Task RunTradingCycleAsync(CancellationToken ct)
     {
+        var isPaper = _paperTrading.IsPaperTradingActive;
+
         // Markt-Check: wenn Forex-Markt komplett geschlossen, gesamten Zyklus ueberspringen
-        if (!_marketHours.IsMarketOpen())
+        // Im Paper-Trading-Modus wird der Markt-Check uebersprungen
+        if (!isPaper && !_marketHours.IsMarketOpen())
         {
             var nextOpen = _marketHours.GetNextOpen("EURUSD");
             _logger.LogInformation("Markt geschlossen. Naechste Oeffnung: {NextOpen:dd.MM.yyyy HH:mm} UTC",
@@ -161,25 +170,26 @@ public class TradingEngine : BackgroundService
 
             try
             {
-                // Markt-Check pro Symbol
-                if (!_marketHours.IsMarketOpen(symbol))
+                // Markt-/Session-Checks (im Paper-Trading-Modus uebersprungen)
+                if (!isPaper)
                 {
-                    _logger.LogDebug("Ueberspringe {Symbol} – Markt geschlossen", symbol);
-                    continue;
-                }
+                    if (!_marketHours.IsMarketOpen(symbol))
+                    {
+                        _logger.LogDebug("Ueberspringe {Symbol} – Markt geschlossen", symbol);
+                        continue;
+                    }
 
-                // Nicht zu nah am Marktschluss neue Positionen oeffnen
-                if (!_marketHours.IsSafeToOpenPosition(symbol))
-                {
-                    _logger.LogDebug("Ueberspringe {Symbol} – zu nah am Marktschluss", symbol);
-                    continue;
-                }
+                    if (!_marketHours.IsSafeToOpenPosition(symbol))
+                    {
+                        _logger.LogDebug("Ueberspringe {Symbol} – zu nah am Marktschluss", symbol);
+                        continue;
+                    }
 
-                // Session-Filter: Symbol ueberspringen wenn ausserhalb der erlaubten Trading-Session
-                if (!_session.IsSessionActive(symbol))
-                {
-                    _logger.LogDebug("Ueberspringe {Symbol} – ausserhalb der erlaubten Trading-Session", symbol);
-                    continue;
+                    if (!_session.IsSessionActive(symbol))
+                    {
+                        _logger.LogDebug("Ueberspringe {Symbol} – ausserhalb der erlaubten Trading-Session", symbol);
+                        continue;
+                    }
                 }
 
                 // News-Filter: Symbol ueberspringen wenn High-Impact-Event bevorsteht
@@ -265,7 +275,8 @@ public class TradingEngine : BackgroundService
             CurrentPosition = currentPosition,
             AvailableCash = cash,
             PortfolioValue = portfolioValue,
-            RecentTradeResults = recentTradeResults
+            RecentTradeResults = recentTradeResults,
+            NewsHeadlines = _news.GetHeadlines(symbol)
         };
 
         _logger.LogDebug(

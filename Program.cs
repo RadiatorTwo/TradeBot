@@ -25,6 +25,7 @@ builder.Services.Configure<RiskSettings>(builder.Configuration.GetSection("RiskM
 builder.Services.Configure<TelegramSettings>(builder.Configuration.GetSection("Telegram"));
 builder.Services.Configure<PaperTradingSettings>(builder.Configuration.GetSection("PaperTrading"));
 builder.Services.Configure<MultiTimeframeSettings>(builder.Configuration.GetSection("MultiTimeframe"));
+builder.Services.Configure<NewsSettings>(builder.Configuration.GetSection("News"));
 
 // ── Datenbank ──────────────────────────────────────────────────────────
 // AddDbContextFactory fuer Blazor-Komponenten (kurzlebige Kontexte)
@@ -60,6 +61,13 @@ builder.Services.AddSingleton<MarketHoursService>();
 builder.Services.AddSingleton<NotificationService>();
 builder.Services.AddSingleton<EconomicCalendarService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<EconomicCalendarService>());
+builder.Services.AddHttpClient(NewsSentimentService.HttpClientName, client =>
+{
+    client.BaseAddress = new Uri("https://finnhub.io/");
+    client.Timeout = TimeSpan.FromSeconds(15);
+});
+builder.Services.AddSingleton<NewsSentimentService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<NewsSentimentService>());
 
 // ── Backtesting Engine ────────────────────────────────────────────────
 builder.Services.AddTransient<BacktestEngine>();

@@ -171,6 +171,9 @@ public class ClaudeAnalysisRequest
 
     /// <summary>Letzte geschlossene Trades fuer dieses Symbol (Feedback-Loop fuer das LLM).</summary>
     public List<RecentTradeResult> RecentTradeResults { get; set; } = new();
+
+    /// <summary>Aktuelle News-Headlines fuer dieses Symbol (Sentiment-Kontext fuer das LLM).</summary>
+    public List<string> NewsHeadlines { get; set; } = new();
 }
 
 /// <summary>Zusammenfassung eines geschlossenen Trades fuer den LLM-Feedback-Loop.</summary>
@@ -646,6 +649,21 @@ public class TradeLockerCandle
     public decimal C { get => Close; set => Close = value; }
     [JsonPropertyName("t")]
     public long T { get => Time; set => Time = value; }
+}
+
+// ── Phase 6.2: News-Sentiment ────────────────────────────────────────
+
+/// <summary>Konfiguration fuer den News-Sentiment-Service.</summary>
+public class NewsSettings
+{
+    /// <summary>Finnhub API Key (kostenlos: https://finnhub.io/register).</summary>
+    public string FinnhubApiKey { get; set; } = string.Empty;
+    /// <summary>Maximale Anzahl Headlines pro Symbol im LLM-Prompt.</summary>
+    public int MaxHeadlinesPerSymbol { get; set; } = 5;
+    /// <summary>Aktualisierungsintervall in Minuten.</summary>
+    public int RefreshIntervalMinutes { get; set; } = 60;
+    /// <summary>News-Feature aktivieren/deaktivieren.</summary>
+    public bool Enabled { get; set; }
 }
 
 // ── Phase 5: Paper-Trading ─────────────────────────────────────────────
