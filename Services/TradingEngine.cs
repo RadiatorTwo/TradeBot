@@ -1,5 +1,6 @@
 using ClaudeTradingBot.Data;
 using ClaudeTradingBot.Models;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace ClaudeTradingBot.Services;
@@ -242,6 +243,9 @@ public class TradingEngine : BackgroundService
             _logger.LogWarning(ex, "Fehler bei Indikator-Berechnung fuer {Symbol}", symbol);
         }
 
+        // ── Feedback-Loop: Letzte geschlossene Trades fuer dieses Symbol laden ──
+        var recentTradeResults = await LoadRecentTradeResultsAsync(symbol, 10, ct);
+
         // Claude um Analyse bitten (Forex/CFD: Bid/Ask, Candles, Lots)
         var request = new ClaudeAnalysisRequest
         {
@@ -260,7 +264,8 @@ public class TradingEngine : BackgroundService
             Indicators = indicators,
             CurrentPosition = currentPosition,
             AvailableCash = cash,
-            PortfolioValue = portfolioValue
+            PortfolioValue = portfolioValue,
+            RecentTradeResults = recentTradeResults
         };
 
         _logger.LogDebug(
@@ -550,6 +555,44 @@ public class TradingEngine : BackgroundService
         var isBuyRecommendation = recommendedAction.Equals("buy", StringComparison.OrdinalIgnoreCase);
 
         return (isBuyPosition && isSellRecommendation) || (isSellPosition && isBuyRecommendation);
+    }
+
+    /// <summary>
+    /// Laedt die letzten N geschlossenen Trades fuer ein Symbol aus der DB (Feedback-Loop fuer das LLM).
+    /// </summary>
+    private async Task<List<RecentTradeResult>> LoadRecentTradeResultsAsync(
+        string symbol, int count, CancellationToken ct)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
+
+            var closedTrades = await db.Trades
+                .Where(t => t.Symbol == symbol
+                    && t.Status == TradeStatus.Executed
+                    && t.ClosedAt != null
+                    && t.RealizedPnL != null)
+                .OrderByDescending(t => t.ClosedAt)
+                .Take(count)
+                .ToListAsync(ct);
+
+            return closedTrades.Select(t => new RecentTradeResult
+            {
+                Symbol = t.Symbol,
+                Action = t.Action == TradeAction.Buy ? "buy" : "sell",
+                EntryPrice = t.Price,
+                ExitPrice = t.ExecutedPrice ?? t.Price,
+                RealizedPnL = t.RealizedPnL ?? 0,
+                Confidence = t.ClaudeConfidence,
+                ClosedAt = t.ClosedAt ?? t.CreatedAt
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Fehler beim Laden der Trade-Historie fuer {Symbol}", symbol);
+            return new List<RecentTradeResult>();
+        }
     }
 
     private async Task LogAsync(string level, string source, string message)

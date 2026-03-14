@@ -30,6 +30,7 @@ logs/
 
 ## Cursor IDE
 .cursor/
+.claude/
 
 ## OS files
 Thumbs.db

@@ -158,6 +158,31 @@ public static class ClaudePromptBuilder
             sb.AppendLine("**Bestehende Position:** Keine");
         }
 
+        // ── Trade-Historie (Feedback-Loop) ────────────────────────────────
+        if (req.RecentTradeResults.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("## Deine bisherigen Empfehlungen für dieses Symbol");
+            sb.AppendLine();
+
+            var wins = req.RecentTradeResults.Count(t => t.RealizedPnL > 0);
+            var total = req.RecentTradeResults.Count;
+            var winRate = total > 0 ? (double)wins / total * 100 : 0;
+            var totalPnL = req.RecentTradeResults.Sum(t => t.RealizedPnL);
+
+            sb.AppendLine($"**Letzte {total} geschlossene Trades – Win-Rate: {winRate:F0}%, Gesamt-PnL: {totalPnL:+0.00;-0.00} $**");
+            sb.AppendLine();
+
+            foreach (var t in req.RecentTradeResults)
+            {
+                var pnlSign = t.RealizedPnL >= 0 ? "+" : "";
+                sb.AppendLine($"- {t.ClosedAt:dd.MM.yyyy HH:mm} | {t.Action.ToUpper()} @ {t.EntryPrice:F4} → {t.ExitPrice:F4} | PnL: {pnlSign}{t.RealizedPnL:F2} $ | Confidence: {t.Confidence:P0}");
+            }
+
+            sb.AppendLine();
+            sb.AppendLine("Berücksichtige diese Ergebnisse bei deiner Analyse. Wenn du Muster in deinen Fehlern erkennst, passe deine Strategie an.");
+        }
+
         sb.AppendLine();
         sb.AppendLine("Analysiere die Daten und gib deine Handelsempfehlung als JSON. quantity in Lots (z. B. 0.01), stopLossPrice und takeProfitPrice als absolute Preise.");
         return sb.ToString();

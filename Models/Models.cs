@@ -164,6 +164,21 @@ public class ClaudeAnalysisRequest
     public decimal PortfolioValue { get; set; }
     /// <summary>Technische Indikatoren (RSI, EMA, MACD, ATR, Bollinger Bands).</summary>
     public TechnicalIndicators? Indicators { get; set; }
+
+    /// <summary>Letzte geschlossene Trades fuer dieses Symbol (Feedback-Loop fuer das LLM).</summary>
+    public List<RecentTradeResult> RecentTradeResults { get; set; } = new();
+}
+
+/// <summary>Zusammenfassung eines geschlossenen Trades fuer den LLM-Feedback-Loop.</summary>
+public record RecentTradeResult
+{
+    public string Symbol { get; init; } = string.Empty;
+    public string Action { get; init; } = string.Empty;
+    public decimal EntryPrice { get; init; }
+    public decimal ExitPrice { get; init; }
+    public decimal RealizedPnL { get; init; }
+    public double Confidence { get; init; }
+    public DateTime ClosedAt { get; init; }
 }
 
 /// <summary>Berechnete technische Indikatoren fuer ein Symbol.</summary>
