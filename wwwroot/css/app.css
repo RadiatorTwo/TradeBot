@@ -433,7 +433,8 @@ tr:last-child td { border-bottom: none; }
 .rz-textbox,
 .rz-textarea,
 .rz-spinner .rz-inputtext,
-.rz-calendar .rz-inputtext {
+.rz-calendar .rz-inputtext,
+.rz-password .rz-inputtext {
     background: var(--bg-raised) !important;
     border: 1px solid var(--border) !important;
     color: var(--text) !important;
@@ -441,9 +442,30 @@ tr:last-child td { border-bottom: none; }
     font-size: 0.85rem !important;
     transition: border-color 0.2s !important;
 }
+
+/* Spinner/Numeric und Password Container */
+.rz-spinner,
+.rz-password {
+    background: transparent !important;
+    border: none !important;
+}
+.rz-spinner .rz-spinner-up,
+.rz-spinner .rz-spinner-down {
+    background: var(--surface-hover) !important;
+    border-color: var(--border) !important;
+    color: var(--text-secondary) !important;
+}
+.rz-password .rz-button-icon-only {
+    background: transparent !important;
+    color: var(--muted) !important;
+    border: none !important;
+}
+
 .rz-textbox:focus,
 .rz-textarea:focus,
-.rz-state-focused .rz-inputtext {
+.rz-state-focused .rz-inputtext,
+.rz-spinner.rz-state-focused .rz-inputtext,
+.rz-password.rz-state-focused .rz-inputtext {
     border-color: var(--accent) !important;
     box-shadow: 0 0 0 2px var(--accent-glow) !important;
 }
