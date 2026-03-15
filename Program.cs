@@ -208,6 +208,30 @@ app.UseAntiforgery();
 app.UseRateLimiter();
 app.UseHttpMetrics(); // Prometheus HTTP-Metriken
 
+// ── Login-Redirect Middleware (VOR Blazor, verhindert Circuit-Crashes) ──
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path.Value ?? "";
+    var isAuthenticated = context.User.Identity?.IsAuthenticated == true;
+
+    // Nicht-authentifizierte Requests auf Blazor-Seiten → Login redirect
+    // Ausnahmen: Login-Page, Logout, statische Dateien, API-Endpunkte (haben eigene Auth), Metrics
+    if (!isAuthenticated
+        && !path.StartsWith("/login", StringComparison.OrdinalIgnoreCase)
+        && !path.StartsWith("/account/", StringComparison.OrdinalIgnoreCase)
+        && !path.StartsWith("/_", StringComparison.OrdinalIgnoreCase)
+        && !path.StartsWith("/health", StringComparison.OrdinalIgnoreCase)
+        && !path.StartsWith("/metrics", StringComparison.OrdinalIgnoreCase)
+        && !path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase)
+        && !Path.HasExtension(path))
+    {
+        context.Response.Redirect("/login");
+        return;
+    }
+
+    await next();
+});
+
 // ── Prometheus Metriken ──────────────────────────────────────────────────
 app.MapMetrics(); // /metrics Endpunkt (Prometheus-Format)
 
