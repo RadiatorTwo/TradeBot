@@ -188,7 +188,13 @@
                     <RadzenColumn Size="12">
                         <RadzenLabel Text="Custom System-Prompt (optional)" Style="display: block; margin-bottom: 4px;" />
                         <RadzenTextArea @bind-Value="_editStrategyPrompt" Rows="6" Style="width: 100%;" Placeholder="Leer = Standard-Prompt. Hier eigene Trading-Strategie beschreiben die das LLM befolgen soll..." />
-                        <div class="hint" style="margin-top: 4px;">Ueberschreibt den Standard-System-Prompt fuer diesen Account. Beschreibt die Handelsstrategie, erlaubte Instrumente, Risikoverhalten etc.</div>
+                        <div class="hint" style="margin-top: 4px;">Wird an den Standard-Prompt angehaengt. Beschreibt die Handelsstrategie, erlaubte Instrumente, Risikoverhalten etc.</div>
+                    </RadzenColumn>
+                    <RadzenColumn Size="12">
+                        <details>
+                            <summary style="cursor: pointer; font-size: 0.8rem; color: var(--muted);">Standard-Prompt anzeigen</summary>
+                            <pre style="margin-top: 8px; padding: 12px; background: var(--bg); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); white-space: pre-wrap; max-height: 300px; overflow-y: auto;">@ClaudePromptBuilder.DefaultSystemPrompt</pre>
+                        </details>
                     </RadzenColumn>
                 </RadzenRow>
             </details>
