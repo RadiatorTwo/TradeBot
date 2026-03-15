@@ -13,10 +13,39 @@ body {
 }
 
 /* ── Radzen Theme Bridge ─────────────────────────────────────────── */
+/* Ueberschreibt Radzen-interne CSS-Variablen mit unseren Theme-Werten.
+   Damit greifen alle Radzen-Inputs (TextBox, Numeric, DropDown, DatePicker,
+   Password) automatisch dasselbe Farbschema. */
 :root {
     --rz-base-background-color: var(--bg);
     --rz-body-background-color: var(--bg);
     --rz-text-color: var(--text);
+
+    /* Inputs (TextBox, Numeric, DropDown, DatePicker, Password) */
+    --rz-input-background-color: var(--bg-raised);
+    --rz-input-color: var(--text);
+    --rz-input-border-radius: var(--radius-sm);
+    --rz-input-font-size: 0.85rem;
+    --rz-input-hover-shadow: inset 0 0 0 1px var(--border);
+    --rz-input-focus-shadow: inset 0 0 0 1px var(--accent), 0 0 0 2px var(--accent-glow);
+    --rz-input-hover-background-color: var(--bg-raised);
+    --rz-input-focus-background-color: var(--bg-raised);
+    --rz-input-disabled-color: var(--muted);
+    --rz-input-placeholder-color: var(--muted);
+
+    /* Numeric Buttons (Up/Down) */
+    --rz-numeric-button-background-color: var(--surface-hover);
+    --rz-numeric-button-color: var(--text-secondary);
+
+    /* DropDown */
+    --rz-dropdown-open-background-color: var(--surface);
+    --rz-dropdown-item-hover-background-color: var(--accent-subtle);
+
+    /* Card */
+    --rz-card-background-color: var(--surface);
+
+    /* Dialog */
+    --rz-dialog-background-color: var(--surface);
 }
 
 /* ── Layout ──────────────────────────────────────────────────────── */
