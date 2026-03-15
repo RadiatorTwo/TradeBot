@@ -214,6 +214,20 @@ public class PaperTradingBrokerDecorator : IBrokerService
         return true;
     }
 
+    public Task<List<BrokerPendingOrder>> GetPendingOrdersAsync(CancellationToken ct = default)
+    {
+        if (!_settings.CurrentValue.Enabled)
+            return _inner.GetPendingOrdersAsync(ct);
+        return Task.FromResult(new List<BrokerPendingOrder>());
+    }
+
+    public Task<bool> CancelOrderAsync(string orderId, CancellationToken ct = default)
+    {
+        if (!_settings.CurrentValue.Enabled)
+            return _inner.CancelOrderAsync(orderId, ct);
+        return Task.FromResult(true);
+    }
+
     public async Task<bool> UpdatePositionStopLossAsync(string positionId, decimal newStopLoss, CancellationToken ct = default)
     {
         if (!_settings.CurrentValue.Enabled)

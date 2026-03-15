@@ -1,3 +1,4 @@
+using System.Text.Json;
 using ClaudeTradingBot.Data;
 using ClaudeTradingBot.Models;
 using Microsoft.EntityFrameworkCore;
@@ -661,6 +662,49 @@ public class TradingEngine : BackgroundService
         {
             _logger.LogWarning(ex, "Fehler beim Laden der Trade-Historie fuer {Symbol}", symbol);
             return new List<RecentTradeResult>();
+        }
+    }
+
+    /// <summary>
+    /// Persistiert den aktuellen Engine-Zustand in die DB (Graceful Shutdown).
+    /// Wird von AccountManager.StopAsync aufgerufen BEVOR CancellationTokens gefeuert werden.
+    /// </summary>
+    public async Task PersistStateAsync()
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
+
+            var positions = new List<Position>();
+            try { positions = await _broker.GetPositionsAsync(); }
+            catch (Exception ex) { _logger.LogDebug(ex, "Konnte Positionen beim Shutdown nicht laden"); }
+
+            var snapshot = new EngineStateSnapshot
+            {
+                AccountId = AccountId,
+                WasRunning = _isRunning,
+                WasPaused = _pauseRequested,
+                WasKillSwitchActive = _risk.IsKillSwitchActive,
+                OpenPositionCount = positions.Count,
+                OpenPositionsJson = JsonSerializer.Serialize(positions.Select(p => new
+                {
+                    p.Symbol, p.Side, p.Quantity, p.BrokerPositionId, p.AveragePrice
+                })),
+                ShutdownAt = DateTime.UtcNow,
+                CleanShutdown = true
+            };
+
+            db.EngineStateSnapshots.Add(snapshot);
+            await db.SaveChangesAsync();
+
+            _logger.LogInformation(
+                "[{AccountId}] State persisted: {Count} positions, Running={Running}, Paused={Paused}",
+                AccountId, positions.Count, _isRunning, _pauseRequested);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[{AccountId}] State-Persistierung beim Shutdown fehlgeschlagen", AccountId);
         }
     }
 

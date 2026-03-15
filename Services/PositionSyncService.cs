@@ -55,9 +55,10 @@ public class PositionSyncService : BackgroundService
         {
             await SyncPositionsAsync(ctx, stoppingToken);
             await SyncClosedTradesAsync(ctx, stoppingToken);
+            await RecoverStateAsync(ctx, stoppingToken);
         }
 
-        _logger.LogInformation("PositionSync: Initialer Sync abgeschlossen.");
+        _logger.LogInformation("PositionSync: Initialer Sync und State Recovery abgeschlossen.");
 
         var lastHistorySync = DateTime.UtcNow;
 
@@ -286,6 +287,126 @@ public class PositionSyncService : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "PositionSync: SyncClosedTrades fehlgeschlagen fuer Account {Id}", ctx.AccountId);
+        }
+    }
+
+    /// <summary>
+    /// State Recovery nach Neustart: Vergleicht letzten Shutdown-Snapshot mit aktuellem Broker-Zustand.
+    /// Loggt wiederhergestellte Positionen und storniert ggf. verwaiste Pending Orders.
+    /// </summary>
+    private async Task RecoverStateAsync(AccountContext ctx, CancellationToken ct)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
+
+            // Letzten Shutdown-Snapshot laden
+            var lastSnapshot = await db.EngineStateSnapshots
+                .Where(s => s.AccountId == ctx.AccountId)
+                .OrderByDescending(s => s.ShutdownAt)
+                .FirstOrDefaultAsync(ct);
+
+            var brokerPositions = await ctx.EffectiveBroker.GetPositionsAsync(ct);
+
+            if (lastSnapshot != null)
+            {
+                var downtime = DateTime.UtcNow - lastSnapshot.ShutdownAt;
+                _logger.LogInformation(
+                    "Recovery [{AccountId}]: Letzter Shutdown {Time:dd.MM.yyyy HH:mm} UTC ({Downtime} Downtime), " +
+                    "hatte {SnapshotCount} Positionen, Broker hat jetzt {BrokerCount}",
+                    ctx.AccountId, lastSnapshot.ShutdownAt, downtime,
+                    lastSnapshot.OpenPositionCount, brokerPositions.Count);
+
+                if (lastSnapshot.CleanShutdown)
+                    _logger.LogInformation("Recovery [{AccountId}]: Letzter Shutdown war sauber (Graceful)", ctx.AccountId);
+                else
+                    _logger.LogWarning("Recovery [{AccountId}]: Letzter Shutdown war NICHT sauber (Crash/Kill)", ctx.AccountId);
+            }
+            else
+            {
+                _logger.LogInformation("Recovery [{AccountId}]: Kein vorheriger Shutdown-Snapshot gefunden (Erststart)", ctx.AccountId);
+            }
+
+            // Recovery-Log schreiben
+            if (brokerPositions.Count > 0)
+            {
+                db.TradingLogs.Add(new TradingLog
+                {
+                    AccountId = ctx.AccountId,
+                    Level = "Info",
+                    Source = "StateRecovery",
+                    Message = $"{brokerPositions.Count} Positionen wiederhergestellt nach Neustart"
+                });
+
+                foreach (var pos in brokerPositions)
+                {
+                    _logger.LogInformation(
+                        "Recovery [{AccountId}]: Position {Symbol} {Side} {Qty:F2} Lots @ {Price:F5}",
+                        ctx.AccountId, pos.Symbol, pos.Side, pos.Quantity, pos.AveragePrice);
+                }
+            }
+            else
+            {
+                db.TradingLogs.Add(new TradingLog
+                {
+                    AccountId = ctx.AccountId,
+                    Level = "Info",
+                    Source = "StateRecovery",
+                    Message = "Neustart abgeschlossen – keine offenen Positionen"
+                });
+            }
+
+            await db.SaveChangesAsync(ct);
+
+            // Pending Orders pruefen und stornieren
+            await CancelStalePendingOrdersAsync(ctx, db, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Recovery [{AccountId}]: State Recovery fehlgeschlagen", ctx.AccountId);
+        }
+    }
+
+    /// <summary>
+    /// Storniert verwaiste Pending Orders (Limit/Stop) nach Neustart.
+    /// SL/TP-Orders einer Position werden bei TradeLocker nicht als separate Orders gelistet.
+    /// </summary>
+    private async Task CancelStalePendingOrdersAsync(AccountContext ctx, TradingDbContext db, CancellationToken ct)
+    {
+        try
+        {
+            var pendingOrders = await ctx.EffectiveBroker.GetPendingOrdersAsync(ct);
+            if (pendingOrders.Count == 0) return;
+
+            _logger.LogWarning(
+                "Recovery [{AccountId}]: {Count} Pending Orders gefunden, storniere...",
+                ctx.AccountId, pendingOrders.Count);
+
+            var cancelledCount = 0;
+            foreach (var order in pendingOrders)
+            {
+                var cancelled = await ctx.EffectiveBroker.CancelOrderAsync(order.OrderId, ct);
+                if (cancelled) cancelledCount++;
+
+                _logger.LogInformation(
+                    "Recovery [{AccountId}]: {Result} Pending Order {OrderId} ({Symbol} {Side} {Qty:F2} @ {Price:F5})",
+                    ctx.AccountId, cancelled ? "Storniert" : "FEHLGESCHLAGEN",
+                    order.OrderId, order.Symbol, order.Side, order.Qty, order.Price);
+            }
+
+            db.TradingLogs.Add(new TradingLog
+            {
+                AccountId = ctx.AccountId,
+                Level = "Warning",
+                Source = "StateRecovery",
+                Message = $"{cancelledCount}/{pendingOrders.Count} Pending Orders nach Neustart storniert"
+            });
+            await db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Recovery [{AccountId}]: Pending Order Check fehlgeschlagen", ctx.AccountId);
         }
     }
 

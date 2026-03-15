@@ -13,6 +13,7 @@ public class TradingDbContext : DbContext
     public DbSet<TradingLog> TradingLogs => Set<TradingLog>();
     public DbSet<AccountSettingsEntity> AccountSettings => Set<AccountSettingsEntity>();
     public DbSet<GlobalSettingsEntity> GlobalSettings => Set<GlobalSettingsEntity>();
+    public DbSet<EngineStateSnapshot> EngineStateSnapshots => Set<EngineStateSnapshot>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -40,6 +41,12 @@ public class TradingDbContext : DbContext
         {
             e.HasIndex(l => l.Timestamp);
             e.HasIndex(l => l.AccountId);
+        });
+
+        modelBuilder.Entity<EngineStateSnapshot>(e =>
+        {
+            e.HasIndex(s => s.AccountId);
+            e.HasIndex(s => s.ShutdownAt);
         });
     }
 }

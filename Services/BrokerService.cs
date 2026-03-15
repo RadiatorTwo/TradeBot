@@ -37,6 +37,12 @@ public interface IBrokerService
 
     /// <summary>Historische Candles fuer einen Datumsbereich laden (fuer Backtesting).</summary>
     Task<List<OhlcCandle>> GetHistoricalCandlesAsync(string symbol, string resolution, DateTime from, DateTime to, CancellationToken ct = default);
+
+    /// <summary>Pending Orders (Limit/Stop) vom Broker abrufen. Keine SL/TP einer Position.</summary>
+    Task<List<BrokerPendingOrder>> GetPendingOrdersAsync(CancellationToken ct = default);
+
+    /// <summary>Eine Pending Order beim Broker stornieren.</summary>
+    Task<bool> CancelOrderAsync(string orderId, CancellationToken ct = default);
 }
 
 // ── Simulierte Implementierung für Paper Trading / Entwicklung ─────────
@@ -264,6 +270,12 @@ public class SimulatedBrokerService : IBrokerService
         };
         return await GetCandlesAsync(symbol, resolution, Math.Max(count, 1), ct);
     }
+
+    public Task<List<BrokerPendingOrder>> GetPendingOrdersAsync(CancellationToken ct = default)
+        => Task.FromResult(new List<BrokerPendingOrder>());
+
+    public Task<bool> CancelOrderAsync(string orderId, CancellationToken ct = default)
+        => Task.FromResult(true);
 }
 
 // ── Echte IB Gateway Implementierung (Platzhalter) ────────────────────

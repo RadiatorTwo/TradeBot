@@ -558,6 +558,34 @@ public class PlaceOrderResult
     public string? BrokerPositionId { get; set; }
 }
 
+/// <summary>Snapshot des Engine-Zustands bei Shutdown (fuer Graceful Shutdown & Recovery).</summary>
+public class EngineStateSnapshot
+{
+    [Key]
+    public int Id { get; set; }
+    public string AccountId { get; set; } = "default";
+    public bool WasRunning { get; set; }
+    public bool WasPaused { get; set; }
+    public bool WasKillSwitchActive { get; set; }
+    public int OpenPositionCount { get; set; }
+    /// <summary>JSON-Array mit offenen Positionen zum Shutdown-Zeitpunkt.</summary>
+    public string OpenPositionsJson { get; set; } = "[]";
+    public DateTime ShutdownAt { get; set; } = DateTime.UtcNow;
+    public bool CleanShutdown { get; set; }
+}
+
+/// <summary>Pending Order vom Broker (Limit/Stop, nicht SL/TP einer Position).</summary>
+public class BrokerPendingOrder
+{
+    public string OrderId { get; set; } = string.Empty;
+    public string Symbol { get; set; } = string.Empty;
+    public string Side { get; set; } = string.Empty;
+    public decimal Qty { get; set; }
+    public decimal Price { get; set; }
+    public string Type { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+}
+
 /// <summary>Geschlossene Position vom Broker (für Sync).</summary>
 public class BrokerClosedPosition
 {

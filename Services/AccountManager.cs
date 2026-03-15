@@ -246,6 +246,22 @@ public class AccountManager : IHostedService
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
+        _logger.LogInformation("AccountManager: Graceful shutdown fuer {Count} Accounts...", _accounts.Count);
+
+        // Phase 1: State persistieren BEVOR CancellationTokens gefeuert werden
+        foreach (var ctx in _accounts)
+        {
+            try
+            {
+                await ctx.Engine.PersistStateAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "State-Persistierung fehlgeschlagen fuer Account {Id}", ctx.AccountId);
+            }
+        }
+
+        // Phase 2: Engines stoppen
         foreach (var ctx in _accounts)
         {
             _logger.LogInformation("Stoppe TradingEngine fuer Account {Id}...", ctx.AccountId);

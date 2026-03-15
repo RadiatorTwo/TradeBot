@@ -1637,5 +1637,93 @@ public class TradeLockerService : IBrokerService
         }
         return list;
     }
+
+    public async Task<List<BrokerPendingOrder>> GetPendingOrdersAsync(CancellationToken ct = default)
+    {
+        var list = new List<BrokerPendingOrder>();
+        if (!_isConnected || string.IsNullOrEmpty(_accountId)) return list;
+        await ThrottleAsync(ct);
+        try
+        {
+            using var client = GetHttpClient();
+            var response = await client.GetAsync($"trade/accounts/{_accountId}/orders", ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogDebug("GetPendingOrders failed: {Status}", (int)response.StatusCode);
+                return list;
+            }
+            var body = await response.Content.ReadAsStringAsync(ct);
+            _logger.LogDebug("GetPendingOrders raw (300 chars): {Body}", Truncate(body, 300));
+
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            System.Text.Json.JsonElement target = root;
+            if (root.TryGetProperty("d", out var d)) target = d;
+
+            if (!target.TryGetProperty("orders", out var ordersEl) ||
+                ordersEl.ValueKind != System.Text.Json.JsonValueKind.Array)
+                return list;
+
+            foreach (var item in ordersEl.EnumerateArray())
+            {
+                if (item.ValueKind != System.Text.Json.JsonValueKind.Array || item.GetArrayLength() < 6)
+                    continue;
+
+                // Array-Format: [id, instrumentId, routeId, side, qty, price, type, ...]
+                var orderId = item[0].ToString();
+                var instId = int.TryParse(item[1].ToString(), out var iid) ? iid : 0;
+                var side = item[3].ToString();
+                var qty = decimal.TryParse(item[4].ToString(), System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var q) ? q : 0m;
+                var price = decimal.TryParse(item[5].ToString(), System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var p) ? p : 0m;
+                var type = item.GetArrayLength() > 6 ? item[6].ToString() : "unknown";
+
+                var symbol = ResolveInstrumentIdToSymbol(instId) ?? $"UNKNOWN_{instId}";
+
+                list.Add(new BrokerPendingOrder
+                {
+                    OrderId = orderId,
+                    Symbol = symbol,
+                    Side = side,
+                    Qty = qty,
+                    Price = price,
+                    Type = type,
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+
+            _logger.LogInformation("GetPendingOrders: {Count} pending orders", list.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "GetPendingOrders failed");
+        }
+        return list;
+    }
+
+    public async Task<bool> CancelOrderAsync(string orderId, CancellationToken ct = default)
+    {
+        if (!_isConnected || string.IsNullOrEmpty(_accountId))
+        {
+            _logger.LogWarning("TradeLocker: Cannot cancel order – not connected or no account.");
+            return false;
+        }
+        await ThrottleAsync(ct);
+        try
+        {
+            using var client = GetHttpClient();
+            var response = await client.DeleteAsync($"trade/orders/{orderId}?accountId={_accountId}", ct);
+            var success = response.IsSuccessStatusCode;
+            _logger.LogInformation("CancelOrder {OrderId}: {Result} ({Status})",
+                orderId, success ? "OK" : "FAILED", (int)response.StatusCode);
+            return success;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "CancelOrder {OrderId} failed", orderId);
+            return false;
+        }
+    }
 }
 
