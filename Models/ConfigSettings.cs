@@ -45,15 +45,6 @@ public class AccountConfig
     public string StrategyLabel { get; set; } = string.Empty;
 }
 
-/// <summary>Legacy-IB-Konfiguration (nicht mehr aktiv verwendet).</summary>
-public class IBSettings
-{
-    public string Host { get; set; } = "127.0.0.1";
-    public int Port { get; set; } = 4002;
-    public int ClientId { get; set; } = 1;
-    public bool UsePaperTrading { get; set; } = true;
-}
-
 public class TradeLockerSettings
 {
     public string BaseUrl { get; set; } = "https://demo.tradelocker.com/backend-api";
