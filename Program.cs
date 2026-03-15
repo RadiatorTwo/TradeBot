@@ -332,17 +332,17 @@ app.Run();
 
 static void ConfigureLlmResilience(Microsoft.Extensions.Http.Resilience.HttpStandardResilienceOptions o)
 {
-    // LLM-Aufrufe sind langsam – grosszuegige Timeouts
-    o.AttemptTimeout.Timeout = TimeSpan.FromSeconds(60);
-    o.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(120);
-    // Retry: 2 Versuche mit exponentiellem Backoff
-    o.Retry.MaxRetryAttempts = 2;
-    o.Retry.Delay = TimeSpan.FromSeconds(3);
-    // Circuit Breaker: nach 5 Fehlern 30s offen (SamplingDuration >= 2x AttemptTimeout)
-    o.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(120);
+    // LLM-Aufrufe sind langsam – grosszuegige Timeouts (lokale Modelle wie qwen2.5:32b brauchen bis 180s)
+    o.AttemptTimeout.Timeout = TimeSpan.FromSeconds(180);
+    o.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(360);
+    // Retry: 1 Versuch (bei Timeout nicht nochmal 3min warten)
+    o.Retry.MaxRetryAttempts = 1;
+    o.Retry.Delay = TimeSpan.FromSeconds(5);
+    // Circuit Breaker: nach 3 Fehlern 60s offen (SamplingDuration >= 2x AttemptTimeout)
+    o.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(360);
     o.CircuitBreaker.FailureRatio = 0.8;
-    o.CircuitBreaker.MinimumThroughput = 5;
-    o.CircuitBreaker.BreakDuration = TimeSpan.FromSeconds(30);
+    o.CircuitBreaker.MinimumThroughput = 3;
+    o.CircuitBreaker.BreakDuration = TimeSpan.FromSeconds(60);
 }
 
 static void ConfigureBrokerResilience(Microsoft.Extensions.Http.Resilience.HttpStandardResilienceOptions o)

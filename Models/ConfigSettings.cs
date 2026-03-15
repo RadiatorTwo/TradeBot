@@ -29,7 +29,7 @@ public class OpenAICompatibleSettings
     public string ApiKey { get; set; } = string.Empty;
     public string Model { get; set; } = "qwen2.5:7b";
     public int MaxTokens { get; set; } = 2048;
-    public int TimeoutSeconds { get; set; } = 60;
+    public int TimeoutSeconds { get; set; } = 180;
 }
 
 /// <summary>Konfiguration fuer einen einzelnen Account (Multi-Account-Support).</summary>
