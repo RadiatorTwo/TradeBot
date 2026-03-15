@@ -149,6 +149,17 @@ using (var scope = app.Services.CreateScope())
         var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
         logger.LogInformation("Admin-Benutzer angelegt (admin/admin). Passwortaenderung beim ersten Login erzwungen.");
     }
+
+    // ── Daten-Retention: alte Logs loeschen (> 90 Tage) ──
+    var retentionCutoff = DateTime.UtcNow.AddDays(-90);
+    var deletedLogs = await db.TradingLogs
+        .Where(l => l.Timestamp < retentionCutoff)
+        .ExecuteDeleteAsync();
+    if (deletedLogs > 0)
+    {
+        var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+        logger.LogInformation("{Count} TradingLogs aelter als 90 Tage geloescht", deletedLogs);
+    }
 }
 
 // ── Middleware ──────────────────────────────────────────────────────────

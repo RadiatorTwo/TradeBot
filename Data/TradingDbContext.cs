@@ -33,6 +33,10 @@ public class TradingDbContext : DbContext
             e.HasIndex(t => t.Status);
             e.HasIndex(t => t.AccountId);
             e.HasIndex(t => t.SetupType);
+            // Composite-Indexes fuer haeufige Queries
+            e.HasIndex(t => new { t.AccountId, t.CreatedAt });
+            e.HasIndex(t => new { t.BrokerPositionId, t.Status });
+            e.HasIndex(t => t.ClosedAt);
         });
 
         modelBuilder.Entity<Position>(e =>
@@ -50,6 +54,8 @@ public class TradingDbContext : DbContext
         {
             e.HasIndex(l => l.Timestamp);
             e.HasIndex(l => l.AccountId);
+            // Composite-Index fuer Dashboard-Query: WHERE AccountId = X ORDER BY Timestamp DESC
+            e.HasIndex(l => new { l.AccountId, l.Timestamp });
         });
 
         modelBuilder.Entity<EngineStateSnapshot>(e =>
