@@ -616,6 +616,16 @@ tr:last-child td { border-bottom: none; }
     border-radius: var(--radius-md) !important;
     font-size: 0.95rem !important;
 }
+.rz-alert a {
+    color: var(--text) !important;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    transition: color 0.15s;
+}
+.rz-alert a:hover {
+    color: white !important;
+}
 
 /* ── ProgressBar ──────────────────────────────────────────────────── */
 
