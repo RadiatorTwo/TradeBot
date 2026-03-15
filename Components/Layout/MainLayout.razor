@@ -1,5 +1,7 @@
 @inherits LayoutComponentBase
 @inject NavigationManager Navigation
+@inject IAuthService AuthService
+@inject AuthenticationStateProvider AuthStateProvider
 
 <RadzenLayout>
     <RadzenHeader>
@@ -8,6 +10,17 @@
             <RadzenText TextStyle="TextStyle.H6" Style="margin: 0; white-space: nowrap;">
                 <span style="color: var(--accent);">Claude</span> Trading Bot
             </RadzenText>
+            <div style="flex: 1;"></div>
+            <AuthorizeView>
+                <Authorized>
+                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px">
+                        <RadzenIcon Icon="person" Style="font-size: 18px; color: #aaa;" />
+                        <RadzenText TextStyle="TextStyle.Body2" Style="margin: 0; color: #ccc;">@context.User.Identity?.Name</RadzenText>
+                        <RadzenButton Text="Logout" Icon="logout" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                      Click="@DoLogout" />
+                    </RadzenStack>
+                </Authorized>
+            </AuthorizeView>
         </RadzenStack>
     </RadzenHeader>
 
@@ -28,6 +41,7 @@
 
             <RadzenPanelMenuItem Text="Verwaltung" Icon="settings" Expanded="true">
                 <RadzenPanelMenuItem Text="Accounts" Icon="account_circle" Path="/accounts" />
+                <RadzenPanelMenuItem Text="Benutzer" Icon="people" Path="/users" />
                 <RadzenPanelMenuItem Text="Einstellungen" Icon="tune" Path="/settings" />
                 <RadzenPanelMenuItem Text="System-Status" Icon="monitor_heart" Path="/health-dashboard" />
             </RadzenPanelMenuItem>
@@ -43,4 +57,38 @@
 
 @code {
     private bool _sidebarExpanded = true;
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var state = await AuthState;
+            var user = state.User;
+
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                var idClaim = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (idClaim is not null && int.TryParse(idClaim, out var userId))
+                {
+                    var appUser = await AuthService.GetUserByIdAsync(userId);
+                    if (appUser?.MustChangePassword == true)
+                    {
+                        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+                        if (!uri.AbsolutePath.Equals("/change-password", StringComparison.OrdinalIgnoreCase))
+                        {
+                            Navigation.NavigateTo("/change-password");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private void DoLogout()
+    {
+        Navigation.NavigateTo("/account/logout", forceLoad: true);
+    }
 }

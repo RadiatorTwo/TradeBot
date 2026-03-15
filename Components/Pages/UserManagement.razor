@@ -1,0 +1,193 @@
+@page "/users"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@attribute [Authorize]
+@inject IAuthService AuthService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject DialogService DialogService
+
+<RadzenText TextStyle="TextStyle.H5" Style="margin-bottom: 16px;">Benutzerverwaltung</RadzenText>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" AllowClose="true" Close="@(() => _error = null)" Style="margin-bottom: 16px;">
+        @_error
+    </RadzenAlert>
+}
+
+@if (!string.IsNullOrEmpty(_success))
+{
+    <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" AllowClose="true" Close="@(() => _success = null)" Style="margin-bottom: 16px;">
+        @_success
+    </RadzenAlert>
+}
+
+<RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px" Style="margin-bottom: 16px;">
+    <RadzenButton Text="Neuer Benutzer" Icon="person_add" Click="@ShowCreateForm" ButtonStyle="ButtonStyle.Primary" />
+</RadzenStack>
+
+@if (_showForm)
+{
+    <RadzenCard Style="margin-bottom: 16px; max-width: 500px;">
+        <RadzenText TextStyle="TextStyle.H6" Style="margin-bottom: 12px;">Neuen Benutzer anlegen</RadzenText>
+        <div style="margin-bottom: 12px;">
+            <RadzenLabel Text="Benutzername (min. 3 Zeichen)" />
+            <RadzenTextBox @bind-Value="_newUsername" Style="width: 100%;" />
+        </div>
+        <div style="margin-bottom: 12px;">
+            <RadzenLabel Text="Passwort (min. 8 Zeichen)" />
+            <RadzenPassword @bind-Value="_newPassword" Style="width: 100%;" />
+        </div>
+        <div style="margin-bottom: 16px;">
+            <RadzenCheckBox @bind-Value="_newMustChange" Name="mustChange" />
+            <RadzenLabel Text="Passwortaenderung beim naechsten Login erzwingen" Component="mustChange" Style="margin-left: 8px;" />
+        </div>
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="8px">
+            <RadzenButton Text="Anlegen" Icon="check" Click="@CreateUser" ButtonStyle="ButtonStyle.Primary" />
+            <RadzenButton Text="Abbrechen" Icon="close" Click="@(() => _showForm = false)" ButtonStyle="ButtonStyle.Light" />
+        </RadzenStack>
+    </RadzenCard>
+}
+
+<RadzenDataGrid Data="@_users" TItem="AppUser" AllowSorting="true" Style="margin-top: 8px;">
+    <Columns>
+        <RadzenDataGridColumn TItem="AppUser" Property="Username" Title="Benutzername" Width="200px" />
+        <RadzenDataGridColumn TItem="AppUser" Property="CreatedAt" Title="Erstellt" Width="180px">
+            <Template Context="user">
+                @user.CreatedAt.ToString("dd.MM.yyyy HH:mm")
+            </Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="AppUser" Property="LastLoginAt" Title="Letzter Login" Width="180px">
+            <Template Context="user">
+                @(user.LastLoginAt?.ToString("dd.MM.yyyy HH:mm") ?? "Nie")
+            </Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="AppUser" Property="MustChangePassword" Title="PW-Aenderung" Width="140px">
+            <Template Context="user">
+                @if (user.MustChangePassword)
+                {
+                    <RadzenBadge Text="Erzwungen" BadgeStyle="BadgeStyle.Warning" />
+                }
+            </Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="AppUser" Title="Aktionen" Width="280px" Sortable="false">
+            <Template Context="user">
+                <RadzenStack Orientation="Orientation.Horizontal" Gap="4px">
+                    <RadzenButton Text="PW Reset" Icon="lock_reset" Size="ButtonSize.Small"
+                                  ButtonStyle="ButtonStyle.Info" Click="@(() => ShowResetDialog(user))" />
+                    <RadzenButton Text="Loeschen" Icon="delete" Size="ButtonSize.Small"
+                                  ButtonStyle="ButtonStyle.Danger" Click="@(() => ConfirmDelete(user))"
+                                  Disabled="@(user.Id == _currentUserId || _users.Count <= 1)" />
+                </RadzenStack>
+            </Template>
+        </RadzenDataGridColumn>
+    </Columns>
+</RadzenDataGrid>
+
+@code {
+    private List<AppUser> _users = new();
+    private int _currentUserId;
+    private bool _showForm;
+    private string _newUsername = "";
+    private string _newPassword = "";
+    private bool _newMustChange = true;
+    private string? _error;
+    private string? _success;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var idClaim = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (idClaim is not null)
+            int.TryParse(idClaim, out _currentUserId);
+
+        await LoadUsers();
+    }
+
+    private async Task LoadUsers()
+    {
+        _users = await AuthService.GetAllUsersAsync();
+    }
+
+    private void ShowCreateForm()
+    {
+        _showForm = true;
+        _newUsername = "";
+        _newPassword = "";
+        _newMustChange = true;
+    }
+
+    private async Task CreateUser()
+    {
+        _error = null;
+        _success = null;
+
+        if (string.IsNullOrWhiteSpace(_newUsername) || _newUsername.Length < 3)
+        {
+            _error = "Der Benutzername muss mindestens 3 Zeichen lang sein.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_newPassword) || _newPassword.Length < 8)
+        {
+            _error = "Das Passwort muss mindestens 8 Zeichen lang sein.";
+            return;
+        }
+
+        try
+        {
+            await AuthService.CreateUserAsync(_newUsername, _newPassword, _newMustChange);
+            _success = $"Benutzer '{_newUsername}' erfolgreich angelegt.";
+            _showForm = false;
+            await LoadUsers();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task ShowResetDialog(AppUser user)
+    {
+        var newPw = await DialogService.OpenAsync<ResetPasswordDialog>(
+            "Passwort zuruecksetzen",
+            new Dictionary<string, object?> { { "Username", user.Username } },
+            new DialogOptions { Width = "400px" });
+
+        if (newPw is string pw && !string.IsNullOrEmpty(pw))
+        {
+            try
+            {
+                await AuthService.ResetPasswordAsync(user.Id, pw);
+                _success = $"Passwort fuer '{user.Username}' zurueckgesetzt.";
+                await LoadUsers();
+            }
+            catch (Exception ex)
+            {
+                _error = ex.Message;
+            }
+        }
+    }
+
+    private async Task ConfirmDelete(AppUser user)
+    {
+        var confirmed = await DialogService.Confirm(
+            $"Benutzer '{user.Username}' wirklich loeschen?",
+            "Benutzer loeschen",
+            new ConfirmOptions { OkButtonText = "Loeschen", CancelButtonText = "Abbrechen" });
+
+        if (confirmed == true)
+        {
+            try
+            {
+                await AuthService.DeleteUserAsync(user.Id, _currentUserId);
+                _success = $"Benutzer '{user.Username}' geloescht.";
+                await LoadUsers();
+            }
+            catch (Exception ex)
+            {
+                _error = ex.Message;
+            }
+        }
+    }
+}

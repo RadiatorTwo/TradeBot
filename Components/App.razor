@@ -12,7 +12,9 @@
 </head>
 <body>
     <RadzenComponents @rendermode="RenderMode.InteractiveServer" />
-    <Routes @rendermode="RenderMode.InteractiveServer" />
+    <CascadingAuthenticationState>
+        <Routes @rendermode="RenderMode.InteractiveServer" />
+    </CascadingAuthenticationState>
 
     <div id="components-reconnect-modal">
         <div class="reconnect-content">

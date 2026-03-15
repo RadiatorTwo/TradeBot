@@ -15,9 +15,17 @@ public class TradingDbContext : DbContext
     public DbSet<GlobalSettingsEntity> GlobalSettings => Set<GlobalSettingsEntity>();
     public DbSet<EngineStateSnapshot> EngineStateSnapshots => Set<EngineStateSnapshot>();
     public DbSet<GridState> GridStates => Set<GridState>();
+    public DbSet<AppUser> AppUsers => Set<AppUser>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<AppUser>(e =>
+        {
+            e.HasIndex(u => u.Username).IsUnique();
+            e.Property(u => u.Username).HasMaxLength(50);
+        });
+
+
         modelBuilder.Entity<Trade>(e =>
         {
             e.HasIndex(t => t.Symbol);

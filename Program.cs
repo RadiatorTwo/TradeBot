@@ -4,6 +4,8 @@ using ClaudeTradingBot.HealthChecks;
 using ClaudeTradingBot.Hubs;
 using ClaudeTradingBot.Models;
 using ClaudeTradingBot.Services;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Radzen;
@@ -90,6 +92,25 @@ builder.Services.AddHealthChecks()
     .AddCheck<DatabaseHealthCheck>("database", tags: new[] { "db" })
     .AddCheck<TradingActivityHealthCheck>("trading-activity", tags: new[] { "activity" });
 
+// ── Authentifizierung ────────────────────────────────────────────────
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.LoginPath = "/login";
+        options.ExpireTimeSpan = TimeSpan.FromHours(24);
+        options.SlidingExpiration = true;
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SameSite = SameSiteMode.Strict;
+    });
+builder.Services.AddAuthorization(options =>
+{
+    options.FallbackPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+});
+builder.Services.AddRazorPages();
+
 // ── Blazor Server + Radzen ────────────────────────────────────────────
 builder.Services.AddRadzenComponents();
 builder.Services.AddRazorComponents()
@@ -113,6 +134,21 @@ using (var scope = app.Services.CreateScope())
         logger.LogInformation("{Count} alte Trades von 'Failed' auf 'Rejected' migriert", rejectedCount);
     }
 
+    // ── Admin-Seed: Erststart → admin/admin mit erzwungener Passwortaenderung ──
+    if (!await db.AppUsers.AnyAsync())
+    {
+        var adminUser = new AppUser
+        {
+            Username = "admin",
+            PasswordHash = BCrypt.Net.BCrypt.EnhancedHashPassword("admin", 12),
+            MustChangePassword = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        db.AppUsers.Add(adminUser);
+        await db.SaveChangesAsync();
+        var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+        logger.LogInformation("Admin-Benutzer angelegt (admin/admin). Passwortaenderung beim ersten Login erzwungen.");
+    }
 }
 
 // ── Middleware ──────────────────────────────────────────────────────────
@@ -125,12 +161,24 @@ if (!app.Environment.IsDevelopment())
 app.UseSerilogRequestLogging();
 app.UseStaticFiles();
 app.UseRouting();
+app.UseAuthentication();
+app.UseAuthorization();
 app.UseAntiforgery();
+
+// ── Razor Pages (Login) ──────────────────────────────────────────────────
+app.MapRazorPages().AllowAnonymous();
+
+// ── Logout Endpunkt ─────────────────────────────────────────────────────
+app.MapGet("/account/logout", async (HttpContext context) =>
+{
+    await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    return Results.Redirect("/login");
+}).AllowAnonymous();
 
 // ── Blazor + SignalR ────────────────────────────────────────────────────
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
-app.MapHub<TradingHub>("/tradinghub");
+app.MapHub<TradingHub>("/tradinghub").RequireAuthorization();
 
 // ── Health Check Endpunkt ──────────────────────────────────────────────
 app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
@@ -164,7 +212,7 @@ app.MapGet("/api/pnl-history", async (TradingDbContext db) =>
         .Select(d => new { date = d.Date.ToString("yyyy-MM-dd"), portfolio = d.PortfolioValue, pnl = d.RealizedPnL })
         .ToListAsync();
     return Results.Ok(history);
-});
+}).RequireAuthorization();
 
 // ── CSV-Export für Trade-Historie ────────────────────────────────────────
 app.MapGet("/api/trades/export", async (
@@ -203,7 +251,7 @@ app.MapGet("/api/trades/export", async (
         System.Text.Encoding.UTF8.GetBytes(sb.ToString()),
         "text/csv",
         fileName);
-});
+}).RequireAuthorization();
 
 Log.Information("Claude Trading Bot starting...");
 app.Run();

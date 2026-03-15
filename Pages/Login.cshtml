@@ -1,0 +1,115 @@
+@page
+@model ClaudeTradingBot.Pages.LoginModel
+@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login - Claude Trading Bot</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #e0e0e0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        .login-card {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+        .login-title {
+            font-size: 1.5rem;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+        .login-title span { color: #7c4dff; }
+        .login-subtitle {
+            color: #888;
+            text-align: center;
+            margin-bottom: 24px;
+            font-size: 0.9rem;
+        }
+        .form-group { margin-bottom: 16px; }
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 0.875rem;
+            color: #aaa;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid #333;
+            border-radius: 6px;
+            background: #0f3460;
+            color: #e0e0e0;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .form-group input:focus { border-color: #7c4dff; }
+        .btn-login {
+            width: 100%;
+            padding: 12px;
+            background: #7c4dff;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-top: 8px;
+        }
+        .btn-login:hover { background: #651fff; }
+        .error-msg {
+            background: rgba(244, 67, 54, 0.15);
+            color: #ef5350;
+            padding: 10px 14px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            font-size: 0.875rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <h1 class="login-title"><span>Claude</span> Trading Bot</h1>
+        <p class="login-subtitle">Bitte melden Sie sich an</p>
+
+        @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+        {
+            <div class="error-msg">@Model.ErrorMessage</div>
+        }
+
+        <form method="post">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl" />
+
+            <div class="form-group">
+                <label for="username">Benutzername</label>
+                <input type="text" id="username" name="Username" value="@Model.Username"
+                       autocomplete="username" autofocus required />
+            </div>
+
+            <div class="form-group">
+                <label for="password">Passwort</label>
+                <input type="password" id="password" name="Password"
+                       autocomplete="current-password" required />
+            </div>
+
+            <button type="submit" class="btn-login">Anmelden</button>
+        </form>
+    </div>
+</body>
+</html>
