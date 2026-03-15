@@ -8,6 +8,14 @@
     <UserSecretsId>claude-trading-bot-secrets</UserSecretsId>
   </PropertyGroup>
 
+  <!-- Testprojekt-Unterverzeichnis vom Build ausschließen -->
+  <ItemGroup>
+    <Compile Remove="ClaudeTradingBot.Tests\**" />
+    <Content Remove="ClaudeTradingBot.Tests\**" />
+    <EmbeddedResource Remove="ClaudeTradingBot.Tests\**" />
+    <None Remove="ClaudeTradingBot.Tests\**" />
+  </ItemGroup>
+
   <ItemGroup>
     <!-- Entity Framework Core mit SQLite -->
     <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
