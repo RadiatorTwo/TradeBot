@@ -1,0 +1,165 @@
+@page "/pending-orders"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject AccountManager AccountMgr
+@inject DialogService DialogService
+
+<PageTitle>Pending Orders - Claude Trading Bot</PageTitle>
+
+<RadzenText TextStyle="TextStyle.H5" Style="margin-bottom: 16px;">Pending Orders</RadzenText>
+
+@if (!AccountMgr.HasAccounts)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Warning" AllowClose="false">
+        Kein Account konfiguriert.
+    </RadzenAlert>
+}
+else
+{
+    @if (AccountMgr.Accounts.Count > 1)
+    {
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px" Style="margin-bottom: 12px;">
+            <RadzenLabel Text="Account:" />
+            <RadzenDropDown @bind-Value="_selectedAccountId"
+                            Data="AccountMgr.Accounts"
+                            TextProperty="DisplayName"
+                            ValueProperty="AccountId"
+                            Change="@(_ => LoadOrders())"
+                            Style="min-width: 250px;" />
+        </RadzenStack>
+    }
+
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px" Style="margin-bottom: 16px;">
+        <RadzenButton Text="Aktualisieren" Icon="refresh" Click="@LoadOrders" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" />
+    </RadzenStack>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" AllowClose="true" Close="@(() => _error = null)" Style="margin-bottom: 16px;">
+            @_error
+        </RadzenAlert>
+    }
+
+    @if (!string.IsNullOrEmpty(_success))
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" AllowClose="true" Close="@(() => _success = null)" Style="margin-bottom: 16px;">
+            @_success
+        </RadzenAlert>
+    }
+
+    @if (_orders.Count == 0)
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Info" AllowClose="false">
+            Keine offenen Pending Orders.
+        </RadzenAlert>
+    }
+    else
+    {
+        <RadzenDataGrid Data="@_orders" TItem="BrokerPendingOrder" AllowSorting="true">
+            <Columns>
+                <RadzenDataGridColumn TItem="BrokerPendingOrder" Property="Symbol" Title="Symbol" Width="120px" />
+                <RadzenDataGridColumn TItem="BrokerPendingOrder" Property="Side" Title="Seite" Width="80px">
+                    <Template Context="order">
+                        <span style="color: @(order.Side == "buy" ? "var(--rz-success)" : "var(--rz-danger)");">
+                            @order.Side.ToUpper()
+                        </span>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="BrokerPendingOrder" Property="Type" Title="Typ" Width="80px">
+                    <Template Context="order">
+                        <RadzenBadge Text="@order.Type.ToUpper()"
+                                     BadgeStyle="@(order.Type == "limit" ? BadgeStyle.Info : BadgeStyle.Warning)" />
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="BrokerPendingOrder" Property="Qty" Title="Lots" Width="80px" FormatString="{0:F2}" />
+                <RadzenDataGridColumn TItem="BrokerPendingOrder" Property="Price" Title="Preis" Width="120px" FormatString="{0:F5}" />
+                <RadzenDataGridColumn TItem="BrokerPendingOrder" Property="CreatedAt" Title="Erstellt" Width="160px">
+                    <Template Context="order">
+                        @order.CreatedAt.ToString("dd.MM.yyyy HH:mm")
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="BrokerPendingOrder" Title="Alter" Width="100px" Sortable="false">
+                    <Template Context="order">
+                        @{
+                            var age = DateTime.UtcNow - order.CreatedAt;
+                            var ageText = age.TotalHours >= 1 ? $"{age.TotalHours:F0}h" : $"{age.TotalMinutes:F0}m";
+                            var maxAge = _maxAgeMinutes > 0 ? _maxAgeMinutes : int.MaxValue;
+                            var isOld = age.TotalMinutes > maxAge * 0.8;
+                        }
+                        <span style="color: @(isOld ? "var(--rz-danger)" : "inherit");">@ageText</span>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="BrokerPendingOrder" Title="" Width="100px" Sortable="false">
+                    <Template Context="order">
+                        <RadzenButton Text="Stornieren" Icon="cancel" Size="ButtonSize.Small"
+                                      ButtonStyle="ButtonStyle.Danger" Click="@(() => CancelOrder(order))" />
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
+    }
+}
+
+@code {
+    private string _selectedAccountId = "";
+    private List<BrokerPendingOrder> _orders = new();
+    private int _maxAgeMinutes;
+    private string? _error;
+    private string? _success;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _selectedAccountId = AccountMgr.DefaultAccount?.AccountId ?? "";
+        await LoadOrders();
+    }
+
+    private async Task LoadOrders()
+    {
+        _error = null;
+        var ctx = AccountMgr.GetAccount(_selectedAccountId);
+        if (ctx is null) return;
+
+        _maxAgeMinutes = ctx.RiskSettings.PendingOrderMaxAgeMinutes;
+
+        try
+        {
+            _orders = await ctx.EffectiveBroker.GetPendingOrdersAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Fehler beim Laden: {ex.Message}";
+            _orders = new();
+        }
+    }
+
+    private async Task CancelOrder(BrokerPendingOrder order)
+    {
+        var confirmed = await DialogService.Confirm(
+            $"Order {order.Side.ToUpper()} {order.Qty:F2} {order.Symbol} @ {order.Price:F5} stornieren?",
+            "Order stornieren",
+            new ConfirmOptions { OkButtonText = "Stornieren", CancelButtonText = "Abbrechen" });
+
+        if (confirmed != true) return;
+
+        var ctx = AccountMgr.GetAccount(_selectedAccountId);
+        if (ctx is null) return;
+
+        try
+        {
+            var success = await ctx.EffectiveBroker.CancelOrderAsync(order.OrderId);
+            if (success)
+            {
+                _success = $"Order {order.Symbol} storniert.";
+                await LoadOrders();
+            }
+            else
+            {
+                _error = $"Order {order.Symbol} konnte nicht storniert werden.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}

@@ -1,0 +1,169 @@
+@page "/news"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject AccountManager AccountMgr
+@inject NewsSentimentService NewsSvc
+@inject EconomicCalendarService CalendarSvc
+
+<PageTitle>News & Kalender - Claude Trading Bot</PageTitle>
+
+<RadzenText TextStyle="TextStyle.H5" Style="margin-bottom: 16px;">News & Wirtschaftskalender</RadzenText>
+
+<RadzenTabs>
+    <Tabs>
+        <RadzenTabsItem Text="News-Headlines">
+            @if (!AccountMgr.HasAccounts)
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Info" AllowClose="false" Style="margin-top: 12px;">
+                    Kein Account konfiguriert — keine Watchlist verfuegbar.
+                </RadzenAlert>
+            }
+            else
+            {
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px" Style="margin: 12px 0;">
+                    <RadzenLabel Text="Symbol:" />
+                    <RadzenDropDown @bind-Value="_selectedSymbol"
+                                    Data="@_watchList"
+                                    Change="@(_ => LoadHeadlines())"
+                                    Style="min-width: 200px;" AllowClear="true" Placeholder="Alle" />
+                    <RadzenButton Text="Aktualisieren" Icon="refresh" Click="@LoadHeadlines" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" />
+                </RadzenStack>
+
+                @if (_headlines.Count == 0)
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Info" AllowClose="false">
+                        Keine Headlines verfuegbar@(string.IsNullOrEmpty(_selectedSymbol) ? "" : $" fuer {_selectedSymbol}").
+                    </RadzenAlert>
+                }
+                else
+                {
+                    <RadzenCard>
+                        @foreach (var (symbol, lines) in _headlines)
+                        {
+                            <div style="margin-bottom: 16px;">
+                                <RadzenText TextStyle="TextStyle.Subtitle1" Style="margin-bottom: 4px; color: var(--rz-primary);">@symbol</RadzenText>
+                                @foreach (var line in lines)
+                                {
+                                    <div style="padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.9rem;">
+                                        @line
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </RadzenCard>
+                }
+            }
+        </RadzenTabsItem>
+
+        <RadzenTabsItem Text="Wirtschaftskalender">
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px" Style="margin: 12px 0;">
+                <RadzenButton Text="Aktualisieren" Icon="refresh" Click="@LoadEvents" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" />
+            </RadzenStack>
+
+            @if (_events.Count == 0)
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Info" AllowClose="false">
+                    Keine bevorstehenden Events.
+                </RadzenAlert>
+            }
+            else
+            {
+                <RadzenDataGrid Data="@_events" TItem="EconomicEvent" AllowSorting="true" Density="Density.Compact">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="EconomicEvent" Property="EventTime" Title="Zeit" Width="160px">
+                            <Template Context="evt">
+                                @evt.EventTime.ToString("dd.MM.yyyy HH:mm") UTC
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="EconomicEvent" Property="Currency" Title="Waehrung" Width="100px" />
+                        <RadzenDataGridColumn TItem="EconomicEvent" Property="Title" Title="Ereignis" />
+                        <RadzenDataGridColumn TItem="EconomicEvent" Property="Impact" Title="Impact" Width="100px">
+                            <Template Context="evt">
+                                @switch (evt.Impact)
+                                {
+                                    case EventImpact.High:
+                                        <RadzenBadge Text="Hoch" BadgeStyle="BadgeStyle.Danger" />
+                                        break;
+                                    case EventImpact.Medium:
+                                        <RadzenBadge Text="Mittel" BadgeStyle="BadgeStyle.Warning" />
+                                        break;
+                                    default:
+                                        <RadzenBadge Text="Niedrig" BadgeStyle="BadgeStyle.Light" />
+                                        break;
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="EconomicEvent" Title="Countdown" Width="120px" Sortable="false">
+                            <Template Context="evt">
+                                @{
+                                    var diff = evt.EventTime - DateTime.UtcNow;
+                                    if (diff.TotalMinutes < 0)
+                                    {
+                                        <span style="color: #666;">Vergangen</span>
+                                    }
+                                    else if (diff.TotalHours < 1)
+                                    {
+                                        <span style="color: var(--rz-danger); font-weight: bold;">@diff.TotalMinutes.ToString("F0") min</span>
+                                    }
+                                    else if (diff.TotalHours < 24)
+                                    {
+                                        <span>@diff.TotalHours.ToString("F0")h @diff.Minutes min</span>
+                                    }
+                                    else
+                                    {
+                                        <span>@diff.TotalDays.ToString("F0") Tage</span>
+                                    }
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            }
+        </RadzenTabsItem>
+    </Tabs>
+</RadzenTabs>
+
+@code {
+    private string? _selectedSymbol;
+    private List<string> _watchList = new();
+    private Dictionary<string, List<string>> _headlines = new();
+    private List<EconomicEvent> _events = new();
+
+    protected override void OnInitialized()
+    {
+        _watchList = AccountMgr.Accounts
+            .SelectMany(a => a.WatchList)
+            .Distinct()
+            .OrderBy(s => s)
+            .ToList();
+
+        LoadHeadlines();
+        LoadEvents();
+    }
+
+    private void LoadHeadlines()
+    {
+        _headlines = new();
+
+        if (!string.IsNullOrEmpty(_selectedSymbol))
+        {
+            var lines = NewsSvc.GetHeadlines(_selectedSymbol);
+            if (lines.Count > 0)
+                _headlines[_selectedSymbol] = lines;
+        }
+        else
+        {
+            foreach (var symbol in _watchList)
+            {
+                var lines = NewsSvc.GetHeadlines(symbol);
+                if (lines.Count > 0)
+                    _headlines[symbol] = lines;
+            }
+        }
+    }
+
+    private void LoadEvents()
+    {
+        _events = CalendarSvc.GetUpcomingEvents(30);
+    }
+}

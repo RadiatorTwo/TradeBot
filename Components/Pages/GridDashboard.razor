@@ -1,0 +1,160 @@
+@page "/grids"
+@using ClaudeTradingBot.Data
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize]
+@inject AccountManager AccountMgr
+@inject IDbContextFactory<TradingDbContext> DbFactory
+
+<PageTitle>Grid Trading - Claude Trading Bot</PageTitle>
+
+<RadzenText TextStyle="TextStyle.H5" Style="margin-bottom: 16px;">Grid Trading Dashboard</RadzenText>
+
+@if (!AccountMgr.HasAccounts)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Warning" AllowClose="false">
+        Kein Account konfiguriert. Bitte unter <a href="/accounts">/accounts</a> einen Account anlegen.
+    </RadzenAlert>
+}
+else
+{
+    @if (AccountMgr.Accounts.Count > 1)
+    {
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px" Style="margin-bottom: 12px;">
+            <RadzenLabel Text="Account:" />
+            <RadzenDropDown @bind-Value="_selectedAccountId"
+                            Data="AccountMgr.Accounts"
+                            TextProperty="DisplayName"
+                            ValueProperty="AccountId"
+                            Change="@(_ => LoadGrids())"
+                            Style="min-width: 250px;" />
+        </RadzenStack>
+    }
+
+    @if (!_gridEnabled)
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Info" AllowClose="false" Style="margin-bottom: 16px;">
+            Grid-Trading ist fuer diesen Account deaktiviert. Aktivierung unter <a href="/settings">/settings</a>.
+        </RadzenAlert>
+    }
+
+    @if (_grids.Count == 0)
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Info" AllowClose="false">
+            Keine Grid-Setups vorhanden.
+        </RadzenAlert>
+    }
+    else
+    {
+        @foreach (var grid in _grids)
+        {
+            <RadzenCard Style="margin-bottom: 16px;">
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Style="margin-bottom: 12px;">
+                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="12px">
+                        <RadzenText TextStyle="TextStyle.H6" Style="margin: 0;">@grid.Symbol</RadzenText>
+                        @if (grid.Status == GridStatus.Active)
+                        {
+                            <RadzenBadge Text="Aktiv" BadgeStyle="BadgeStyle.Success" />
+                        }
+                        else if (grid.Status == GridStatus.Paused)
+                        {
+                            <RadzenBadge Text="Pausiert" BadgeStyle="BadgeStyle.Warning" />
+                        }
+                        else
+                        {
+                            <RadzenBadge Text="Abgeschlossen" BadgeStyle="BadgeStyle.Light" />
+                        }
+                    </RadzenStack>
+                    @{
+                        var pnlColor = grid.TotalPnL >= 0 ? "var(--rz-success)" : "var(--rz-danger)";
+                    }
+                    <RadzenText Style="@($"margin: 0; color: {pnlColor}")">
+                        PnL: @grid.TotalPnL.ToString("+0.00;-0.00")
+                    </RadzenText>
+                </RadzenStack>
+
+                <RadzenStack Orientation="Orientation.Horizontal" Gap="24px" Style="margin-bottom: 12px; color: #aaa; font-size: 0.85rem;">
+                    <span>Center: @grid.CenterPrice.ToString("F5")</span>
+                    <span>Spacing: @grid.GridSpacingPips Pips</span>
+                    <span>Lot: @grid.LotSizePerLevel</span>
+                    <span>Erstellt: @grid.CreatedAt.ToString("dd.MM.yyyy HH:mm")</span>
+                </RadzenStack>
+
+                <RadzenDataGrid Data="@grid.GetLevels().OrderByDescending(l => l.Price)" TItem="GridLevel" Density="Density.Compact">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="GridLevel" Property="Index" Title="Level" Width="70px" TextAlign="TextAlign.Center" />
+                        <RadzenDataGridColumn TItem="GridLevel" Property="Side" Title="Seite" Width="80px">
+                            <Template Context="level">
+                                <span style="color: @(level.Side == "buy" ? "var(--rz-success)" : "var(--rz-danger)");">
+                                    @level.Side.ToUpper()
+                                </span>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="GridLevel" Property="Price" Title="Preis" Width="120px" FormatString="{0:F5}" />
+                        <RadzenDataGridColumn TItem="GridLevel" Property="Status" Title="Status" Width="130px">
+                            <Template Context="level">
+                                @switch (level.Status)
+                                {
+                                    case GridLevelStatus.Pending:
+                                        <RadzenBadge Text="Wartend" BadgeStyle="BadgeStyle.Light" />
+                                        break;
+                                    case GridLevelStatus.Filled:
+                                        <RadzenBadge Text="Gefuellt" BadgeStyle="BadgeStyle.Info" />
+                                        break;
+                                    case GridLevelStatus.CounterFilled:
+                                        <RadzenBadge Text="Counter-Fill" BadgeStyle="BadgeStyle.Success" />
+                                        break;
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="GridLevel" Property="FilledAt" Title="Gefuellt am" Width="150px">
+                            <Template Context="level">
+                                @(level.FilledAt?.ToString("dd.MM. HH:mm") ?? "–")
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="GridLevel" Property="PnL" Title="PnL" Width="100px">
+                            <Template Context="level">
+                                @if (level.PnL.HasValue)
+                                {
+                                    <span style="color: @(level.PnL >= 0 ? "var(--rz-success)" : "var(--rz-danger)");">
+                                        @level.PnL.Value.ToString("+0.00;-0.00")
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span>–</span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            </RadzenCard>
+        }
+    }
+}
+
+@code {
+    private string _selectedAccountId = "";
+    private List<GridState> _grids = new();
+    private bool _gridEnabled;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _selectedAccountId = AccountMgr.DefaultAccount?.AccountId ?? "";
+        await LoadGrids();
+    }
+
+    private async Task LoadGrids()
+    {
+        var ctx = AccountMgr.GetAccount(_selectedAccountId);
+        _gridEnabled = ctx?.RiskSettings.Grid.Enabled ?? false;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _grids = await db.GridStates
+            .Where(g => g.AccountId == _selectedAccountId)
+            .OrderByDescending(g => g.Status == GridStatus.Active)
+            .ThenByDescending(g => g.UpdatedAt)
+            .Take(20)
+            .ToListAsync();
+    }
+}

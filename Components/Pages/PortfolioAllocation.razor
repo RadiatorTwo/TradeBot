@@ -1,0 +1,143 @@
+@page "/portfolio"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject AccountManager AccountMgr
+
+<PageTitle>Portfolio-Allokation - Claude Trading Bot</PageTitle>
+
+<RadzenText TextStyle="TextStyle.H5" Style="margin-bottom: 16px;">Portfolio-Allokation</RadzenText>
+
+@if (!AccountMgr.HasAccounts)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Warning" AllowClose="false">
+        Kein Account konfiguriert.
+    </RadzenAlert>
+}
+else
+{
+    @if (AccountMgr.Accounts.Count > 1)
+    {
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px" Style="margin-bottom: 12px;">
+            <RadzenLabel Text="Account:" />
+            <RadzenDropDown @bind-Value="_selectedAccountId"
+                            Data="AccountMgr.Accounts"
+                            TextProperty="DisplayName"
+                            ValueProperty="AccountId"
+                            Change="@(_ => LoadAllocations())"
+                            Style="min-width: 250px;" />
+        </RadzenStack>
+    }
+
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px" Style="margin-bottom: 16px;">
+        <RadzenButton Text="Aktualisieren" Icon="refresh" Click="@LoadAllocations" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" />
+        @if (_rebalanceEnabled)
+        {
+            <RadzenBadge Text="Rebalancing aktiv" BadgeStyle="BadgeStyle.Success" />
+        }
+        else
+        {
+            <RadzenBadge Text="Rebalancing deaktiviert" BadgeStyle="BadgeStyle.Light" />
+        }
+    </RadzenStack>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" AllowClose="true" Close="@(() => _error = null)" Style="margin-bottom: 16px;">
+            @_error
+        </RadzenAlert>
+    }
+
+    @if (_allocations.Count == 0)
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Info" AllowClose="false">
+            Keine offenen Positionen.
+        </RadzenAlert>
+    }
+    else
+    {
+        <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
+            @foreach (var alloc in _allocations.OrderByDescending(a => a.PercentOfPortfolio))
+            {
+                <RadzenColumn Size="12" SizeMD="6" SizeLG="4">
+                    <RadzenCard Style="height: 100%;">
+                        <RadzenStack Gap="8px">
+                            <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center">
+                                <RadzenText TextStyle="TextStyle.H6" Style="margin: 0;">@alloc.Symbol</RadzenText>
+                                @if (alloc.IsOverweight)
+                                {
+                                    <RadzenBadge Text="Uebergewicht" BadgeStyle="BadgeStyle.Danger" />
+                                }
+                            </RadzenStack>
+                            <RadzenProgressBar Value="@alloc.PercentOfPortfolio" Max="@Math.Max(alloc.MaxAllowedPercent * 1.5, alloc.PercentOfPortfolio)"
+                                               ShowValue="false"
+                                               Style="@($"height: 8px; --rz-progressbar-fill-background: {(alloc.IsOverweight ? "var(--rz-danger)" : "var(--rz-primary)")}")" />
+                            <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" Style="font-size: 0.85rem; color: #aaa;">
+                                <span>@alloc.PercentOfPortfolio.ToString("F1")% / @alloc.MaxAllowedPercent.ToString("F0")%</span>
+                                <span>@alloc.NotionalValue.ToString("N0") USD</span>
+                            </RadzenStack>
+                        </RadzenStack>
+                    </RadzenCard>
+                </RadzenColumn>
+            }
+        </RadzenRow>
+
+        <RadzenDataGrid Data="@_allocations.OrderByDescending(a => a.PercentOfPortfolio)" TItem="SymbolAllocation" AllowSorting="true">
+            <Columns>
+                <RadzenDataGridColumn TItem="SymbolAllocation" Property="Symbol" Title="Symbol" Width="120px" />
+                <RadzenDataGridColumn TItem="SymbolAllocation" Property="PercentOfPortfolio" Title="Anteil %" Width="120px">
+                    <Template Context="alloc">
+                        <span style="color: @(alloc.IsOverweight ? "var(--rz-danger)" : "inherit");">
+                            @alloc.PercentOfPortfolio.ToString("F1")%
+                        </span>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="SymbolAllocation" Property="MaxAllowedPercent" Title="Max %" Width="100px" FormatString="{0:F0}%" />
+                <RadzenDataGridColumn TItem="SymbolAllocation" Property="NotionalValue" Title="Wert (USD)" Width="140px" FormatString="{0:N2}" />
+                <RadzenDataGridColumn TItem="SymbolAllocation" Property="IsOverweight" Title="Status" Width="140px">
+                    <Template Context="alloc">
+                        @if (alloc.IsOverweight)
+                        {
+                            <RadzenBadge Text="@($"+{(alloc.PercentOfPortfolio - alloc.MaxAllowedPercent):F1}% ueber")" BadgeStyle="BadgeStyle.Danger" />
+                        }
+                        else
+                        {
+                            <RadzenBadge Text="OK" BadgeStyle="BadgeStyle.Success" />
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
+    }
+}
+
+@code {
+    private string _selectedAccountId = "";
+    private List<SymbolAllocation> _allocations = new();
+    private bool _rebalanceEnabled;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _selectedAccountId = AccountMgr.DefaultAccount?.AccountId ?? "";
+        await LoadAllocations();
+    }
+
+    private async Task LoadAllocations()
+    {
+        _error = null;
+        var ctx = AccountMgr.GetAccount(_selectedAccountId);
+        if (ctx is null) return;
+
+        _rebalanceEnabled = ctx.RiskSettings.Allocation.Enabled;
+
+        try
+        {
+            _allocations = await ctx.Risk.GetCurrentAllocationsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Fehler beim Laden: {ex.Message}";
+            _allocations = new();
+        }
+    }
+}
