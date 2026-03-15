@@ -25,7 +25,7 @@ Priorisierte Uebersicht der Verbesserungen fuer Produktionsreife und Codequalita
 | 7 | **Thread Safety** – `_accounts` mit Lock-Pattern, `_accountCts` als ConcurrentDictionary, `_partialClosedPositions` als ConcurrentDictionary | 1 Tag | Erledigt |
 | 8 | **DB-Optimierung** – 4 Composite-Indexes (Trade, TradingLog), Daten-Retention (Logs > 90 Tage bei Startup loeschen) | 1-2 Tage | Erledigt |
 | 9 | **Metriken** – Prometheus /metrics Endpunkt: Trade-Counter, LLM-Latenz-Histogram, Broker-Latenz, Portfolio-Gauge, Kill-Switch-Gauge, Rejection-Counter | 2 Tage | Erledigt |
-| 10 | **Circuit Breaker** – Polly fuer externe APIs (TradeLocker, LLM, Finnhub), um Kaskadenfehler zu verhindern | 1-2 Tage | Offen |
+| 10 | **Circuit Breaker** – StandardResilienceHandler (Polly) fuer LLM, Broker und News HttpClients mit angepassten Timeouts, Retry und Circuit Breaker | 1-2 Tage | Erledigt |
 | 11 | **Rate Limiting** auf API-Endpunkten (`/api/pnl-history`, `/api/trades/export`) | 0.5 Tage | Offen |
 
 ## P3 – Polish

@@ -39,13 +39,17 @@ builder.Services.AddDbContextFactory<TradingDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("TradingDb")));
 
 // ── Services: LLM-Provider wählbar (Gemini = kostenloser Cloud-Free-Tier, Anthropic, OpenAICompatible) ──
-builder.Services.AddHttpClient<ClaudeService>();
-builder.Services.AddHttpClient<GeminiClaudeService>();
-builder.Services.AddHttpClient<OpenAICompatibleClaudeService>();
+builder.Services.AddHttpClient<ClaudeService>()
+    .AddStandardResilienceHandler(o => ConfigureLlmResilience(o));
+builder.Services.AddHttpClient<GeminiClaudeService>()
+    .AddStandardResilienceHandler(o => ConfigureLlmResilience(o));
+builder.Services.AddHttpClient<OpenAICompatibleClaudeService>()
+    .AddStandardResilienceHandler(o => ConfigureLlmResilience(o));
 builder.Services.AddSingleton<IClaudeService, LlmProviderResolver>();
 // ── HttpClient fuer TradeLocker (ohne BaseAddress – wird per Account gesetzt) ──
 builder.Services.AddHttpClient(TradeLockerService.HttpClientName)
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+    .AddStandardResilienceHandler(o => ConfigureBrokerResilience(o));
 
 // ── Shared Singletons (alle Accounts teilen sich diese) ─────────────
 builder.Services.AddSingleton<TechnicalAnalysisService>();
@@ -58,7 +62,7 @@ builder.Services.AddHttpClient(NewsSentimentService.HttpClientName, client =>
 {
     client.BaseAddress = new Uri("https://finnhub.io/");
     client.Timeout = TimeSpan.FromSeconds(15);
-});
+}).AddStandardResilienceHandler(o => ConfigureNewsResilience(o));
 builder.Services.AddSingleton<NewsSentimentService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<NewsSentimentService>());
 
@@ -271,3 +275,48 @@ app.MapGet("/api/trades/export", async (
 
 Log.Information("Claude Trading Bot starting...");
 app.Run();
+
+// ── Circuit Breaker Konfigurationen ─────────────────────────────────────
+
+static void ConfigureLlmResilience(Microsoft.Extensions.Http.Resilience.HttpStandardResilienceOptions o)
+{
+    // LLM-Aufrufe sind langsam – grosszuegige Timeouts
+    o.AttemptTimeout.Timeout = TimeSpan.FromSeconds(60);
+    o.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(120);
+    // Retry: 2 Versuche mit exponentiellem Backoff
+    o.Retry.MaxRetryAttempts = 2;
+    o.Retry.Delay = TimeSpan.FromSeconds(3);
+    // Circuit Breaker: nach 5 Fehlern 30s offen
+    o.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(60);
+    o.CircuitBreaker.FailureRatio = 0.8;
+    o.CircuitBreaker.MinimumThroughput = 5;
+    o.CircuitBreaker.BreakDuration = TimeSpan.FromSeconds(30);
+}
+
+static void ConfigureBrokerResilience(Microsoft.Extensions.Http.Resilience.HttpStandardResilienceOptions o)
+{
+    // Broker-Aufrufe: schnellere Timeouts, kein automatisches Retry fuer Orders
+    o.AttemptTimeout.Timeout = TimeSpan.FromSeconds(15);
+    o.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(30);
+    o.Retry.MaxRetryAttempts = 1;
+    o.Retry.Delay = TimeSpan.FromSeconds(2);
+    // Circuit Breaker: nach 5 Fehlern 30s offen
+    o.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(30);
+    o.CircuitBreaker.FailureRatio = 0.8;
+    o.CircuitBreaker.MinimumThroughput = 5;
+    o.CircuitBreaker.BreakDuration = TimeSpan.FromSeconds(30);
+}
+
+static void ConfigureNewsResilience(Microsoft.Extensions.Http.Resilience.HttpStandardResilienceOptions o)
+{
+    // News: unkritisch, kurze Timeouts, wenig Retries
+    o.AttemptTimeout.Timeout = TimeSpan.FromSeconds(10);
+    o.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(15);
+    o.Retry.MaxRetryAttempts = 1;
+    o.Retry.Delay = TimeSpan.FromSeconds(5);
+    // Circuit Breaker: nach 3 Fehlern 60s offen (spart API-Quota)
+    o.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(60);
+    o.CircuitBreaker.FailureRatio = 0.5;
+    o.CircuitBreaker.MinimumThroughput = 3;
+    o.CircuitBreaker.BreakDuration = TimeSpan.FromSeconds(60);
+}
