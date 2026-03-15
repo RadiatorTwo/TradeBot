@@ -24,13 +24,32 @@ body {
     /* Inputs (TextBox, Numeric, DropDown, DatePicker, Password) */
     --rz-input-background-color: var(--bg-raised);
     --rz-input-color: var(--text);
+    --rz-input-value-color: var(--text);
+    --rz-input-border: 1px solid var(--border);
+    --rz-input-border-block-end: 1px solid var(--border);
     --rz-input-border-radius: var(--radius-sm);
     --rz-input-font-size: 0.85rem;
-    --rz-input-hover-shadow: inset 0 0 0 1px var(--border);
-    --rz-input-focus-shadow: inset 0 0 0 1px var(--accent), 0 0 0 2px var(--accent-glow);
+    --rz-input-shadow: none;
+    --rz-input-transition: border-color 0.2s, box-shadow 0.2s;
+
+    /* Input hover */
+    --rz-input-hover-border: 1px solid var(--accent);
+    --rz-input-hover-border-block-end: 1px solid var(--accent);
+    --rz-input-hover-shadow: none;
     --rz-input-hover-background-color: var(--bg-raised);
+
+    /* Input focus */
+    --rz-input-focus-border: 1px solid var(--accent);
+    --rz-input-focus-border-block-end: 1px solid var(--accent);
+    --rz-input-focus-shadow: 0 0 0 2px var(--accent-glow);
+    --rz-input-focus-outline: none;
     --rz-input-focus-background-color: var(--bg-raised);
+
+    /* Input disabled */
     --rz-input-disabled-color: var(--muted);
+    --rz-input-disabled-border: 1px solid var(--border-subtle);
+    --rz-input-disabled-border-block-end: 1px solid var(--border-subtle);
+    --rz-input-disabled-shadow: none;
     --rz-input-placeholder-color: var(--muted);
 
     /* Numeric Buttons (Up/Down) */
