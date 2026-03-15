@@ -22,12 +22,13 @@ public static class ClaudePromptBuilder
         Antworte IMMER ausschließlich als valides JSON-Objekt mit folgender Struktur:
         {
           "symbol": "SYMBOL",
-          "action": "buy" | "sell" | "hold" | "grid",
+          "action": "buy" | "sell" | "hold" | "grid" | "buy_limit" | "sell_limit" | "buy_stop" | "sell_stop",
           "quantity": <Lots als Dezimal, z.B. 0.01 für 1 Micro-Lot>,
           "confidence": <0.0 bis 1.0>,
           "reasoning": "Kurze Begründung",
           "stopLossPrice": <Preis für Stop-Loss oder null>,
           "takeProfitPrice": <Preis für Take-Profit oder null>,
+          "entryPrice": <gewuenschter Einstiegspreis fuer Limit/Stop-Orders, null bei Market/Hold/Grid>,
           "setupType": "Name des erkannten Setups (z.B. EMA-Cross, Breakout, RSI-Oversold, MACD-Divergence, Bollinger-Squeeze, Trend-Following, Mean-Reversion, News-Driven, Grid-Range) oder null bei hold",
           "gridCenterPrice": <Mittelpunkt der Range fuer Grid-Trading oder null>
         }
@@ -39,6 +40,14 @@ public static class ClaudePromptBuilder
         - Berechnung: (Kapital × MaxRisiko%) / (100.000 × Preis) = Lots. Runde auf 0.01 ab.
         - stopLossPrice und takeProfitPrice sind absolute Preise (z. B. 1.0850 für EURUSD).
         - Setze IMMER stopLossPrice und takeProfitPrice wenn action != "hold" und action != "grid".
+        - Bei Limit/Stop-Orders: setze IMMER entryPrice.
+
+        LIMIT/STOP-ORDERS:
+        - buy_limit: Kaufen unterhalb des aktuellen Preises (Preis soll erst fallen, dann steigen).
+        - sell_limit: Verkaufen oberhalb des aktuellen Preises (Preis soll erst steigen, dann fallen).
+        - buy_stop: Kaufen oberhalb des aktuellen Preises (Breakout-Bestaetigung).
+        - sell_stop: Verkaufen unterhalb des aktuellen Preises (Breakdown-Bestaetigung).
+        - Bei Limit/Stop-Orders IMMER entryPrice setzen mit dem gewuenschten Einstiegspreis.
 
         GRID-TRADING:
         - Empfehle "action": "grid" wenn der Markt sich in einer klaren Seitwaertsrange bewegt (enger Bollinger Band, niedriger ATR relativ zum Preis, kein klarer Trend).

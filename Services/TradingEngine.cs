@@ -243,6 +243,13 @@ public class TradingEngine : BackgroundService
                 }
             }
 
+            // Paper-Trading: Pending Limit/Stop Orders pruefen
+            if (isPaper)
+            {
+                try { await _paperTrading.CheckAndFillPendingOrdersAsync(ct); }
+                catch (Exception ex) { _logger.LogWarning(ex, "Paper-Trading Pending Order Check fehlgeschlagen"); }
+            }
+
             // Aktive Grids verwalten (unabhaengig von LLM-Analyse)
             await _gridTrading.ManageAllActiveGridsAsync(Settings.Grid, ct);
 
@@ -380,12 +387,13 @@ public class TradingEngine : BackgroundService
         }
 
         // ── Multi-Timeframe-Filter (Phase 5.3) ──────────────────────────
-        if (!recommendation.Action.Equals("hold", StringComparison.OrdinalIgnoreCase))
+        var normalizedAction = NormalizeAction(recommendation.Action);
+        if (!normalizedAction.Equals("hold", StringComparison.OrdinalIgnoreCase))
         {
             var mtf = _mtfSettings.CurrentValue;
             if (mtf.Enabled)
             {
-                var blocked = await CheckMultiTimeframeFilter(symbol, recommendation.Action, mtf, ct);
+                var blocked = await CheckMultiTimeframeFilter(symbol, normalizedAction, mtf, ct);
                 if (blocked)
                 {
                     _logger.LogInformation(
@@ -399,9 +407,34 @@ public class TradingEngine : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
 
-        var action = recommendation.Action.Equals("buy", StringComparison.OrdinalIgnoreCase)
-            ? TradeAction.Buy
-            : TradeAction.Sell;
+        var (action, orderType) = ParseActionType(recommendation.Action);
+
+        // Limit/Stop-Order: entryPrice validieren
+        if (orderType != OrderType.Market)
+        {
+            if (!recommendation.EntryPrice.HasValue || recommendation.EntryPrice.Value <= 0)
+            {
+                _logger.LogWarning("Limit/Stop-Order fuer {Symbol} ohne gueltige entryPrice – verworfen", symbol);
+                return;
+            }
+
+            var entryValid = (recommendation.Action.ToLower()) switch
+            {
+                "buy_limit" => recommendation.EntryPrice.Value < currentPrice,
+                "sell_limit" => recommendation.EntryPrice.Value > currentPrice,
+                "buy_stop" => recommendation.EntryPrice.Value > currentPrice,
+                "sell_stop" => recommendation.EntryPrice.Value < currentPrice,
+                _ => true
+            };
+
+            if (!entryValid)
+            {
+                _logger.LogWarning(
+                    "Limit/Stop-Order {Action} {Symbol}: entryPrice {Entry:F5} ungueltig relativ zum aktuellen Preis {Price:F5}",
+                    recommendation.Action, symbol, recommendation.EntryPrice.Value, currentPrice);
+                return;
+            }
+        }
 
         // Gegenrichtung erkennen: LLM empfiehlt buy aber wir haben sell-Positionen (oder umgekehrt)
         // → bestehende Positionen schließen
@@ -551,6 +584,8 @@ public class TradingEngine : BackgroundService
             AccountId = AccountId,
             Symbol = symbol,
             Action = action,
+            OrderType = orderType,
+            EntryPrice = orderType != OrderType.Market ? recommendation.EntryPrice : null,
             Quantity = quantity,
             Price = currentPrice,
             SpreadAtEntry = spreadPips > 0 ? spreadPips : null,
@@ -562,11 +597,21 @@ public class TradingEngine : BackgroundService
 
         var result = await _broker.PlaceOrderAsync(
             symbol, action, quantity,
-            recommendation.StopLossPrice, recommendation.TakeProfitPrice, ct);
+            recommendation.StopLossPrice, recommendation.TakeProfitPrice,
+            orderType, recommendation.EntryPrice, ct);
 
-        trade.Status = result.Success ? TradeStatus.Executed : TradeStatus.Failed;
-        trade.ExecutedPrice = result.Success ? currentPrice : null;
-        trade.ExecutedAt = result.Success ? DateTime.UtcNow : null;
+        if (orderType == OrderType.Market)
+        {
+            trade.Status = result.Success ? TradeStatus.Executed : TradeStatus.Failed;
+            trade.ExecutedPrice = result.Success ? currentPrice : null;
+            trade.ExecutedAt = result.Success ? DateTime.UtcNow : null;
+        }
+        else
+        {
+            // Limit/Stop-Order: als PendingOrder markieren
+            trade.Status = result.Success ? TradeStatus.PendingOrder : TradeStatus.Failed;
+        }
+
         trade.BrokerOrderId = result.BrokerOrderId;
         trade.BrokerPositionId = result.BrokerPositionId;
         if (!result.Success)
@@ -574,12 +619,16 @@ public class TradingEngine : BackgroundService
 
         db.Trades.Add(trade);
 
+        var orderLabel = orderType == OrderType.Market
+            ? $"{action}"
+            : $"{recommendation.Action.ToUpper()} @ {recommendation.EntryPrice:F5}";
+
         db.TradingLogs.Add(new TradingLog
         {
             AccountId = AccountId,
             Level = result.Success ? "Info" : "Error",
             Source = "TradingEngine",
-            Message = $"{(result.Success ? "✅" : "❌")} {action} {quantity:F2} Lots {symbol} @ {currentPrice:F4}",
+            Message = $"{(result.Success ? "✅" : "❌")} {orderLabel} {quantity:F2} Lots {symbol} @ {currentPrice:F4}",
             Details = recommendation.Reasoning
         });
 
@@ -673,13 +722,32 @@ public class TradingEngine : BackgroundService
         return lots;
     }
 
+    /// <summary>Normalisiert eine Action (entfernt _limit/_stop Suffix) fuer Richtungsvergleiche.</summary>
+    private static string NormalizeAction(string action)
+        => action.Replace("_limit", "", StringComparison.OrdinalIgnoreCase)
+                 .Replace("_stop", "", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Parst den LLM-Action-String in TradeAction + OrderType.</summary>
+    private static (TradeAction Action, OrderType OrderType) ParseActionType(string action)
+        => action.ToLower() switch
+        {
+            "buy" => (TradeAction.Buy, OrderType.Market),
+            "sell" => (TradeAction.Sell, OrderType.Market),
+            "buy_limit" => (TradeAction.Buy, OrderType.Limit),
+            "sell_limit" => (TradeAction.Sell, OrderType.Limit),
+            "buy_stop" => (TradeAction.Buy, OrderType.Stop),
+            "sell_stop" => (TradeAction.Sell, OrderType.Stop),
+            _ => (TradeAction.Buy, OrderType.Market)
+        };
+
     /// <summary>Prüft ob Position-Side und LLM-Empfehlung in entgegengesetzte Richtungen zeigen.</summary>
     private static bool IsOppositeDirection(string positionSide, string recommendedAction)
     {
+        var normalized = NormalizeAction(recommendedAction);
         var isBuyPosition = positionSide.Equals("buy", StringComparison.OrdinalIgnoreCase);
-        var isSellRecommendation = recommendedAction.Equals("sell", StringComparison.OrdinalIgnoreCase);
+        var isSellRecommendation = normalized.Equals("sell", StringComparison.OrdinalIgnoreCase);
         var isSellPosition = positionSide.Equals("sell", StringComparison.OrdinalIgnoreCase);
-        var isBuyRecommendation = recommendedAction.Equals("buy", StringComparison.OrdinalIgnoreCase);
+        var isBuyRecommendation = normalized.Equals("buy", StringComparison.OrdinalIgnoreCase);
 
         return (isBuyPosition && isSellRecommendation) || (isSellPosition && isBuyRecommendation);
     }

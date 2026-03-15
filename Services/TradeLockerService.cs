@@ -1381,7 +1381,7 @@ public class TradeLockerService : IBrokerService
         return list;
     }
 
-    public async Task<PlaceOrderResult> PlaceOrderAsync(string symbol, TradeAction action, decimal quantityLots, decimal? stopLoss, decimal? takeProfit, CancellationToken ct = default)
+    public async Task<PlaceOrderResult> PlaceOrderAsync(string symbol, TradeAction action, decimal quantityLots, decimal? stopLoss, decimal? takeProfit, OrderType orderType = OrderType.Market, decimal? entryPrice = null, CancellationToken ct = default)
     {
         if (!_isConnected || string.IsNullOrEmpty(_accountId))
         {
@@ -1409,9 +1409,15 @@ public class TradeLockerService : IBrokerService
                 return new PlaceOrderResult { Success = false };
             }
             var side = action == TradeAction.Buy ? "buy" : "sell";
+            var orderTypeStr = orderType switch
+            {
+                OrderType.Limit => "limit",
+                OrderType.Stop => "stop",
+                _ => "market"
+            };
             var body = new TradeLockerOrderRequest
             {
-                Price = 0m,
+                Price = orderType != OrderType.Market && entryPrice.HasValue ? entryPrice.Value : 0m,
                 Qty = quantityLots,
                 RouteId = tradeRouteId.Value,
                 Side = side,
@@ -1421,8 +1427,8 @@ public class TradeLockerService : IBrokerService
                 TakeProfitType = takeProfit.HasValue ? "absolute" : null,
                 TrStopOffset = 0m,
                 TradableInstrumentId = tradableInstrumentId.Value,
-                Type = "market",
-                Validity = "IOC"
+                Type = orderTypeStr,
+                Validity = orderType != OrderType.Market ? "GTC" : "IOC"
             };
             using var client = GetHttpClient();
             var requestJson = JsonSerializer.Serialize(body, JsonOptions);
@@ -1441,20 +1447,24 @@ public class TradeLockerService : IBrokerService
             _logger.LogInformation("TradeLocker order placed: {Symbol} {Side} {Qty} Lots, orderId={OrderId}, response={Body}",
                 symbol, side, quantityLots, orderId, Truncate(responseBody, 200));
             // Market-Orders werden sofort gefüllt – Position-ID ermitteln
+            // Limit/Stop-Orders sind pending – keine Position-ID erwartet
             string? positionId = null;
-            try
+            if (orderType == OrderType.Market)
             {
-                await Task.Delay(500, ct);
-                var positions = await GetPositionsAsync(ct);
-                var newPos = positions.FirstOrDefault(p =>
-                    p.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase));
-                positionId = newPos?.BrokerPositionId;
-                if (positionId != null)
-                    _logger.LogDebug("TradeLocker: Position-ID nach Order ermittelt: {PositionId}", positionId);
-            }
-            catch (Exception posEx)
-            {
-                _logger.LogDebug(posEx, "TradeLocker: Konnte Position-ID nach Order nicht ermitteln");
+                try
+                {
+                    await Task.Delay(500, ct);
+                    var positions = await GetPositionsAsync(ct);
+                    var newPos = positions.FirstOrDefault(p =>
+                        p.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase));
+                    positionId = newPos?.BrokerPositionId;
+                    if (positionId != null)
+                        _logger.LogDebug("TradeLocker: Position-ID nach Order ermittelt: {PositionId}", positionId);
+                }
+                catch (Exception posEx)
+                {
+                    _logger.LogDebug(posEx, "TradeLocker: Konnte Position-ID nach Order nicht ermitteln");
+                }
             }
 
             return new PlaceOrderResult

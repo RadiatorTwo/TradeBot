@@ -127,7 +127,7 @@ public class GridTradingService
                     {
                         var action = level.Side == "buy" ? TradeAction.Buy : TradeAction.Sell;
                         var result = await _broker.PlaceOrderAsync(
-                            symbol, action, grid.LotSizePerLevel, null, null, ct);
+                            symbol, action, grid.LotSizePerLevel, null, null, ct: ct);
 
                         if (result.Success)
                         {

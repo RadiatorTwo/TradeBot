@@ -82,10 +82,11 @@ public class PositionSyncService : BackgroundService
                     // Positionen synchronisieren
                     await SyncPositionsAsync(ctx, stoppingToken);
 
-                    // History-Sync (alle 5min)
+                    // History-Sync + Stale Order Cleanup (alle 5min)
                     if (DateTime.UtcNow - lastHistorySync > HistorySyncInterval)
                     {
                         await SyncClosedTradesAsync(ctx, stoppingToken);
+                        await CleanupStaleOrdersAsync(ctx, stoppingToken);
                     }
                 }
 
@@ -407,6 +408,67 @@ public class PositionSyncService : BackgroundService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Recovery [{AccountId}]: Pending Order Check fehlgeschlagen", ctx.AccountId);
+        }
+    }
+
+    /// <summary>
+    /// Storniert Pending Orders die aelter als PendingOrderMaxAgeMinutes sind.
+    /// Aktualisiert zugehoerige Trade-Eintraege in der DB.
+    /// </summary>
+    private async Task CleanupStaleOrdersAsync(AccountContext ctx, CancellationToken ct)
+    {
+        var maxAge = ctx.RiskSettings.PendingOrderMaxAgeMinutes;
+        if (maxAge <= 0) return;
+
+        try
+        {
+            var pendingOrders = await ctx.EffectiveBroker.GetPendingOrdersAsync(ct);
+            if (pendingOrders.Count == 0) return;
+
+            var cutoff = DateTime.UtcNow.AddMinutes(-maxAge);
+
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
+            var cancelledCount = 0;
+
+            foreach (var order in pendingOrders.Where(o => o.CreatedAt < cutoff))
+            {
+                var cancelled = await ctx.EffectiveBroker.CancelOrderAsync(order.OrderId, ct);
+                if (!cancelled) continue;
+
+                cancelledCount++;
+
+                // Zugehoerigen Trade in DB als Cancelled markieren
+                var trade = await db.Trades
+                    .FirstOrDefaultAsync(t => t.BrokerOrderId == order.OrderId
+                        && t.Status == TradeStatus.PendingOrder, ct);
+
+                if (trade != null)
+                {
+                    trade.Status = TradeStatus.Cancelled;
+                    trade.ErrorMessage = $"Stale order cancelled (age > {maxAge}min)";
+                }
+
+                _logger.LogInformation(
+                    "PositionSync [{AccountId}]: Stale Pending Order storniert: {OrderId} ({Symbol} {Side})",
+                    ctx.AccountId, order.OrderId, order.Symbol, order.Side);
+            }
+
+            if (cancelledCount > 0)
+            {
+                db.TradingLogs.Add(new TradingLog
+                {
+                    AccountId = ctx.AccountId,
+                    Level = "Info",
+                    Source = "PositionSync",
+                    Message = $"{cancelledCount} veraltete Pending Orders storniert (Limit: {maxAge}min)"
+                });
+                await db.SaveChangesAsync(ct);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "PositionSync [{AccountId}]: Stale Order Cleanup fehlgeschlagen", ctx.AccountId);
         }
     }
 

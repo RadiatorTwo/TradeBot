@@ -130,7 +130,9 @@ public class RiskManager : IRiskManager
         }
 
         // 5. Max offene Positionen prüfen (nur bei Kauf)
-        if (rec.Action.Equals("buy", StringComparison.OrdinalIgnoreCase))
+        var normalizedAction = rec.Action.Replace("_limit", "", StringComparison.OrdinalIgnoreCase)
+            .Replace("_stop", "", StringComparison.OrdinalIgnoreCase);
+        if (normalizedAction.Equals("buy", StringComparison.OrdinalIgnoreCase))
         {
             if (positions.Count >= Settings.MaxOpenPositions &&
                 !positions.Any(p => p.Symbol == rec.Symbol))
@@ -482,7 +484,9 @@ public class RiskManager : IRiskManager
 
         var newLotSize = GetLotSize(rec.Symbol);
         var newTradeValue = rec.Quantity * newLotSize * currentPrice;
-        var isBuy = rec.Action.Equals("buy", StringComparison.OrdinalIgnoreCase);
+        var normalizedDir = rec.Action.Replace("_limit", "", StringComparison.OrdinalIgnoreCase)
+            .Replace("_stop", "", StringComparison.OrdinalIgnoreCase);
+        var isBuy = normalizedDir.Equals("buy", StringComparison.OrdinalIgnoreCase);
 
         var correlatedExposure = newTradeValue;
 

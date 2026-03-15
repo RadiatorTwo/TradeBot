@@ -126,18 +126,48 @@ public class PaperTradingBrokerDecorator : IBrokerService
         return positions;
     }
 
+    // ── Pending Orders (Limit/Stop) fuer Paper-Trading ────────────────
+    private readonly ConcurrentDictionary<string, PaperPendingOrderEntry> _paperPendingOrders = new();
+    private int _nextOrderId;
+
     public async Task<PlaceOrderResult> PlaceOrderAsync(
         string symbol, TradeAction action, decimal quantityLots,
-        decimal? stopLoss, decimal? takeProfit, CancellationToken ct = default)
+        decimal? stopLoss, decimal? takeProfit,
+        OrderType orderType = OrderType.Market, decimal? entryPrice = null,
+        CancellationToken ct = default)
     {
         if (!_settings.CurrentValue.Enabled)
-            return await _inner.PlaceOrderAsync(symbol, action, quantityLots, stopLoss, takeProfit, ct);
+            return await _inner.PlaceOrderAsync(symbol, action, quantityLots, stopLoss, takeProfit, orderType, entryPrice, ct);
 
         var price = await _inner.GetCurrentPriceAsync(symbol, ct);
         if (price <= 0)
         {
             _logger.LogWarning("[PAPER] Preis fuer {Symbol} ist 0 – Order abgelehnt", symbol);
             return new PlaceOrderResult { Success = false };
+        }
+
+        // Limit/Stop-Orders: als Pending speichern, nicht sofort ausfuehren
+        if (orderType != OrderType.Market && entryPrice.HasValue)
+        {
+            var ordId = $"PAPER-ORD-{Interlocked.Increment(ref _nextOrderId)}";
+            _paperPendingOrders[ordId] = new PaperPendingOrderEntry
+            {
+                OrderId = ordId,
+                Symbol = symbol,
+                Side = action == TradeAction.Buy ? "buy" : "sell",
+                Quantity = quantityLots,
+                EntryPrice = entryPrice.Value,
+                StopLoss = stopLoss,
+                TakeProfit = takeProfit,
+                OrderType = orderType,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _logger.LogInformation(
+                "[PAPER] Pending {Type} {Side} {Qty:F2} Lots {Symbol} @ {Entry:F5}",
+                orderType, action == TradeAction.Buy ? "BUY" : "SELL", quantityLots, symbol, entryPrice.Value);
+
+            return new PlaceOrderResult { Success = true, BrokerOrderId = ordId };
         }
 
         var posId = $"PAPER-{Interlocked.Increment(ref _nextPositionId)}";
@@ -218,14 +248,29 @@ public class PaperTradingBrokerDecorator : IBrokerService
     {
         if (!_settings.CurrentValue.Enabled)
             return _inner.GetPendingOrdersAsync(ct);
-        return Task.FromResult(new List<BrokerPendingOrder>());
+
+        var list = _paperPendingOrders.Values.Select(o => new BrokerPendingOrder
+        {
+            OrderId = o.OrderId,
+            Symbol = o.Symbol,
+            Side = o.Side,
+            Qty = o.Quantity,
+            Price = o.EntryPrice,
+            Type = o.OrderType.ToString().ToLower(),
+            CreatedAt = o.CreatedAt
+        }).ToList();
+        return Task.FromResult(list);
     }
 
     public Task<bool> CancelOrderAsync(string orderId, CancellationToken ct = default)
     {
         if (!_settings.CurrentValue.Enabled)
             return _inner.CancelOrderAsync(orderId, ct);
-        return Task.FromResult(true);
+
+        var removed = _paperPendingOrders.TryRemove(orderId, out _);
+        if (removed)
+            _logger.LogInformation("[PAPER] Pending Order {OrderId} storniert", orderId);
+        return Task.FromResult(removed);
     }
 
     public async Task<bool> UpdatePositionStopLossAsync(string positionId, decimal newStopLoss, CancellationToken ct = default)
@@ -240,6 +285,66 @@ public class PaperTradingBrokerDecorator : IBrokerService
             return true;
         }
         return false;
+    }
+
+    /// <summary>
+    /// Prueft alle Pending Orders und fuellt sie wenn der Preis das Entry-Level erreicht hat.
+    /// Wird pro Trading-Zyklus aufgerufen.
+    /// </summary>
+    public async Task CheckAndFillPendingOrdersAsync(CancellationToken ct)
+    {
+        if (!_settings.CurrentValue.Enabled || _paperPendingOrders.IsEmpty) return;
+
+        foreach (var (orderId, order) in _paperPendingOrders.ToArray())
+        {
+            var currentPrice = await _inner.GetCurrentPriceAsync(order.Symbol, ct);
+            if (currentPrice <= 0) continue;
+
+            var shouldFill = (order.OrderType, order.Side) switch
+            {
+                (OrderType.Limit, "buy") => currentPrice <= order.EntryPrice,
+                (OrderType.Limit, "sell") => currentPrice >= order.EntryPrice,
+                (OrderType.Stop, "buy") => currentPrice >= order.EntryPrice,
+                (OrderType.Stop, "sell") => currentPrice <= order.EntryPrice,
+                _ => false
+            };
+
+            if (!shouldFill) continue;
+
+            // Order ausfuehren: PaperPosition erstellen
+            var posId = $"PAPER-{Interlocked.Increment(ref _nextPositionId)}";
+            _paperPositions[posId] = new PaperPosition
+            {
+                PositionId = posId,
+                Symbol = order.Symbol,
+                Side = order.Side,
+                Quantity = order.Quantity,
+                EntryPrice = order.EntryPrice,
+                StopLoss = order.StopLoss,
+                TakeProfit = order.TakeProfit,
+                OpenedAt = DateTime.UtcNow
+            };
+
+            _paperPendingOrders.TryRemove(orderId, out _);
+
+            _logger.LogInformation(
+                "[PAPER] Pending {Type} gefuellt: {Side} {Qty:F2} Lots {Symbol} @ {Price:F5} (Entry={Entry:F5})",
+                order.OrderType, order.Side.ToUpper(), order.Quantity, order.Symbol, currentPrice, order.EntryPrice);
+        }
+    }
+
+    /// <summary>Interne Klasse fuer Pending Orders im Paper-Trading.</summary>
+    private class PaperPendingOrderEntry
+    {
+        public string OrderId { get; set; } = string.Empty;
+        public string Symbol { get; set; } = string.Empty;
+        public string Side { get; set; } = "buy";
+        public decimal Quantity { get; set; }
+        public decimal EntryPrice { get; set; }
+        public decimal? StopLoss { get; set; }
+        public decimal? TakeProfit { get; set; }
+        public OrderType OrderType { get; set; }
+        public DateTime CreatedAt { get; set; }
     }
 
     /// <summary>Interne Klasse fuer simulierte Positionen.</summary>

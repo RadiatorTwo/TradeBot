@@ -19,7 +19,15 @@ public enum TradeStatus
     Executed,
     Failed,
     Cancelled,
-    Rejected
+    Rejected,
+    PendingOrder
+}
+
+public enum OrderType
+{
+    Market,
+    Limit,
+    Stop
 }
 
 // ── Datenbank-Entitäten ────────────────────────────────────────────────
@@ -69,6 +77,14 @@ public class Trade
     /// <summary>Realisierter Gewinn/Verlust nach Schließung.</summary>
     [Column(TypeName = "decimal(18,4)")]
     public decimal? RealizedPnL { get; set; }
+
+    // ── Phase 10.2: Order-Typ ──────────────────────────────────────
+    /// <summary>Order-Typ: Market (default), Limit, Stop.</summary>
+    public OrderType OrderType { get; set; } = OrderType.Market;
+
+    /// <summary>Gewuenschter Einstiegspreis fuer Limit/Stop-Orders.</summary>
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal? EntryPrice { get; set; }
 
     // ── Phase 8.2: Trade-Journal ────────────────────────────────────
     /// <summary>LLM-erkannter Setup-Typ (z.B. "EMA-Cross", "Breakout", "RSI-Oversold").</summary>
@@ -271,6 +287,8 @@ public class ClaudeTradeRecommendation
     public string? SetupType { get; set; }
     /// <summary>Center-Preis fuer Grid-Trading (Phase 10.1). Null wenn kein Grid empfohlen.</summary>
     public decimal? GridCenterPrice { get; set; }
+    /// <summary>Gewuenschter Einstiegspreis fuer Limit/Stop-Orders (Phase 10.2). Null bei Market/Hold/Grid.</summary>
+    public decimal? EntryPrice { get; set; }
 }
 
 // ── Konfigurationsklassen ──────────────────────────────────────────────
@@ -397,6 +415,10 @@ public class RiskSettings
     public double ConfidenceLossStreakFactor { get; set; } = 0.05;
     /// <summary>Maximaler dynamischer Confidence-Wert (Obergrenze).</summary>
     public double MaxDynamicConfidence { get; set; } = 0.85;
+
+    // ── Phase 10.2: Pending Orders ──────────────────────────────────
+    /// <summary>Maximales Alter von Pending Orders (Limit/Stop) in Minuten. Aeltere werden storniert. 0 = deaktiviert.</summary>
+    public int PendingOrderMaxAgeMinutes { get; set; } = 240;
 
     // ── Phase 10.1: Grid-Trading ────────────────────────────────────
     /// <summary>Grid-Trading-Einstellungen (Seitwaertsmarkt-Strategie).</summary>

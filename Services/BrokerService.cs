@@ -25,7 +25,7 @@ public interface IBrokerService
     Task<AccountDetails> GetAccountDetailsAsync(CancellationToken ct = default);
     Task<List<Position>> GetPositionsAsync(CancellationToken ct = default);
     /// <summary>Order platzieren (Forex/CFD: quantity in Lots). Gibt Order-/Position-IDs für DB-Mapping zurück.</summary>
-    Task<PlaceOrderResult> PlaceOrderAsync(string symbol, TradeAction action, decimal quantityLots, decimal? stopLoss, decimal? takeProfit, CancellationToken ct = default);
+    Task<PlaceOrderResult> PlaceOrderAsync(string symbol, TradeAction action, decimal quantityLots, decimal? stopLoss, decimal? takeProfit, OrderType orderType = OrderType.Market, decimal? entryPrice = null, CancellationToken ct = default);
     /// <summary>Position schließen (komplett: quantity=null oder 0; teilweise: quantity = Lots).</summary>
     Task<bool> ClosePositionAsync(string positionIdOrSymbol, decimal? quantity, CancellationToken ct = default);
 
@@ -168,7 +168,7 @@ public class SimulatedBrokerService : IBrokerService
     public Task<List<Position>> GetPositionsAsync(CancellationToken ct = default)
         => Task.FromResult(_positions.Values.ToList());
 
-    public async Task<PlaceOrderResult> PlaceOrderAsync(string symbol, TradeAction action, decimal quantityLots, decimal? stopLoss, decimal? takeProfit, CancellationToken ct = default)
+    public async Task<PlaceOrderResult> PlaceOrderAsync(string symbol, TradeAction action, decimal quantityLots, decimal? stopLoss, decimal? takeProfit, OrderType orderType = OrderType.Market, decimal? entryPrice = null, CancellationToken ct = default)
     {
         if (!_connected)
         {
@@ -250,7 +250,7 @@ public class SimulatedBrokerService : IBrokerService
         }
         var closeQty = quantity ?? pos.Quantity;
         if (closeQty <= 0) closeQty = pos.Quantity;
-        return (await PlaceOrderAsync(positionIdOrSymbol, TradeAction.Sell, closeQty, null, null, ct)).Success;
+        return (await PlaceOrderAsync(positionIdOrSymbol, TradeAction.Sell, closeQty, null, null, ct: ct)).Success;
     }
 
     public Task<List<BrokerClosedPosition>> GetClosedPositionsAsync(int lookbackDays = 1, CancellationToken ct = default)
