@@ -96,13 +96,13 @@ public class PlaceOrderResult
 }
 
 /// <summary>Aktuelle Allokation eines Symbols im Portfolio.</summary>
-public record SymbolAllocation
+public class SymbolAllocation
 {
-    public string Symbol { get; init; } = string.Empty;
-    public decimal NotionalValue { get; init; }
-    public double PercentOfPortfolio { get; init; }
-    public double MaxAllowedPercent { get; init; }
-    public bool IsOverweight { get; init; }
+    public string Symbol { get; set; } = string.Empty;
+    public decimal NotionalValue { get; set; }
+    public double PercentOfPortfolio { get; set; }
+    public double MaxAllowedPercent { get; set; }
+    public bool IsOverweight { get; set; }
 }
 
 /// <summary>Pending Order vom Broker (Limit/Stop, nicht SL/TP einer Position).</summary>
