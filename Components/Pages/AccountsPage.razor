@@ -34,7 +34,7 @@
 @* ── Formular (Hinzufuegen oder Bearbeiten) ─────────────────────────── *@
 @if (_showForm)
 {
-    <RadzenCard Style="margin-bottom: 24px; border: 1px solid var(--border, #45475a);">
+    <RadzenCard Style="margin-bottom: 24px;">
         <h3 style="margin-top: 0;">@(_editMode ? $"\"{_editDisplayName}\" bearbeiten" : "Neuen Account anlegen")</h3>
 
         <EditForm Model="this" OnValidSubmit="SaveAccount" FormName="account-form">
@@ -157,30 +157,32 @@
     var isRunning = liveCtx?.Engine.IsRunning ?? false;
     var isPaused = liveCtx?.Engine.IsPaused ?? false;
 
-    <RadzenCard Style="margin-bottom: 12px; border: 1px solid var(--border, #45475a); padding: 16px 20px;">
+    <RadzenCard Style="margin-bottom: 12px; padding: 16px 20px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <div style="display: flex; align-items: center; gap: 12px;">
-                @* Status-Punkt *@
-                <div style="width: 10px; height: 10px; border-radius: 50%; background: @(isConnected ? "var(--green, #a6e3a1)" : liveCtx != null ? "var(--red, #f38ba8)" : "var(--muted, #6c7086)");" title="@(isConnected ? "Verbunden" : "Getrennt")"></div>
+                @{
+                    var dotColor = isConnected ? "var(--green)" : liveCtx != null ? "var(--red)" : "var(--muted)";
+                }
+                <div style="width: 10px; height: 10px; border-radius: 50%; background: @dotColor;" title="@(isConnected ? "Verbunden" : "Getrennt")"></div>
                 <div>
                     <strong style="font-size: 1.1rem;">@acc.DisplayName</strong>
-                    <span style="color: var(--muted, #6c7086); margin-left: 8px; font-size: 0.85rem;">@acc.Id</span>
+                    <span style="color: var(--muted); margin-left: 8px; font-size: 0.85rem;">@acc.Id</span>
                 </div>
             </div>
             <RadzenStack Orientation="Orientation.Horizontal" Gap="6px" AlignItems="AlignItems.Center">
                 @if (acc.PaperTrading.Enabled)
                 {
-                    <span style="background: var(--yellow, #f9e2af); color: #1e1e2e; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">PAPER</span>
+                    <RadzenBadge Text="PAPER" BadgeStyle="BadgeStyle.Warning" />
                 }
                 @if (liveCtx != null)
                 {
                     @if (isPaused)
                     {
-                        <span style="background: var(--red, #f38ba8); color: #1e1e2e; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">PAUSIERT</span>
+                        <RadzenBadge Text="PAUSIERT" BadgeStyle="BadgeStyle.Danger" />
                     }
                     else if (isRunning)
                     {
-                        <span style="background: var(--green, #a6e3a1); color: #1e1e2e; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">AKTIV</span>
+                        <RadzenBadge Text="AKTIV" BadgeStyle="BadgeStyle.Success" />
                     }
                 }
                 <RadzenButton Text="Bearbeiten" Variant="Variant.Outlined" Size="ButtonSize.Small" Click="@(() => EditAccount(acc))" />
@@ -190,11 +192,11 @@
                 }
             </RadzenStack>
         </div>
-        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; font-size: 0.85rem; color: var(--muted, #6c7086);">
-            <div>Server: <strong style="color: var(--text, #cdd6f4);">@acc.TradeLocker.Server</strong></div>
-            <div>Email: <strong style="color: var(--text, #cdd6f4);">@acc.TradeLocker.Email</strong></div>
-            <div>Broker-Account: <strong style="color: var(--text, #cdd6f4);">@(acc.TradeLocker.AccountId ?? "Auto")</strong></div>
-            <div>Confidence: <strong style="color: var(--text, #cdd6f4);">@acc.RiskManagement.MinConfidence.ToString("P0")</strong></div>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; font-size: 0.85rem; color: var(--muted);">
+            <div>Server: <strong style="color: var(--text);">@acc.TradeLocker.Server</strong></div>
+            <div>Email: <strong style="color: var(--text);">@acc.TradeLocker.Email</strong></div>
+            <div>Broker-Account: <strong style="color: var(--text);">@(acc.TradeLocker.AccountId ?? "Auto")</strong></div>
+            <div>Confidence: <strong style="color: var(--text);">@acc.RiskManagement.MinConfidence.ToString("P0")</strong></div>
         </div>
     </RadzenCard>
 }
