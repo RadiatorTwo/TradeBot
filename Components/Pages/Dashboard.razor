@@ -50,7 +50,10 @@ else
     }
     <StatusBadge Text="@($"Markt {vm.MarketStatus}")"
                  Color="@(vm.IsMarketOpen ? "green" : "red")" />
-    <StatusBadge Text="@($"{LocalTime.FromUtc(DateTime.UtcNow):HH:mm}")" Color="blue" />
+    <span style="display: inline-flex; align-items: center; gap: 6px; padding: 5px 16px; border-radius: 20px; background: var(--surface); border: 1px solid var(--border); color: var(--text); font-size: 1.1rem; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 0.05em;">
+        <RadzenIcon Icon="schedule" Style="font-size: 18px; color: var(--accent);" />
+        @LocalTime.FromUtc(DateTime.UtcNow).ToString("HH:mm")
+    </span>
 </div>
 
 <!-- Konto-Uebersicht -->
