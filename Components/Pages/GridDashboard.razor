@@ -77,7 +77,7 @@ else
                     <span>Center: @grid.CenterPrice.ToString("F5")</span>
                     <span>Spacing: @grid.GridSpacingPips Pips</span>
                     <span>Lot: @grid.LotSizePerLevel</span>
-                    <span>Erstellt: @grid.CreatedAt.ToString("dd.MM.yyyy HH:mm")</span>
+                    <span>Erstellt: @LocalTime.Format(grid.CreatedAt)</span>
                 </RadzenStack>
 
                 <RadzenDataGrid Data="@grid.GetLevels().OrderByDescending(l => l.Price)" TItem="GridLevel" Density="Density.Compact">
@@ -109,7 +109,7 @@ else
                         </RadzenDataGridColumn>
                         <RadzenDataGridColumn TItem="GridLevel" Property="FilledAt" Title="Gefuellt am" Width="150px">
                             <Template Context="level">
-                                @(level.FilledAt?.ToString("dd.MM. HH:mm") ?? "–")
+                                @LocalTime.Format(level.FilledAt, "dd.MM. HH:mm", "–")
                             </Template>
                         </RadzenDataGridColumn>
                         <RadzenDataGridColumn TItem="GridLevel" Property="PnL" Title="PnL" Width="100px">

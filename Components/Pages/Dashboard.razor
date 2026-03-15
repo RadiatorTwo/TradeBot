@@ -102,7 +102,7 @@ else
         <RadzenDataGrid Data="@vm.UpcomingEvents" TItem="UpcomingEventViewModel" Density="Density.Compact" AllowSorting="true">
             <Columns>
                 <RadzenDataGridColumn TItem="UpcomingEventViewModel" Property="EventTime" Title="Zeit (UTC)" Width="160px">
-                    <Template Context="evt">@evt.EventTime.ToString("dd.MM. HH:mm")</Template>
+                    <Template Context="evt">@LocalTime.Format(evt.EventTime, "dd.MM. HH:mm")</Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="UpcomingEventViewModel" Property="Currency" Title="Waehrung" Width="100px">
                     <Template Context="evt"><strong>@evt.Currency</strong></Template>
@@ -169,7 +169,7 @@ else
             <Columns>
                 <RadzenDataGridColumn TItem="Trade" Property="CreatedAt" Title="Zeit" Width="130px">
                     <Template Context="t">
-                        <span style="font-size:0.75rem;color:var(--muted)">@t.CreatedAt.ToString("dd.MM HH:mm")</span>
+                        <span style="font-size:0.75rem;color:var(--muted)">@LocalTime.Short(t.CreatedAt)</span>
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="Trade" Property="Symbol" Title="Symbol" Width="100px">

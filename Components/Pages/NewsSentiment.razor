@@ -72,7 +72,7 @@
                     <Columns>
                         <RadzenDataGridColumn TItem="EconomicEvent" Property="EventTime" Title="Zeit" Width="160px">
                             <Template Context="evt">
-                                @evt.EventTime.ToString("dd.MM.yyyy HH:mm") UTC
+                                @LocalTime.Format(evt.EventTime)
                             </Template>
                         </RadzenDataGridColumn>
                         <RadzenDataGridColumn TItem="EconomicEvent" Property="Currency" Title="Waehrung" Width="100px" />

@@ -76,7 +76,7 @@
         <Columns>
             <RadzenDataGridColumn TItem="Trade" Property="CreatedAt" Title="Zeit" Width="150px">
                 <Template Context="t">
-                    <span style="font-size:0.75rem;color:var(--muted)">@t.CreatedAt.ToString("dd.MM.yyyy HH:mm")</span>
+                    <span style="font-size:0.75rem;color:var(--muted)">@LocalTime.Format(t.CreatedAt)</span>
                 </Template>
             </RadzenDataGridColumn>
             <RadzenDataGridColumn TItem="Trade" Property="Symbol" Title="Symbol" Width="100px">

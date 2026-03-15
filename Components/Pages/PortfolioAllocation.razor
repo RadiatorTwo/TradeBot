@@ -20,9 +20,9 @@ else
         <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px" Style="margin-bottom: 12px;">
             <RadzenLabel Text="Account:" />
             <RadzenDropDown @bind-Value="_selectedAccountId"
-                            Data="AccountMgr.Accounts"
-                            TextProperty="DisplayName"
-                            ValueProperty="AccountId"
+                            Data="_accounts"
+                            TextProperty="Text"
+                            ValueProperty="Value"
                             Change="@(_ => LoadAllocations())"
                             Style="min-width: 250px;" />
         </RadzenStack>
@@ -71,7 +71,7 @@ else
                             <RadzenProgressBar Value="@alloc.PercentOfPortfolio" Max="@Math.Max(alloc.MaxAllowedPercent * 1.5, alloc.PercentOfPortfolio)"
                                                ShowValue="false"
                                                Style="@($"height: 8px; --rz-progressbar-fill-background: {(alloc.IsOverweight ? "var(--rz-danger)" : "var(--rz-primary)")}")" />
-                            <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" Style="font-size: 0.85rem; color: #aaa;">
+                            <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" Style="font-size: 0.85rem; color: var(--muted);">
                                 <span>@alloc.PercentOfPortfolio.ToString("F1")% / @alloc.MaxAllowedPercent.ToString("F0")%</span>
                                 <span>@alloc.NotionalValue.ToString("N0") USD</span>
                             </RadzenStack>
@@ -113,11 +113,15 @@ else
 @code {
     private string _selectedAccountId = "";
     private List<SymbolAllocation> _allocations = new();
+    private List<DropItem> _accounts = new();
     private bool _rebalanceEnabled;
     private string? _error;
 
+    private record DropItem(string Text, string Value);
+
     protected override async Task OnInitializedAsync()
     {
+        _accounts = AccountMgr.Accounts.Select(a => new DropItem(a.DisplayName, a.AccountId)).ToList();
         _selectedAccountId = AccountMgr.DefaultAccount?.AccountId ?? "";
         await LoadAllocations();
     }

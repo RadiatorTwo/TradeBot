@@ -117,12 +117,12 @@
                 <Columns>
                     <RadzenDataGridColumn TItem="BacktestTrade" Property="EntryTime" Title="Entry" Width="120px">
                         <Template Context="t">
-                            <span style="font-size:0.75rem;color:var(--muted)">@t.EntryTime.ToString("dd.MM HH:mm")</span>
+                            <span style="font-size:0.75rem;color:var(--muted)">@LocalTime.Short(t.EntryTime)</span>
                         </Template>
                     </RadzenDataGridColumn>
                     <RadzenDataGridColumn TItem="BacktestTrade" Property="ExitTime" Title="Exit" Width="120px">
                         <Template Context="t">
-                            <span style="font-size:0.75rem;color:var(--muted)">@t.ExitTime.ToString("dd.MM HH:mm")</span>
+                            <span style="font-size:0.75rem;color:var(--muted)">@LocalTime.Short(t.ExitTime)</span>
                         </Template>
                     </RadzenDataGridColumn>
                     <RadzenDataGridColumn TItem="BacktestTrade" Property="Side" Title="Side" Width="80px">

@@ -10,7 +10,7 @@
 @if (CorrelationSvc.LastCalculated.HasValue)
 {
     <div class="hint" style="margin-bottom: 16px;">
-        Letzte Berechnung: @CorrelationSvc.LastCalculated.Value.ToString("dd.MM.yyyy HH:mm") UTC
+        Letzte Berechnung: @LocalTime.Format(CorrelationSvc.LastCalculated.Value)
         – @CorrelationSvc.PairCount Paare
         @if (!CorrelationMatrix.HasDynamicData)
         {

@@ -75,7 +75,7 @@ else
                 <RadzenDataGridColumn TItem="BrokerPendingOrder" Property="Price" Title="Preis" Width="120px" FormatString="{0:F5}" />
                 <RadzenDataGridColumn TItem="BrokerPendingOrder" Property="CreatedAt" Title="Erstellt" Width="160px">
                     <Template Context="order">
-                        @order.CreatedAt.ToString("dd.MM.yyyy HH:mm")
+                        @LocalTime.Format(order.CreatedAt)
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="BrokerPendingOrder" Title="Alter" Width="100px" Sortable="false">

@@ -54,12 +54,12 @@
         <RadzenDataGridColumn TItem="AppUser" Property="Username" Title="Benutzername" Width="200px" />
         <RadzenDataGridColumn TItem="AppUser" Property="CreatedAt" Title="Erstellt" Width="180px">
             <Template Context="user">
-                @user.CreatedAt.ToString("dd.MM.yyyy HH:mm")
+                @LocalTime.Format(user.CreatedAt)
             </Template>
         </RadzenDataGridColumn>
         <RadzenDataGridColumn TItem="AppUser" Property="LastLoginAt" Title="Letzter Login" Width="180px">
             <Template Context="user">
-                @(user.LastLoginAt?.ToString("dd.MM.yyyy HH:mm") ?? "Nie")
+                @LocalTime.Format(user.LastLoginAt, fallback: "Nie")
             </Template>
         </RadzenDataGridColumn>
         <RadzenDataGridColumn TItem="AppUser" Property="MustChangePassword" Title="PW-Aenderung" Width="140px">
