@@ -61,6 +61,7 @@
 
 @code {
     private bool _sidebarExpanded = true;
+    private bool _mustRedirectToChangePassword;
 
     [CascadingParameter]
     private Task<AuthenticationState>? AuthState { get; set; }
@@ -83,11 +84,20 @@
                         var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
                         if (!uri.AbsolutePath.Equals("/change-password", StringComparison.OrdinalIgnoreCase))
                         {
-                            Navigation.NavigateTo("/change-password");
+                            _mustRedirectToChangePassword = true;
                         }
                     }
                 }
             }
+        }
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (_mustRedirectToChangePassword)
+        {
+            _mustRedirectToChangePassword = false;
+            Navigation.NavigateTo("/change-password");
         }
     }
 
