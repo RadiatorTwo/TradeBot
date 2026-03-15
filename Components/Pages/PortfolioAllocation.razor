@@ -81,7 +81,7 @@ else
             }
         </RadzenRow>
 
-        <RadzenDataGrid Data="@_allocations.OrderByDescending(a => a.PercentOfPortfolio)" TItem="SymbolAllocation" AllowSorting="true">
+        <RadzenDataGrid Data="@_allocations.OrderByDescending(a => a.PercentOfPortfolio)" TItem="SymbolAllocation" AllowSorting="true" KeyProperty="Symbol">
             <Columns>
                 <RadzenDataGridColumn TItem="SymbolAllocation" Property="Symbol" Title="Symbol" Width="120px" />
                 <RadzenDataGridColumn TItem="SymbolAllocation" Property="PercentOfPortfolio" Title="Anteil %" Width="120px">
