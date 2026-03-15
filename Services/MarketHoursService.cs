@@ -120,7 +120,10 @@ public class MarketHoursService
         {
             var untilClose = GetTimeUntilClose(symbol);
             if (untilClose.HasValue && untilClose.Value.TotalHours < 2)
-                return $"Offen (schliesst in {untilClose.Value.Hours}h {untilClose.Value.Minutes}m)";
+            {
+                var closeTime = LocalTime.FromUtc(DateTime.UtcNow.Add(untilClose.Value));
+                return $"Offen (schliesst {closeTime:HH:mm}, in {untilClose.Value.Hours}h {untilClose.Value.Minutes}m)";
+            }
             return "Offen";
         }
 
@@ -128,7 +131,8 @@ public class MarketHoursService
         if (nextOpen.HasValue)
         {
             var until = nextOpen.Value - DateTime.UtcNow;
-            return $"Geschlossen (oeffnet in {(int)until.TotalHours}h {until.Minutes}m)";
+            var localOpen = LocalTime.FromUtc(nextOpen.Value);
+            return $"Geschlossen (oeffnet {localOpen:ddd HH:mm}, in {(int)until.TotalHours}h {until.Minutes}m)";
         }
 
         return "Geschlossen";
