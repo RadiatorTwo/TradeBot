@@ -50,6 +50,7 @@ else
     }
     <StatusBadge Text="@($"Markt {vm.MarketStatus}")"
                  Color="@(vm.IsMarketOpen ? "green" : "red")" />
+    <StatusBadge Text="@($"{LocalTime.FromUtc(DateTime.UtcNow):HH:mm}")" Color="blue" />
 </div>
 
 <!-- Konto-Uebersicht -->

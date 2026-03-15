@@ -149,6 +149,7 @@ body {
 .badge-red    { background: var(--red-bg);    color: var(--red); }
 .badge-yellow { background: var(--yellow-bg); color: var(--yellow); }
 .badge-orange { background: rgba(249, 115, 22, 0.12); color: #f97316; }
+.badge-blue   { background: var(--blue-bg);   color: var(--blue); }
 
 /* ── Stat Cards ──────────────────────────────────────────────────── */
 
