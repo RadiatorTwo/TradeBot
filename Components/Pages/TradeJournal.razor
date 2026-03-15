@@ -9,124 +9,125 @@
 <h2 style="margin-bottom: 24px;">Trade-Journal</h2>
 
 <!-- Filter -->
-<div class="filter-bar">
-    <div class="filter-group">
-        <label>Von</label>
-        <input type="date" @bind="_filterFrom" />
-    </div>
-    <div class="filter-group">
-        <label>Bis</label>
-        <input type="date" @bind="_filterTo" />
-    </div>
-    <div class="filter-group">
-        <label>Symbol</label>
-        <select @bind="_filterSymbol">
-            <option value="">Alle</option>
-            @foreach (var s in _availableSymbols)
-            {
-                <option value="@s">@s</option>
-            }
-        </select>
-    </div>
-    <div class="filter-group">
-        <label>Setup-Typ</label>
-        <select @bind="_filterSetupType">
-            <option value="">Alle</option>
-            @foreach (var st in _availableSetupTypes)
-            {
-                <option value="@st">@st</option>
-            }
-        </select>
-    </div>
-    <div class="filter-group">
-        <label>Status</label>
-        <select @bind="_filterStatus">
-            <option value="">Alle</option>
-            <option value="Executed">Ausgefuehrt</option>
-            <option value="Rejected">Abgelehnt</option>
-        </select>
-    </div>
-    <div class="filter-group" style="justify-content: end;">
-        <button class="btn btn-primary" @onclick="ApplyFilter">Filtern</button>
-    </div>
-</div>
+<RadzenStack Orientation="Orientation.Horizontal" Gap="12px" Style="margin-bottom: 24px;" Wrap="FlexWrap.Wrap" AlignItems="AlignItems.End">
+    <RadzenStack Gap="4px">
+        <RadzenLabel Text="Von" Style="font-size: 0.75rem; color: var(--muted); text-transform: uppercase;" />
+        <RadzenDatePicker @bind-Value="_filterFrom" DateFormat="dd.MM.yyyy" />
+    </RadzenStack>
+    <RadzenStack Gap="4px">
+        <RadzenLabel Text="Bis" Style="font-size: 0.75rem; color: var(--muted); text-transform: uppercase;" />
+        <RadzenDatePicker @bind-Value="_filterTo" DateFormat="dd.MM.yyyy" />
+    </RadzenStack>
+    <RadzenStack Gap="4px">
+        <RadzenLabel Text="Symbol" Style="font-size: 0.75rem; color: var(--muted); text-transform: uppercase;" />
+        <RadzenDropDown @bind-Value="_filterSymbol" Data="_symbolOptions" TextProperty="Text" ValueProperty="Value" Style="min-width: 140px;" />
+    </RadzenStack>
+    <RadzenStack Gap="4px">
+        <RadzenLabel Text="Setup-Typ" Style="font-size: 0.75rem; color: var(--muted); text-transform: uppercase;" />
+        <RadzenDropDown @bind-Value="_filterSetupType" Data="_setupTypeOptions" TextProperty="Text" ValueProperty="Value" Style="min-width: 140px;" />
+    </RadzenStack>
+    <RadzenStack Gap="4px">
+        <RadzenLabel Text="Status" Style="font-size: 0.75rem; color: var(--muted); text-transform: uppercase;" />
+        <RadzenDropDown @bind-Value="_filterStatus" Data="_statusOptions" TextProperty="Text" ValueProperty="Value" Style="min-width: 140px;" />
+    </RadzenStack>
+    <RadzenButton Text="Filtern" ButtonStyle="ButtonStyle.Primary" Click="@ApplyFilter" />
+</RadzenStack>
 
 <!-- Per-SetupType Performance -->
 @if (_setupStats.Count > 0)
 {
     <div class="section" style="margin-bottom: 24px;">
         <h3>Performance pro Setup-Typ</h3>
-        <table>
-            <thead>
-                <tr>
-                    <th>Setup-Typ</th><th>Trades</th><th>Win-Rate</th>
-                    <th>PnL</th><th>Avg PnL</th><th>Profit-Faktor</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var s in _setupStats)
-                {
-                    <tr>
-                        <td><strong>@s.SetupType</strong></td>
-                        <td>@s.TradeCount</td>
-                        <td>@s.WinRate.ToString("F1")%</td>
-                        <td class="@(s.TotalPnL >= 0 ? "pnl-positive" : "pnl-negative")">
+        <RadzenDataGrid Data="@_setupStats" TItem="SetupTypeStatsViewModel" Density="Density.Compact" AllowSorting="true">
+            <Columns>
+                <RadzenDataGridColumn TItem="SetupTypeStatsViewModel" Property="SetupType" Title="Setup-Typ" Width="160px">
+                    <Template Context="s"><strong>@s.SetupType</strong></Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="SetupTypeStatsViewModel" Property="TradeCount" Title="Trades" Width="80px" />
+                <RadzenDataGridColumn TItem="SetupTypeStatsViewModel" Property="WinRate" Title="Win-Rate" Width="100px">
+                    <Template Context="s">@s.WinRate.ToString("F1")%</Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="SetupTypeStatsViewModel" Property="TotalPnL" Title="PnL" Width="120px">
+                    <Template Context="s">
+                        <span class="@(s.TotalPnL >= 0 ? "pnl-positive" : "pnl-negative")">
                             @(s.TotalPnL >= 0 ? "+" : "")$@s.TotalPnL.ToString("F2")
-                        </td>
-                        <td class="@(s.AvgPnL >= 0 ? "pnl-positive" : "pnl-negative")">
+                        </span>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="SetupTypeStatsViewModel" Property="AvgPnL" Title="Avg PnL" Width="120px">
+                    <Template Context="s">
+                        <span class="@(s.AvgPnL >= 0 ? "pnl-positive" : "pnl-negative")">
                             @(s.AvgPnL >= 0 ? "+" : "")$@s.AvgPnL.ToString("F2")
-                        </td>
-                        <td>@s.ProfitFactor.ToString("F2")</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
+                        </span>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="SetupTypeStatsViewModel" Property="ProfitFactor" Title="Profit-Faktor" Width="120px">
+                    <Template Context="s">@s.ProfitFactor.ToString("F2")</Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
     </div>
 }
 
 <!-- Trade-Liste -->
 @if (_trades.Count > 0)
 {
-    <table>
-        <thead>
-            <tr>
-                <th>Zeit</th><th>Symbol</th><th>Aktion</th><th>Setup</th>
-                <th>Menge</th><th>Preis</th><th>PnL</th><th>Confidence</th>
-                <th>Tags</th><th>Status</th><th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var t in _trades)
-            {
-                <tr>
-                    <td style="font-size:0.75rem;color:var(--muted)">@t.CreatedAt.ToString("dd.MM.yyyy HH:mm")</td>
-                    <td><strong>@t.Symbol</strong></td>
-                    <td class="@(t.Action == TradeAction.Buy ? "pnl-positive" : "pnl-negative")">
-                        @t.Action.ToString().ToUpper()
-                    </td>
-                    <td style="font-size:0.8rem;">@(t.SetupType ?? "—")</td>
-                    <td>@t.Quantity.ToString("F2")</td>
-                    <td>$@t.Price.ToString("F4")</td>
-                    <td class="@(t.RealizedPnL >= 0 ? "pnl-positive" : t.RealizedPnL < 0 ? "pnl-negative" : "")">
-                        @if (t.RealizedPnL.HasValue)
-                        {
+    <RadzenDataGrid Data="@_trades" TItem="Trade" Density="Density.Compact" AllowSorting="true">
+        <Columns>
+            <RadzenDataGridColumn TItem="Trade" Property="CreatedAt" Title="Zeit" Width="150px">
+                <Template Context="t">
+                    <span style="font-size:0.75rem;color:var(--muted)">@t.CreatedAt.ToString("dd.MM.yyyy HH:mm")</span>
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="Trade" Property="Symbol" Title="Symbol" Width="100px">
+                <Template Context="t"><strong>@t.Symbol</strong></Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="Trade" Property="Action" Title="Aktion" Width="80px">
+                <Template Context="t">
+                    <span class="@(t.Action == TradeAction.Buy ? "pnl-positive" : "pnl-negative")">@t.Action.ToString().ToUpper()</span>
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="Trade" Property="SetupType" Title="Setup" Width="100px">
+                <Template Context="t"><span style="font-size:0.8rem;">@(t.SetupType ?? "—")</span></Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="Trade" Property="Quantity" Title="Menge" Width="80px">
+                <Template Context="t">@t.Quantity.ToString("F2")</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="Trade" Property="Price" Title="Preis" Width="100px">
+                <Template Context="t">$@t.Price.ToString("F4")</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="Trade" Property="RealizedPnL" Title="PnL" Width="100px">
+                <Template Context="t">
+                    @if (t.RealizedPnL.HasValue)
+                    {
+                        <span class="@(t.RealizedPnL >= 0 ? "pnl-positive" : "pnl-negative")">
                             @($"{(t.RealizedPnL >= 0 ? "+" : "")}${t.RealizedPnL:F2}")
-                        }
-                        else
-                        {
-                            <span style="color:var(--muted)">—</span>
-                        }
-                    </td>
-                    <td>@t.ClaudeConfidence.ToString("P0")</td>
-                    <td style="font-size:0.75rem;color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                        </span>
+                    }
+                    else
+                    {
+                        <span style="color:var(--muted)">—</span>
+                    }
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="Trade" Property="ClaudeConfidence" Title="Confidence" Width="100px">
+                <Template Context="t">@t.ClaudeConfidence.ToString("P0")</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="Trade" Property="Tags" Title="Tags" Width="140px">
+                <Template Context="t">
+                    <span style="font-size:0.75rem;color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;">
                         @(t.Tags ?? "")
-                    </td>
-                    <td><TradeStatusBadge Status="t.Status" ErrorMessage="@t.ErrorMessage" /></td>
-                    <td><a href="/journal/@t.Id" style="color:var(--blue, #89b4fa);font-size:0.8rem;">Details</a></td>
-                </tr>
-            }
-        </tbody>
-    </table>
+                    </span>
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="Trade" Title="Status" Width="120px" Sortable="false">
+                <Template Context="t"><TradeStatusBadge Status="t.Status" ErrorMessage="@t.ErrorMessage" /></Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="Trade" Title="" Width="70px" Sortable="false">
+                <Template Context="t"><a href="/journal/@t.Id" style="color:var(--blue, #89b4fa);font-size:0.8rem;">Details</a></Template>
+            </RadzenDataGridColumn>
+        </Columns>
+    </RadzenDataGrid>
 }
 else
 {
@@ -145,6 +146,17 @@ else
     private List<string> _availableSetupTypes = new();
     private List<SetupTypeStatsViewModel> _setupStats = new();
 
+    private record DropDownItem(string Text, string Value);
+
+    private List<DropDownItem> _symbolOptions = new() { new("Alle", "") };
+    private List<DropDownItem> _setupTypeOptions = new() { new("Alle", "") };
+    private List<DropDownItem> _statusOptions = new()
+    {
+        new("Alle", ""),
+        new("Ausgefuehrt", "Executed"),
+        new("Abgelehnt", "Rejected")
+    };
+
     protected override async Task OnInitializedAsync()
     {
         await using var db = await DbFactory.CreateDbContextAsync();
@@ -155,6 +167,12 @@ else
         _availableSetupTypes = await db.Trades
             .Where(t => t.SetupType != null)
             .Select(t => t.SetupType!).Distinct().OrderBy(s => s).ToListAsync();
+
+        _symbolOptions = new List<DropDownItem> { new("Alle", "") };
+        _symbolOptions.AddRange(_availableSymbols.Select(s => new DropDownItem(s, s)));
+
+        _setupTypeOptions = new List<DropDownItem> { new("Alle", "") };
+        _setupTypeOptions.AddRange(_availableSetupTypes.Select(s => new DropDownItem(s, s)));
 
         _setupStats = await TradingStatsService.CalculatePerSetupTypeAsync(db);
 

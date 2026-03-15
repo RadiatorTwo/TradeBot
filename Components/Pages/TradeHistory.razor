@@ -8,73 +8,64 @@
 <h2 style="margin-bottom: 24px;">Trade-Historie</h2>
 
 <!-- Filter -->
-<div class="filter-bar">
-    <div class="filter-group">
-        <label>Von</label>
-        <input type="date" @bind="FilterFrom" />
-    </div>
-    <div class="filter-group">
-        <label>Bis</label>
-        <input type="date" @bind="FilterTo" />
-    </div>
-    <div class="filter-group">
-        <label>Symbol</label>
-        <select @bind="FilterSymbol">
-            <option value="">Alle</option>
-            @foreach (var s in _availableSymbols)
-            {
-                <option value="@s">@s</option>
-            }
-        </select>
-    </div>
-    <div class="filter-group">
-        <label>Status</label>
-        <select @bind="FilterStatus">
-            <option value="">Alle</option>
-            <option value="Executed">Ausgefuehrt</option>
-            <option value="Failed">Fehlgeschlagen</option>
-            <option value="Rejected">Abgelehnt</option>
-            <option value="Pending">Ausstehend</option>
-            <option value="Cancelled">Abgebrochen</option>
-        </select>
-    </div>
-    <div class="filter-group" style="justify-content: end;">
-        <button class="btn btn-primary" @onclick="ApplyFilter">Filtern</button>
-    </div>
-    <div class="filter-group" style="justify-content: end;">
-        <a href="@CsvExportUrl" class="btn btn-outline">CSV Export</a>
-    </div>
-</div>
+<RadzenStack Orientation="Orientation.Horizontal" Gap="12px" Style="margin-bottom: 24px;" Wrap="FlexWrap.Wrap" AlignItems="AlignItems.End">
+    <RadzenStack Gap="4px">
+        <RadzenLabel Text="Von" Style="font-size: 0.75rem; color: var(--muted); text-transform: uppercase;" />
+        <RadzenDatePicker @bind-Value="FilterFrom" DateFormat="dd.MM.yyyy" />
+    </RadzenStack>
+    <RadzenStack Gap="4px">
+        <RadzenLabel Text="Bis" Style="font-size: 0.75rem; color: var(--muted); text-transform: uppercase;" />
+        <RadzenDatePicker @bind-Value="FilterTo" DateFormat="dd.MM.yyyy" />
+    </RadzenStack>
+    <RadzenStack Gap="4px">
+        <RadzenLabel Text="Symbol" Style="font-size: 0.75rem; color: var(--muted); text-transform: uppercase;" />
+        <RadzenDropDown @bind-Value="FilterSymbol" Data="_symbolOptions" TextProperty="Text" ValueProperty="Value" Style="min-width: 140px;" />
+    </RadzenStack>
+    <RadzenStack Gap="4px">
+        <RadzenLabel Text="Status" Style="font-size: 0.75rem; color: var(--muted); text-transform: uppercase;" />
+        <RadzenDropDown @bind-Value="FilterStatus" Data="_statusOptions" TextProperty="Text" ValueProperty="Value" Style="min-width: 140px;" />
+    </RadzenStack>
+    <RadzenButton Text="Filtern" ButtonStyle="ButtonStyle.Primary" Click="@ApplyFilter" />
+    <RadzenButton Text="CSV Export" Variant="Variant.Outlined" Click="@(() => Navigation.NavigateTo(CsvExportUrl))" />
+</RadzenStack>
 
 @if (_trades.Any())
 {
-    <table>
-        <thead>
-            <tr>
-                <th>Zeit</th><th>Symbol</th><th>Aktion</th><th>Setup</th>
-                <th>Menge</th><th>Preis</th><th>Confidence</th>
-                <th>Status</th><th>Begruendung</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var t in _trades)
-            {
-                <tr>
-                    <td style="font-size:0.75rem;color:var(--muted)">@t.CreatedAt.ToString("dd.MM.yyyy HH:mm")</td>
-                    <td><strong>@t.Symbol</strong></td>
-                    <td class="@(t.Action == TradeAction.Buy ? "pnl-positive" : "pnl-negative")">
-                        @t.Action.ToString().ToUpper()
-                    </td>
-                    <td style="font-size:0.8rem;">@(t.SetupType ?? "—")</td>
-                    <td>@t.Quantity.ToString("F2")</td>
-                    <td>$@t.Price.ToString("F4")</td>
-                    <td>@t.ClaudeConfidence.ToString("P0")</td>
-                    <td><TradeStatusBadge Status="t.Status" ErrorMessage="@t.ErrorMessage" /></td>
-                    <td><ReasoningCell ErrorMessage="@t.ErrorMessage" Reasoning="@t.ClaudeReasoning" /></td>
-                </tr>
-            }
-        </tbody>
-    </table>
+    <RadzenDataGrid Data="@_trades" TItem="Trade" Density="Density.Compact" AllowSorting="true">
+        <Columns>
+            <RadzenDataGridColumn TItem="Trade" Property="CreatedAt" Title="Zeit" Width="150px">
+                <Template Context="t">
+                    <span style="font-size:0.75rem;color:var(--muted)">@t.CreatedAt.ToString("dd.MM.yyyy HH:mm")</span>
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="Trade" Property="Symbol" Title="Symbol" Width="100px">
+                <Template Context="t"><strong>@t.Symbol</strong></Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="Trade" Property="Action" Title="Aktion" Width="80px">
+                <Template Context="t">
+                    <span class="@(t.Action == TradeAction.Buy ? "pnl-positive" : "pnl-negative")">@t.Action.ToString().ToUpper()</span>
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="Trade" Property="SetupType" Title="Setup" Width="100px">
+                <Template Context="t"><span style="font-size:0.8rem;">@(t.SetupType ?? "—")</span></Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="Trade" Property="Quantity" Title="Menge" Width="80px">
+                <Template Context="t">@t.Quantity.ToString("F2")</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="Trade" Property="Price" Title="Preis" Width="100px">
+                <Template Context="t">$@t.Price.ToString("F4")</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="Trade" Property="ClaudeConfidence" Title="Confidence" Width="100px">
+                <Template Context="t">@t.ClaudeConfidence.ToString("P0")</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="Trade" Title="Status" Width="120px" Sortable="false">
+                <Template Context="t"><TradeStatusBadge Status="t.Status" ErrorMessage="@t.ErrorMessage" /></Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="Trade" Title="Begruendung" Sortable="false">
+                <Template Context="t"><ReasoningCell ErrorMessage="@t.ErrorMessage" Reasoning="@t.ClaudeReasoning" /></Template>
+            </RadzenDataGridColumn>
+        </Columns>
+    </RadzenDataGrid>
 }
 else
 {
@@ -82,6 +73,8 @@ else
 }
 
 @code {
+    [Inject] private NavigationManager Navigation { get; set; } = default!;
+
     private DateTime? FilterFrom { get; set; }
     private DateTime? FilterTo { get; set; }
     private string FilterSymbol { get; set; } = string.Empty;
@@ -89,6 +82,19 @@ else
 
     private List<Trade> _trades = new();
     private List<string> _availableSymbols = new();
+
+    private record DropDownItem(string Text, string Value);
+
+    private List<DropDownItem> _symbolOptions = new() { new("Alle", "") };
+    private List<DropDownItem> _statusOptions = new()
+    {
+        new("Alle", ""),
+        new("Ausgefuehrt", "Executed"),
+        new("Fehlgeschlagen", "Failed"),
+        new("Abgelehnt", "Rejected"),
+        new("Ausstehend", "Pending"),
+        new("Abgebrochen", "Cancelled")
+    };
 
     private string CsvExportUrl =>
         $"/api/trades/export?from={FilterFrom?.ToString("yyyy-MM-dd")}&to={FilterTo?.ToString("yyyy-MM-dd")}&symbol={FilterSymbol}&status={FilterStatus}";
@@ -107,6 +113,9 @@ else
             .Distinct()
             .OrderBy(s => s)
             .ToListAsync();
+
+        _symbolOptions = new List<DropDownItem> { new("Alle", "") };
+        _symbolOptions.AddRange(_availableSymbols.Select(s => new DropDownItem(s, s)));
     }
 
     private async Task ApplyFilter()

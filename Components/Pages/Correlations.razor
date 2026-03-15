@@ -20,14 +20,14 @@
 }
 else
 {
-    <div class="warning-banner" style="margin-bottom: 16px;">
+    <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" Shade="Shade.Dark" AllowClose="false" Style="margin-bottom: 16px;">
         Korrelationen werden beim naechsten Zyklus berechnet (ca. 1 Min nach Start). Aktuell werden statische Fallback-Werte verwendet.
-    </div>
+    </RadzenAlert>
 }
 
 @if (_entries.Count > 0)
 {
-    <!-- Heatmap-Tabelle -->
+    <!-- Heatmap-Tabelle (bleibt plain HTML wegen custom styling) -->
     @if (_symbols.Count > 0)
     {
         <div class="section" style="margin-bottom: 24px; overflow-x: auto;">
@@ -65,31 +65,33 @@ else
     <!-- Detail-Liste -->
     <div class="section">
         <h3>Korrelationspaare (sortiert nach Staerke)</h3>
-        <table>
-            <thead>
-                <tr><th>Symbol 1</th><th>Symbol 2</th><th>Korrelation</th><th>Staerke</th></tr>
-            </thead>
-            <tbody>
-                @foreach (var e in _entries)
-                {
-                    var strength = Math.Abs(e.Correlation) switch
-                    {
-                        >= 0.8 => "Sehr stark",
-                        >= 0.6 => "Stark",
-                        >= 0.4 => "Moderat",
-                        >= 0.2 => "Schwach",
-                        _ => "Sehr schwach"
-                    };
-                    var cls = e.Correlation >= 0 ? "pnl-positive" : "pnl-negative";
-                    <tr>
-                        <td><strong>@e.Symbol1</strong></td>
-                        <td><strong>@e.Symbol2</strong></td>
-                        <td class="@cls" style="font-weight: 600;">@e.Correlation.ToString("F2")</td>
-                        <td>@strength</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
+        <RadzenDataGrid Data="@_entries" TItem="CorrelationEntry" Density="Density.Compact" AllowSorting="true">
+            <Columns>
+                <RadzenDataGridColumn TItem="CorrelationEntry" Property="Symbol1" Title="Symbol 1" Width="140px">
+                    <Template Context="e"><strong>@e.Symbol1</strong></Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="CorrelationEntry" Property="Symbol2" Title="Symbol 2" Width="140px">
+                    <Template Context="e"><strong>@e.Symbol2</strong></Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="CorrelationEntry" Property="Correlation" Title="Korrelation" Width="140px">
+                    <Template Context="e">
+                        <span class="@(e.Correlation >= 0 ? "pnl-positive" : "pnl-negative")" style="font-weight: 600;">@e.Correlation.ToString("F2")</span>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="CorrelationEntry" Title="Staerke" Width="140px" Sortable="false">
+                    <Template Context="e">
+                        @(Math.Abs(e.Correlation) switch
+                        {
+                            >= 0.8 => "Sehr stark",
+                            >= 0.6 => "Stark",
+                            >= 0.4 => "Moderat",
+                            >= 0.2 => "Schwach",
+                            _ => "Sehr schwach"
+                        })
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
     </div>
 }
 else
@@ -128,7 +130,6 @@ else
     {
         // Rot (negativ) → Weiss (0) → Gruen (positiv)
         var abs = Math.Abs(corr);
-        var intensity = (int)(abs * 200);
 
         if (corr >= 0)
             return $"rgba(166, 227, 161, {abs:F2})"; // Gruen (Catppuccin green)

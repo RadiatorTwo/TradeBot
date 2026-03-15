@@ -235,6 +235,158 @@ tr:last-child td { border-bottom: none; }
 }
 .reasoning-full.open { display: block; }
 
+/* ── Radzen Component Overrides (Dark Theme) ──────────────────────── */
+
+/* DataGrid */
+.rz-datatable {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 12px !important;
+    overflow: hidden !important;
+}
+.rz-datatable .rz-datatable-thead > tr > th {
+    background: var(--bg) !important;
+    color: var(--muted) !important;
+    border-bottom: 1px solid var(--border) !important;
+    font-size: 0.75rem !important;
+    text-transform: uppercase !important;
+    padding: 12px 16px !important;
+}
+.rz-datatable .rz-datatable-data > tr > td {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+    border-bottom: 1px solid var(--border) !important;
+    padding: 12px 16px !important;
+    font-size: 0.875rem !important;
+}
+.rz-datatable .rz-datatable-data > tr:last-child > td {
+    border-bottom: none !important;
+}
+.rz-datatable .rz-datatable-data > tr:hover > td {
+    background: rgba(99, 102, 241, 0.05) !important;
+}
+
+/* TextBox, Numeric, TextArea, Password, DatePicker */
+.rz-textbox,
+.rz-textarea,
+.rz-spinner .rz-inputtext,
+.rz-calendar .rz-inputtext {
+    background: var(--bg) !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text) !important;
+    border-radius: 8px !important;
+    font-size: 0.875rem !important;
+}
+.rz-textbox:focus,
+.rz-textarea:focus,
+.rz-state-focused .rz-inputtext {
+    border-color: var(--accent) !important;
+    box-shadow: none !important;
+}
+.rz-textbox[readonly] {
+    color: var(--muted) !important;
+    cursor: not-allowed !important;
+}
+
+/* DropDown */
+.rz-dropdown {
+    background: var(--bg) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
+    color: var(--text) !important;
+}
+.rz-dropdown:hover,
+.rz-state-focused.rz-dropdown {
+    border-color: var(--accent) !important;
+}
+.rz-dropdown .rz-dropdown-label {
+    color: var(--text) !important;
+    font-size: 0.875rem !important;
+}
+.rz-dropdown-panel {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
+}
+.rz-dropdown-panel .rz-dropdown-item {
+    color: var(--text) !important;
+}
+.rz-dropdown-panel .rz-dropdown-item:hover,
+.rz-dropdown-panel .rz-dropdown-item.rz-state-highlight {
+    background: rgba(99, 102, 241, 0.15) !important;
+    color: var(--text) !important;
+}
+
+/* Button overrides */
+.rz-button.rz-button-md {
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    font-size: 0.875rem !important;
+    padding: 10px 20px !important;
+}
+.rz-button.rz-button-sm {
+    padding: 4px 12px !important;
+    font-size: 0.8rem !important;
+}
+.rz-button.rz-variant-outlined {
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+}
+.rz-button.rz-variant-outlined:hover {
+    background: rgba(99, 102, 241, 0.1) !important;
+}
+
+/* CheckBox */
+.rz-chkbox .rz-chkbox-box {
+    background: var(--bg) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 4px !important;
+}
+.rz-chkbox .rz-chkbox-box.rz-state-active {
+    background: var(--accent) !important;
+    border-color: var(--accent) !important;
+}
+
+/* Card */
+.rz-card {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 12px !important;
+    color: var(--text) !important;
+}
+
+/* Alert */
+.rz-alert {
+    border-radius: 8px !important;
+    font-size: 0.875rem !important;
+}
+
+/* ProgressBar */
+.rz-progressbar {
+    background: var(--border) !important;
+    border-radius: 4px !important;
+    height: 8px !important;
+}
+.rz-progressbar .rz-progressbar-value {
+    background: var(--accent) !important;
+    border-radius: 4px !important;
+}
+
+/* Label */
+.rz-label {
+    color: var(--muted) !important;
+    font-size: 0.8rem !important;
+    text-transform: uppercase !important;
+}
+
+/* Calendar/DatePicker popup */
+.rz-calendar-overlay {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
+    color: var(--text) !important;
+}
+
 /* Blazor reconnect UI */
 #components-reconnect-modal {
     display: none;

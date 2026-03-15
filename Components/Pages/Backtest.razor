@@ -10,76 +10,68 @@
 <h2 style="margin-bottom: 24px;">Backtesting</h2>
 
 <!-- Konfiguration -->
-<div class="form-section">
+<RadzenCard Style="margin-bottom: 24px;">
     <h3>Backtest-Konfiguration</h3>
-    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
-        <div class="form-group">
-            <label>Symbol</label>
-            <select @bind="_config.Symbol" disabled="@_isRunning">
-                @foreach (var sym in _watchList)
-                {
-                    <option value="@sym">@sym</option>
-                }
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Timeframe</label>
-            <select @bind="_config.Timeframe" disabled="@_isRunning">
-                <option value="1H">1H</option>
-                <option value="4H">4H</option>
-                <option value="1D">1D</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Strategie</label>
-            <select @bind="_config.Strategy" disabled="@_isRunning">
-                <option value="EMA_Cross">EMA-Cross (EMA20/50)</option>
-                <option value="RSI_Reversal">RSI-Reversal (RSI14)</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Start-Datum</label>
-            <input type="date" @bind="_startDate" disabled="@_isRunning" />
-        </div>
-        <div class="form-group">
-            <label>End-Datum</label>
-            <input type="date" @bind="_endDate" disabled="@_isRunning" />
-        </div>
-        <div class="form-group">
-            <label>Startkapital ($)</label>
-            <input type="number" @bind="_config.InitialBalance" step="1000" min="100" disabled="@_isRunning" />
-        </div>
-        <div class="form-group">
-            <label>Risiko pro Trade (%)</label>
-            <input type="number" @bind="_config.RiskPerTradePercent" step="0.1" min="0.1" max="10" disabled="@_isRunning" />
-        </div>
-        <div class="form-group">
-            <label>Stop-Loss (Pips)</label>
-            <input type="number" @bind="_config.StopLossPips" step="5" min="5" disabled="@_isRunning" />
-        </div>
-        <div class="form-group">
-            <label>Take-Profit (Pips)</label>
-            <input type="number" @bind="_config.TakeProfitPips" step="5" min="5" disabled="@_isRunning" />
-        </div>
-    </div>
-    <div style="margin-top: 16px;">
+    <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
+        <RadzenColumn Size="4">
+            <RadzenLabel Text="Symbol" Style="display: block; margin-bottom: 4px;" />
+            <RadzenDropDown @bind-Value="_config.Symbol" Data="_watchList" Disabled="_isRunning" Style="width: 100%;" />
+        </RadzenColumn>
+        <RadzenColumn Size="4">
+            <RadzenLabel Text="Timeframe" Style="display: block; margin-bottom: 4px;" />
+            <RadzenDropDown @bind-Value="_config.Timeframe" Data="_timeframes" TextProperty="Text" ValueProperty="Value" Disabled="_isRunning" Style="width: 100%;" />
+        </RadzenColumn>
+        <RadzenColumn Size="4">
+            <RadzenLabel Text="Strategie" Style="display: block; margin-bottom: 4px;" />
+            <RadzenDropDown @bind-Value="_config.Strategy" Data="_strategies" TextProperty="Text" ValueProperty="Value" Disabled="_isRunning" Style="width: 100%;" />
+        </RadzenColumn>
+    </RadzenRow>
+    <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
+        <RadzenColumn Size="4">
+            <RadzenLabel Text="Start-Datum" Style="display: block; margin-bottom: 4px;" />
+            <RadzenDatePicker @bind-Value="_startDate" DateFormat="dd.MM.yyyy" Disabled="_isRunning" Style="width: 100%;" />
+        </RadzenColumn>
+        <RadzenColumn Size="4">
+            <RadzenLabel Text="End-Datum" Style="display: block; margin-bottom: 4px;" />
+            <RadzenDatePicker @bind-Value="_endDate" DateFormat="dd.MM.yyyy" Disabled="_isRunning" Style="width: 100%;" />
+        </RadzenColumn>
+        <RadzenColumn Size="4">
+            <RadzenLabel Text="Startkapital ($)" Style="display: block; margin-bottom: 4px;" />
+            <RadzenNumeric TValue="decimal" @bind-Value="_config.InitialBalance" ShowUpDown="false" Min="100m" Step="1000m" Disabled="_isRunning" Style="width: 100%;" />
+        </RadzenColumn>
+    </RadzenRow>
+    <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
+        <RadzenColumn Size="4">
+            <RadzenLabel Text="Risiko pro Trade (%)" Style="display: block; margin-bottom: 4px;" />
+            <RadzenNumeric TValue="double" @bind-Value="_config.RiskPerTradePercent" ShowUpDown="false" Min="0.1m" Max="10m" Step="0.1m" Disabled="_isRunning" Style="width: 100%;" />
+        </RadzenColumn>
+        <RadzenColumn Size="4">
+            <RadzenLabel Text="Stop-Loss (Pips)" Style="display: block; margin-bottom: 4px;" />
+            <RadzenNumeric TValue="double" @bind-Value="_config.StopLossPips" ShowUpDown="false" Disabled="_isRunning" Style="width: 100%;" />
+        </RadzenColumn>
+        <RadzenColumn Size="4">
+            <RadzenLabel Text="Take-Profit (Pips)" Style="display: block; margin-bottom: 4px;" />
+            <RadzenNumeric TValue="double" @bind-Value="_config.TakeProfitPips" ShowUpDown="false" Disabled="_isRunning" Style="width: 100%;" />
+        </RadzenColumn>
+    </RadzenRow>
+    <div>
         @if (_isRunning)
         {
-            <button class="btn btn-outline" disabled>Backtest laeuft... (@_progress%)</button>
-            <div style="margin-top: 8px; background: var(--border); border-radius: 4px; height: 8px;">
-                <div style="background: var(--accent); height: 100%; border-radius: 4px; width: @(_progress)%; transition: width 0.3s;"></div>
-            </div>
+            <RadzenButton Text="@($"Backtest laeuft... ({_progress}%)")" Disabled="true" Variant="Variant.Outlined" />
+            <RadzenProgressBar Value="_progress" Style="margin-top: 8px;" ShowValue="false" />
         }
         else
         {
-            <button class="btn btn-primary" @onclick="RunBacktest">Backtest Starten</button>
+            <RadzenButton Text="Backtest Starten" ButtonStyle="ButtonStyle.Primary" Click="@RunBacktest" />
         }
     </div>
-</div>
+</RadzenCard>
 
 @if (_result?.ErrorMessage != null)
 {
-    <div class="error-banner">@_result.ErrorMessage</div>
+    <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Dark" AllowClose="false" Style="margin-bottom: 24px;">
+        @_result.ErrorMessage
+    </RadzenAlert>
 }
 
 @if (_result != null && _result.ErrorMessage == null)
@@ -121,32 +113,42 @@
     {
         <div class="section">
             <h2>Trades (@_result.Trades.Count)</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Entry</th><th>Exit</th><th>Side</th>
-                        <th>Entry Preis</th><th>Exit Preis</th>
-                        <th>Lots</th><th>P&amp;L</th><th>Grund</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var t in _result.Trades.TakeLast(100).Reverse())
-                    {
-                        <tr>
-                            <td style="font-size:0.75rem;color:var(--muted)">@t.EntryTime.ToString("dd.MM HH:mm")</td>
-                            <td style="font-size:0.75rem;color:var(--muted)">@t.ExitTime.ToString("dd.MM HH:mm")</td>
-                            <td class="@(t.Side == "buy" ? "pnl-positive" : "pnl-negative")">@t.Side.ToUpper()</td>
-                            <td>@t.EntryPrice.ToString("F5")</td>
-                            <td>@t.ExitPrice.ToString("F5")</td>
-                            <td>@t.Quantity.ToString("F2")</td>
-                            <td class="@(t.PnL >= 0 ? "pnl-positive" : "pnl-negative")">
+            <RadzenDataGrid Data="@_result.Trades.TakeLast(100).Reverse()" TItem="BacktestTrade" Density="Density.Compact" AllowSorting="true">
+                <Columns>
+                    <RadzenDataGridColumn TItem="BacktestTrade" Property="EntryTime" Title="Entry" Width="120px">
+                        <Template Context="t">
+                            <span style="font-size:0.75rem;color:var(--muted)">@t.EntryTime.ToString("dd.MM HH:mm")</span>
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="BacktestTrade" Property="ExitTime" Title="Exit" Width="120px">
+                        <Template Context="t">
+                            <span style="font-size:0.75rem;color:var(--muted)">@t.ExitTime.ToString("dd.MM HH:mm")</span>
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="BacktestTrade" Property="Side" Title="Side" Width="80px">
+                        <Template Context="t">
+                            <span class="@(t.Side == "buy" ? "pnl-positive" : "pnl-negative")">@t.Side.ToUpper()</span>
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="BacktestTrade" Property="EntryPrice" Title="Entry Preis" Width="110px">
+                        <Template Context="t">@t.EntryPrice.ToString("F5")</Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="BacktestTrade" Property="ExitPrice" Title="Exit Preis" Width="110px">
+                        <Template Context="t">@t.ExitPrice.ToString("F5")</Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="BacktestTrade" Property="Quantity" Title="Lots" Width="80px">
+                        <Template Context="t">@t.Quantity.ToString("F2")</Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="BacktestTrade" Property="PnL" Title="P&L" Width="100px">
+                        <Template Context="t">
+                            <span class="@(t.PnL >= 0 ? "pnl-positive" : "pnl-negative")">
                                 @(t.PnL >= 0 ? "+" : "")$@t.PnL.ToString("F2")
-                            </td>
-                            <td>@t.Reason</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+                            </span>
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="BacktestTrade" Property="Reason" Title="Grund" />
+                </Columns>
+            </RadzenDataGrid>
             @if (_result.Trades.Count > 100)
             {
                 <div class="hint" style="margin-top: 8px;">Zeigt die letzten 100 von @_result.Trades.Count Trades.</div>
@@ -163,6 +165,19 @@
     private string[] _watchList = Array.Empty<string>();
     private DateTime _startDate = DateTime.UtcNow.AddDays(-30).Date;
     private DateTime _endDate = DateTime.UtcNow.Date;
+
+    private record DropDownItem(string Text, string Value);
+
+    private List<DropDownItem> _timeframes = new()
+    {
+        new("1H", "1H"), new("4H", "4H"), new("1D", "1D")
+    };
+
+    private List<DropDownItem> _strategies = new()
+    {
+        new("EMA-Cross (EMA20/50)", "EMA_Cross"),
+        new("RSI-Reversal (RSI14)", "RSI_Reversal")
+    };
 
     protected override async Task OnInitializedAsync()
     {

@@ -9,18 +9,20 @@
 
 <h2 style="margin-bottom: 24px;">Einstellungen</h2>
 
-<div class="warning-banner">
+<RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" Shade="Shade.Dark" AllowClose="false" Style="margin-bottom: 24px;">
     Aenderungen werden in die Datenbank geschrieben und sind sofort wirksam (kein Neustart noetig).
-</div>
+</RadzenAlert>
 
 @if (_saveSuccess)
 {
-    <div class="success-banner">Einstellungen erfolgreich gespeichert.</div>
+    <RadzenAlert AlertStyle="AlertStyle.Success" Variant="Variant.Flat" Shade="Shade.Dark" AllowClose="true" Style="margin-bottom: 24px;">
+        Einstellungen erfolgreich gespeichert.
+    </RadzenAlert>
 }
 
 @if (_errors.Any())
 {
-    <div class="error-banner">
+    <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Dark" AllowClose="false" Style="margin-bottom: 24px;">
         <strong>Validierungsfehler:</strong>
         <ul style="margin: 8px 0 0 16px; list-style: disc;">
             @foreach (var error in _errors)
@@ -28,141 +30,134 @@
                 <li>@error</li>
             }
         </ul>
-    </div>
+    </RadzenAlert>
 }
 
 <EditForm Model="this" OnValidSubmit="SaveSettings" FormName="settings">
     <!-- Watchlist -->
-    <div class="form-section">
-        <h3>Watchlist</h3>
-        <div class="form-group">
-            <label>Symbole (komma-separiert)</label>
-            <textarea rows="3" @bind="WatchList"></textarea>
-            <div class="hint">z.B. EURUSD, GBPUSD, USDJPY, XAUUSD, US100</div>
-        </div>
-    </div>
+    <RadzenCard Style="margin-bottom: 24px;">
+        <h3 style="margin-top: 0; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border);">Watchlist</h3>
+        <RadzenLabel Text="Symbole (komma-separiert)" Style="display: block; margin-bottom: 4px;" />
+        <RadzenTextArea @bind-Value="WatchList" Rows="3" Style="width: 100%;" />
+        <div class="hint" style="margin-top: 4px;">z.B. EURUSD, GBPUSD, USDJPY, XAUUSD, US100</div>
+    </RadzenCard>
 
     <!-- Risiko-Parameter -->
-    <div class="form-section">
-        <h3>Risiko-Parameter</h3>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-            <div class="form-group">
-                <label>Min. Confidence</label>
-                <input type="number" @bind="MinConfidence" step="0.01" min="0" max="1" />
-                <div class="hint">Minimale KI-Confidence fuer Trade-Ausfuehrung (0-1)</div>
-            </div>
-            <div class="form-group">
-                <label>Max. Positionsgroesse (%)</label>
-                <input type="number" @bind="MaxPositionSizePercent" step="0.5" min="0" />
-                <div class="hint">Maximaler Anteil am Portfolio pro Trade</div>
-            </div>
-            <div class="form-group">
-                <label>Max. Tagesverlust (%)</label>
-                <input type="number" @bind="MaxDailyLossPercent" step="0.1" min="0" />
-                <div class="hint">Prozentualer Tagesverlust-Limit</div>
-            </div>
-            <div class="form-group">
-                <label>Max. Tagesverlust (absolut)</label>
-                <input type="number" @bind="MaxDailyLossAbsolute" step="10" min="0" />
-                <div class="hint">Absoluter Tagesverlust-Limit in $</div>
-            </div>
-            <div class="form-group">
-                <label>Stop-Loss (%)</label>
-                <input type="number" @bind="StopLossPercent" step="0.1" min="0" />
-                <div class="hint">Automatischer Stop-Loss pro Position</div>
-            </div>
-            <div class="form-group">
-                <label>Max. offene Positionen</label>
-                <input type="number" @bind="MaxOpenPositions" min="1" />
-            </div>
-        </div>
-    </div>
+    <RadzenCard Style="margin-bottom: 24px;">
+        <h3 style="margin-top: 0; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border);">Risiko-Parameter</h3>
+        <RadzenRow Gap="16px">
+            <RadzenColumn Size="6">
+                <RadzenLabel Text="Min. Confidence" Style="display: block; margin-bottom: 4px;" />
+                <RadzenNumeric TValue="double" @bind-Value="MinConfidence" ShowUpDown="false" Min="0" Max="1" Step="0.01" Style="width: 100%;" />
+                <div class="hint" style="margin-top: 4px;">Minimale KI-Confidence fuer Trade-Ausfuehrung (0-1)</div>
+            </RadzenColumn>
+            <RadzenColumn Size="6">
+                <RadzenLabel Text="Max. Positionsgroesse (%)" Style="display: block; margin-bottom: 4px;" />
+                <RadzenNumeric TValue="double" @bind-Value="MaxPositionSizePercent" ShowUpDown="false" Min="0" Step="0.5" Style="width: 100%;" />
+                <div class="hint" style="margin-top: 4px;">Maximaler Anteil am Portfolio pro Trade</div>
+            </RadzenColumn>
+            <RadzenColumn Size="6">
+                <RadzenLabel Text="Max. Tagesverlust (%)" Style="display: block; margin-bottom: 4px;" />
+                <RadzenNumeric TValue="double" @bind-Value="MaxDailyLossPercent" ShowUpDown="false" Min="0" Step="0.1" Style="width: 100%;" />
+                <div class="hint" style="margin-top: 4px;">Prozentualer Tagesverlust-Limit</div>
+            </RadzenColumn>
+            <RadzenColumn Size="6">
+                <RadzenLabel Text="Max. Tagesverlust (absolut)" Style="display: block; margin-bottom: 4px;" />
+                <RadzenNumeric TValue="decimal" @bind-Value="MaxDailyLossAbsolute" ShowUpDown="false" Min="0" Step="10" Style="width: 100%;" />
+                <div class="hint" style="margin-top: 4px;">Absoluter Tagesverlust-Limit in $</div>
+            </RadzenColumn>
+            <RadzenColumn Size="6">
+                <RadzenLabel Text="Stop-Loss (%)" Style="display: block; margin-bottom: 4px;" />
+                <RadzenNumeric TValue="double" @bind-Value="StopLossPercent" ShowUpDown="false" Min="0" Step="0.1" Style="width: 100%;" />
+                <div class="hint" style="margin-top: 4px;">Automatischer Stop-Loss pro Position</div>
+            </RadzenColumn>
+            <RadzenColumn Size="6">
+                <RadzenLabel Text="Max. offene Positionen" Style="display: block; margin-bottom: 4px;" />
+                <RadzenNumeric TValue="int" @bind-Value="MaxOpenPositions" ShowUpDown="false" Min="1" Style="width: 100%;" />
+            </RadzenColumn>
+        </RadzenRow>
+    </RadzenCard>
 
     <!-- Intervall -->
-    <div class="form-section">
-        <h3>Trading-Intervall</h3>
-        <div class="form-group">
-            <label>Analyse-Intervall (Minuten)</label>
-            <input type="number" @bind="TradingIntervalMinutes" min="1" />
-            <div class="hint">Wie oft die Engine Marktdaten analysiert und Trades evaluiert</div>
-        </div>
-    </div>
+    <RadzenCard Style="margin-bottom: 24px;">
+        <h3 style="margin-top: 0; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border);">Trading-Intervall</h3>
+        <RadzenLabel Text="Analyse-Intervall (Minuten)" Style="display: block; margin-bottom: 4px;" />
+        <RadzenNumeric TValue="int" @bind-Value="TradingIntervalMinutes" ShowUpDown="false" Min="1" Style="width: 300px;" />
+        <div class="hint" style="margin-top: 4px;">Wie oft die Engine Marktdaten analysiert und Trades evaluiert</div>
+    </RadzenCard>
 
     <!-- Paper-Trading -->
-    <div class="form-section">
-        <h3>Paper-Trading</h3>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-            <div class="form-group">
-                <label>
-                    <input type="checkbox" @bind="PaperTradingEnabled" style="margin-right: 8px;" />
-                    Paper-Trading aktivieren
-                </label>
-                <div class="hint">Wenn aktiv werden keine echten Orders platziert. Echte Marktdaten fliessen weiterhin.</div>
-            </div>
-            <div class="form-group">
-                <label>Startkapital (Paper)</label>
-                <input type="number" @bind="PaperTradingBalance" step="100" min="100" />
-                <div class="hint">Simuliertes Startkapital fuer Paper-Trading</div>
-            </div>
-        </div>
-    </div>
+    <RadzenCard Style="margin-bottom: 24px;">
+        <h3 style="margin-top: 0; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border);">Paper-Trading</h3>
+        <RadzenRow Gap="16px">
+            <RadzenColumn Size="6">
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px">
+                    <RadzenCheckBox @bind-Value="PaperTradingEnabled" />
+                    <RadzenLabel Text="Paper-Trading aktivieren" />
+                </RadzenStack>
+                <div class="hint" style="margin-top: 4px;">Wenn aktiv werden keine echten Orders platziert. Echte Marktdaten fliessen weiterhin.</div>
+            </RadzenColumn>
+            <RadzenColumn Size="6">
+                <RadzenLabel Text="Startkapital (Paper)" Style="display: block; margin-bottom: 4px;" />
+                <RadzenNumeric TValue="decimal" @bind-Value="PaperTradingBalance" ShowUpDown="false" Min="100" Step="100" Style="width: 100%;" />
+                <div class="hint" style="margin-top: 4px;">Simuliertes Startkapital fuer Paper-Trading</div>
+            </RadzenColumn>
+        </RadzenRow>
+    </RadzenCard>
 
     <!-- Multi-Timeframe -->
-    <div class="form-section">
-        <h3>Multi-Timeframe Bestaetigung</h3>
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
-            <div class="form-group">
-                <label>
-                    <input type="checkbox" @bind="MultiTimeframeEnabled" style="margin-right: 8px;" />
-                    Multi-Timeframe-Filter aktivieren
-                </label>
-                <div class="hint">Trades nur in Richtung des hoeheren Timeframe-Trends</div>
-            </div>
-            <div class="form-group">
-                <label>Hoeherer Timeframe</label>
-                <select @bind="MultiTimeframeHigherTf">
-                    <option value="4H">4H</option>
-                    <option value="1D">1D</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>EMA-Periode</label>
-                <input type="number" @bind="MultiTimeframeEmaPeriod" min="10" max="500" />
-                <div class="hint">z.B. 200 fuer EMA200</div>
-            </div>
-        </div>
-    </div>
+    <RadzenCard Style="margin-bottom: 24px;">
+        <h3 style="margin-top: 0; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border);">Multi-Timeframe Bestaetigung</h3>
+        <RadzenRow Gap="16px">
+            <RadzenColumn Size="4">
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px">
+                    <RadzenCheckBox @bind-Value="MultiTimeframeEnabled" />
+                    <RadzenLabel Text="Multi-Timeframe-Filter aktivieren" />
+                </RadzenStack>
+                <div class="hint" style="margin-top: 4px;">Trades nur in Richtung des hoeheren Timeframe-Trends</div>
+            </RadzenColumn>
+            <RadzenColumn Size="4">
+                <RadzenLabel Text="Hoeherer Timeframe" Style="display: block; margin-bottom: 4px;" />
+                <RadzenDropDown @bind-Value="MultiTimeframeHigherTf" Data="_timeframeOptions" TextProperty="Text" ValueProperty="Value" Style="width: 100%;" />
+            </RadzenColumn>
+            <RadzenColumn Size="4">
+                <RadzenLabel Text="EMA-Periode" Style="display: block; margin-bottom: 4px;" />
+                <RadzenNumeric TValue="int" @bind-Value="MultiTimeframeEmaPeriod" ShowUpDown="false" Min="10" Max="500" Style="width: 100%;" />
+                <div class="hint" style="margin-top: 4px;">z.B. 200 fuer EMA200</div>
+            </RadzenColumn>
+        </RadzenRow>
+    </RadzenCard>
 
-    <button type="submit" class="btn btn-primary">Einstellungen Speichern</button>
+    <RadzenButton Text="Einstellungen Speichern" ButtonStyle="ButtonStyle.Primary" ButtonType="ButtonType.Submit" />
 </EditForm>
 
 <!-- API-Konfiguration (readonly) -->
-<div class="form-section" style="margin-top: 24px;">
-    <h3>API-Konfiguration (nur Anzeige)</h3>
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-        <div class="form-group">
-            <label>LLM Provider</label>
-            <input type="text" value="@_llmProvider" readonly />
-        </div>
-        <div class="form-group">
-            <label>TradeLocker Email</label>
-            <input type="text" value="@_tradeLockerEmail" readonly />
-        </div>
-        <div class="form-group">
-            <label>Anthropic API Key</label>
-            <input type="text" value="@_anthropicKeyMasked" readonly />
-        </div>
-        <div class="form-group">
-            <label>Gemini API Key</label>
-            <input type="text" value="@_geminiKeyMasked" readonly />
-        </div>
-        <div class="form-group">
-            <label>OpenAI-Compatible API Key</label>
-            <input type="text" value="@_openAIKeyMasked" readonly />
-        </div>
-    </div>
+<RadzenCard Style="margin-top: 24px;">
+    <h3 style="margin-top: 0; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border);">API-Konfiguration (nur Anzeige)</h3>
+    <RadzenRow Gap="16px">
+        <RadzenColumn Size="6">
+            <RadzenLabel Text="LLM Provider" Style="display: block; margin-bottom: 4px;" />
+            <RadzenTextBox Value="@_llmProvider" ReadOnly="true" Style="width: 100%;" />
+        </RadzenColumn>
+        <RadzenColumn Size="6">
+            <RadzenLabel Text="TradeLocker Email" Style="display: block; margin-bottom: 4px;" />
+            <RadzenTextBox Value="@_tradeLockerEmail" ReadOnly="true" Style="width: 100%;" />
+        </RadzenColumn>
+        <RadzenColumn Size="6">
+            <RadzenLabel Text="Anthropic API Key" Style="display: block; margin-bottom: 4px;" />
+            <RadzenTextBox Value="@_anthropicKeyMasked" ReadOnly="true" Style="width: 100%;" />
+        </RadzenColumn>
+        <RadzenColumn Size="6">
+            <RadzenLabel Text="Gemini API Key" Style="display: block; margin-bottom: 4px;" />
+            <RadzenTextBox Value="@_geminiKeyMasked" ReadOnly="true" Style="width: 100%;" />
+        </RadzenColumn>
+        <RadzenColumn Size="6">
+            <RadzenLabel Text="OpenAI-Compatible API Key" Style="display: block; margin-bottom: 4px;" />
+            <RadzenTextBox Value="@_openAIKeyMasked" ReadOnly="true" Style="width: 100%;" />
+        </RadzenColumn>
+    </RadzenRow>
     <div class="hint" style="margin-top: 8px;">API-Keys koennen nur direkt in appsettings.json geaendert werden.</div>
-</div>
+</RadzenCard>
 
 @code {
     private string WatchList { get; set; } = string.Empty;
@@ -194,6 +189,12 @@
 
     // Gewaehlter Account (Default-Account fuer globale Settings)
     private string _selectedAccountId = string.Empty;
+
+    private record DropDownItem(string Text, string Value);
+    private List<DropDownItem> _timeframeOptions = new()
+    {
+        new("4H", "4H"), new("1D", "1D")
+    };
 
     protected override async Task OnInitializedAsync()
     {

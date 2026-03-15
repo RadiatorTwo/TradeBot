@@ -13,24 +13,24 @@
 
 @if (!AccountMgr.HasAccounts)
 {
-    <div class="warning-banner" style="margin-bottom: 24px;">
+    <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" Shade="Shade.Dark" AllowClose="false" Style="margin-bottom: 24px;">
         <strong>Kein Account konfiguriert.</strong> Bitte unter <a href="/accounts" style="color: var(--blue, #89b4fa);">/accounts</a> einen Account anlegen um den Trading Bot zu starten.
-    </div>
+    </RadzenAlert>
 }
 else
 {
 
 @if (AccountMgr.Accounts.Count > 1)
 {
-    <div style="margin-bottom: 12px;">
-        <label style="margin-right: 8px;">Account:</label>
-        <select value="@_selectedAccountId" @onchange="OnAccountChanged" style="padding: 4px 8px; background: var(--card-bg, #1e1e2e); color: var(--text, #cdd6f4); border: 1px solid var(--border, #45475a); border-radius: 4px;">
-            @foreach (var acc in AccountMgr.Accounts)
-            {
-                <option value="@acc.AccountId">@acc.DisplayName (@acc.AccountId)</option>
-            }
-        </select>
-    </div>
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px" Style="margin-bottom: 12px;">
+        <RadzenLabel Text="Account:" />
+        <RadzenDropDown @bind-Value="_selectedAccountId"
+                        Data="AccountMgr.Accounts"
+                        TextProperty="DisplayName"
+                        ValueProperty="AccountId"
+                        Change="@(args => OnAccountChanged())"
+                        Style="min-width: 250px;" />
+    </RadzenStack>
 }
 
 <div class="status-badges" style="margin-bottom: 24px;">
@@ -71,21 +71,21 @@ else
 </div>
 
 <!-- Controls -->
-<div class="controls">
+<RadzenStack Orientation="Orientation.Horizontal" Gap="12px" Style="margin-bottom: 32px;" Wrap="FlexWrap.Wrap">
     @if (vm.IsEnginePaused)
     {
-        <button class="btn btn-primary" @onclick="ResumeEngine">Engine Starten</button>
+        <RadzenButton Text="Engine Starten" ButtonStyle="ButtonStyle.Primary" Click="@ResumeEngine" />
     }
     else
     {
-        <button class="btn btn-outline" @onclick="PauseEngine">Engine Pausieren</button>
+        <RadzenButton Text="Engine Pausieren" Variant="Variant.Outlined" Click="@PauseEngine" />
     }
-    <button class="btn btn-danger" @onclick="ActivateKillSwitch">Kill Switch</button>
+    <RadzenButton Text="Kill Switch" ButtonStyle="ButtonStyle.Danger" Click="@ActivateKillSwitch" />
     @if (vm.IsKillSwitchActive)
     {
-        <button class="btn btn-success" @onclick="ResetKillSwitch">Kill Switch Reset</button>
+        <RadzenButton Text="Kill Switch Reset" ButtonStyle="ButtonStyle.Success" Click="@ResetKillSwitch" />
     }
-</div>
+</RadzenStack>
 
 <!-- Equity-Kurve -->
 <EquityChart PnLHistory="vm.PnLHistory" />
@@ -98,21 +98,17 @@ else
 {
     <div class="section">
         <h2>Naechste High-Impact Events</h2>
-        <table>
-            <thead>
-                <tr><th>Zeit (UTC)</th><th>Waehrung</th><th>Event</th></tr>
-            </thead>
-            <tbody>
-                @foreach (var evt in vm.UpcomingEvents)
-                {
-                    <tr>
-                        <td>@evt.EventTime.ToString("dd.MM. HH:mm")</td>
-                        <td><strong>@evt.Currency</strong></td>
-                        <td>@evt.Title</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
+        <RadzenDataGrid Data="@vm.UpcomingEvents" TItem="UpcomingEventViewModel" Density="Density.Compact" AllowSorting="true">
+            <Columns>
+                <RadzenDataGridColumn TItem="UpcomingEventViewModel" Property="EventTime" Title="Zeit (UTC)" Width="160px">
+                    <Template Context="evt">@evt.EventTime.ToString("dd.MM. HH:mm")</Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="UpcomingEventViewModel" Property="Currency" Title="Waehrung" Width="100px">
+                    <Template Context="evt"><strong>@evt.Currency</strong></Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="UpcomingEventViewModel" Property="Title" Title="Event" />
+            </Columns>
+        </RadzenDataGrid>
     </div>
 }
 
@@ -121,34 +117,41 @@ else
     <h2>Offene Positionen</h2>
     @if (vm.Positions.Any())
     {
-        <table>
-            <thead>
-                <tr>
-                    <th>Symbol</th><th>Side</th><th>Menge (Lots)</th><th>Avg Preis</th>
-                    <th>Aktuell</th><th>P&amp;L</th><th>P&amp;L %</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var p in vm.Positions)
-                {
-                    <tr>
-                        <td><strong>@p.Symbol</strong></td>
-                        <td class="@(p.Side == "buy" ? "pnl-positive" : "pnl-negative")">
-                            @p.Side.ToUpper()
-                        </td>
-                        <td>@p.Quantity.ToString("F2")</td>
-                        <td>$@p.AveragePrice.ToString("F4")</td>
-                        <td>$@p.CurrentPrice.ToString("F4")</td>
-                        <td class="@(p.UnrealizedPnL >= 0 ? "pnl-positive" : "pnl-negative")">
+        <RadzenDataGrid Data="@vm.Positions" TItem="Position" Density="Density.Compact" AllowSorting="true">
+            <Columns>
+                <RadzenDataGridColumn TItem="Position" Property="Symbol" Title="Symbol" Width="120px">
+                    <Template Context="p"><strong>@p.Symbol</strong></Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="Position" Property="Side" Title="Side" Width="80px">
+                    <Template Context="p">
+                        <span class="@(p.Side == "buy" ? "pnl-positive" : "pnl-negative")">@p.Side.ToUpper()</span>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="Position" Property="Quantity" Title="Menge (Lots)" Width="120px">
+                    <Template Context="p">@p.Quantity.ToString("F2")</Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="Position" Property="AveragePrice" Title="Avg Preis" Width="120px">
+                    <Template Context="p">$@p.AveragePrice.ToString("F4")</Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="Position" Property="CurrentPrice" Title="Aktuell" Width="120px">
+                    <Template Context="p">$@p.CurrentPrice.ToString("F4")</Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="Position" Property="UnrealizedPnL" Title="P&L" Width="120px">
+                    <Template Context="p">
+                        <span class="@(p.UnrealizedPnL >= 0 ? "pnl-positive" : "pnl-negative")">
                             @(p.UnrealizedPnL >= 0 ? "+" : "")$@p.UnrealizedPnL.ToString("F2")
-                        </td>
-                        <td class="@(p.UnrealizedPnLPercent >= 0 ? "pnl-positive" : "pnl-negative")">
+                        </span>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="Position" Property="UnrealizedPnLPercent" Title="P&L %" Width="100px">
+                    <Template Context="p">
+                        <span class="@(p.UnrealizedPnLPercent >= 0 ? "pnl-positive" : "pnl-negative")">
                             @(p.UnrealizedPnLPercent >= 0 ? "+" : "")@p.UnrealizedPnLPercent.ToString("F2")%
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
+                        </span>
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
     }
     else
     {
@@ -161,32 +164,38 @@ else
     <h2>Letzte Trades</h2>
     @if (vm.RecentTrades.Any())
     {
-        <table>
-            <thead>
-                <tr>
-                    <th>Zeit</th><th>Symbol</th><th>Aktion</th>
-                    <th>Menge</th><th>Preis</th><th>Confidence</th>
-                    <th>Status</th><th>Begruendung</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var t in vm.RecentTrades)
-                {
-                    <tr>
-                        <td style="font-size:0.75rem;color:var(--muted)">@t.CreatedAt.ToString("dd.MM HH:mm")</td>
-                        <td><strong>@t.Symbol</strong></td>
-                        <td class="@(t.Action == TradeAction.Buy ? "pnl-positive" : "pnl-negative")">
-                            @t.Action.ToString().ToUpper()
-                        </td>
-                        <td>@t.Quantity.ToString("F2")</td>
-                        <td>$@t.Price.ToString("F4")</td>
-                        <td>@t.ClaudeConfidence.ToString("P0")</td>
-                        <td><TradeStatusBadge Status="t.Status" ErrorMessage="@t.ErrorMessage" /></td>
-                        <td><ReasoningCell ErrorMessage="@t.ErrorMessage" Reasoning="@t.ClaudeReasoning" /></td>
-                    </tr>
-                }
-            </tbody>
-        </table>
+        <RadzenDataGrid Data="@vm.RecentTrades" TItem="Trade" Density="Density.Compact" AllowSorting="true">
+            <Columns>
+                <RadzenDataGridColumn TItem="Trade" Property="CreatedAt" Title="Zeit" Width="130px">
+                    <Template Context="t">
+                        <span style="font-size:0.75rem;color:var(--muted)">@t.CreatedAt.ToString("dd.MM HH:mm")</span>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="Trade" Property="Symbol" Title="Symbol" Width="100px">
+                    <Template Context="t"><strong>@t.Symbol</strong></Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="Trade" Property="Action" Title="Aktion" Width="80px">
+                    <Template Context="t">
+                        <span class="@(t.Action == TradeAction.Buy ? "pnl-positive" : "pnl-negative")">@t.Action.ToString().ToUpper()</span>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="Trade" Property="Quantity" Title="Menge" Width="80px">
+                    <Template Context="t">@t.Quantity.ToString("F2")</Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="Trade" Property="Price" Title="Preis" Width="100px">
+                    <Template Context="t">$@t.Price.ToString("F4")</Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="Trade" Property="ClaudeConfidence" Title="Confidence" Width="100px">
+                    <Template Context="t">@t.ClaudeConfidence.ToString("P0")</Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="Trade" Title="Status" Width="120px" Sortable="false">
+                    <Template Context="t"><TradeStatusBadge Status="t.Status" ErrorMessage="@t.ErrorMessage" /></Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="Trade" Title="Begruendung" Sortable="false">
+                    <Template Context="t"><ReasoningCell ErrorMessage="@t.ErrorMessage" Reasoning="@t.ClaudeReasoning" /></Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
     }
     else
     {
@@ -199,25 +208,29 @@ else
     <h2>Letzte Log-Eintraege</h2>
     @if (vm.RecentLogs.Any())
     {
-        <table>
-            <thead><tr><th>Zeit</th><th>Quelle</th><th>Nachricht</th></tr></thead>
-            <tbody>
-                @foreach (var log in vm.RecentLogs)
-                {
-                    var cls = log.Level switch
-                    {
-                        "Warning" => "log-warn",
-                        "Error" or "Critical" => "log-error",
-                        _ => ""
-                    };
-                    <tr class="log-entry">
-                        <td class="log-time">@log.Timestamp.ToString("HH:mm:ss")</td>
-                        <td>@log.Source</td>
-                        <td class="@cls">@log.Message</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
+        <RadzenDataGrid Data="@vm.RecentLogs" TItem="TradingLog" Density="Density.Compact">
+            <Columns>
+                <RadzenDataGridColumn TItem="TradingLog" Property="Timestamp" Title="Zeit" Width="100px">
+                    <Template Context="log">
+                        <span class="log-time">@log.Timestamp.ToString("HH:mm:ss")</span>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="TradingLog" Property="Source" Title="Quelle" Width="140px" />
+                <RadzenDataGridColumn TItem="TradingLog" Property="Message" Title="Nachricht">
+                    <Template Context="log">
+                        @{
+                            var cls = log.Level switch
+                            {
+                                "Warning" => "log-warn",
+                                "Error" or "Critical" => "log-error",
+                                _ => ""
+                            };
+                        }
+                        <span class="@cls">@log.Message</span>
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
     }
     else
     {
@@ -281,9 +294,8 @@ else
         }
     }
 
-    private async Task OnAccountChanged(ChangeEventArgs e)
+    private async Task OnAccountChanged()
     {
-        _selectedAccountId = e.Value?.ToString() ?? AccountMgr.DefaultAccount?.AccountId ?? "default";
         await LoadDataAsync();
         StateHasChanged();
     }

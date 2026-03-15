@@ -14,16 +14,16 @@ else
 {
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
         <h2 style="margin: 0;">Trade #@_trade.Id – @_trade.Symbol @_trade.Action.ToString().ToUpper()</h2>
-        <a href="/journal" class="btn btn-outline">Zurueck zum Journal</a>
+        <RadzenButton Text="Zurueck zum Journal" Variant="Variant.Outlined" Click="@(() => Navigation.NavigateTo("/journal"))" />
     </div>
 
     @if (_saveSuccess)
     {
-        <div class="success-banner">Notizen gespeichert.</div>
+        <RadzenAlert AlertStyle="AlertStyle.Success" Variant="Variant.Flat" Shade="Shade.Dark" AllowClose="true">Notizen gespeichert.</RadzenAlert>
     }
 
     <!-- Trade-Details -->
-    <div class="section" style="margin-bottom: 24px;">
+    <RadzenCard Style="margin-bottom: 24px;">
         <h3>Details</h3>
         <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; font-size: 0.9rem;">
             <div>Symbol: <strong>@_trade.Symbol</strong></div>
@@ -55,16 +55,16 @@ else
                 <div>Spread: <strong>@_trade.SpreadAtEntry?.ToString("F1") Pips</strong></div>
             }
         </div>
-    </div>
+    </RadzenCard>
 
     <!-- LLM-Begruendung -->
-    <div class="section" style="margin-bottom: 24px;">
+    <RadzenCard Style="margin-bottom: 24px;">
         <h3>LLM-Begruendung</h3>
         <div style="background: var(--card-bg, #1e1e2e); border: 1px solid var(--border, #45475a); border-radius: 8px; padding: 16px; white-space: pre-wrap; font-size: 0.85rem; line-height: 1.5;">@_trade.ClaudeReasoning</div>
-    </div>
+    </RadzenCard>
 
     <!-- Tags & Notizen -->
-    <div class="section" style="margin-bottom: 24px;">
+    <RadzenCard Style="margin-bottom: 24px;">
         <h3>Tags & Notizen</h3>
 
         @if (_tagList.Count > 0)
@@ -77,18 +77,18 @@ else
             </div>
         }
 
-        <div class="form-group" style="margin-bottom: 12px;">
-            <label>Tags (komma-separiert)</label>
-            <input type="text" @bind="_editTags" placeholder="z.B. london-session, high-volatility, news-driven" />
+        <div style="margin-bottom: 12px;">
+            <RadzenLabel Text="Tags (komma-separiert)" Style="display: block; margin-bottom: 4px;" />
+            <RadzenTextBox @bind-Value="_editTags" Placeholder="z.B. london-session, high-volatility, news-driven" Style="width: 100%;" />
         </div>
 
-        <div class="form-group" style="margin-bottom: 12px;">
-            <label>Notizen</label>
-            <textarea rows="4" @bind="_editNotes" placeholder="Freitext-Notizen zu diesem Trade..."></textarea>
+        <div style="margin-bottom: 12px;">
+            <RadzenLabel Text="Notizen" Style="display: block; margin-bottom: 4px;" />
+            <RadzenTextArea @bind-Value="_editNotes" Rows="4" Placeholder="Freitext-Notizen zu diesem Trade..." Style="width: 100%;" />
         </div>
 
-        <button class="btn btn-primary" @onclick="SaveNotesAsync">Speichern</button>
-    </div>
+        <RadzenButton Text="Speichern" ButtonStyle="ButtonStyle.Primary" Click="@SaveNotesAsync" />
+    </RadzenCard>
 }
 
 @code {

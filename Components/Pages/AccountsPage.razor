@@ -10,117 +10,114 @@
     <h2 style="margin: 0;">Accounts</h2>
     @if (!_showForm)
     {
-        <button class="btn btn-primary" @onclick="ShowAddForm">+ Neuer Account</button>
+        <RadzenButton Text="+ Neuer Account" ButtonStyle="ButtonStyle.Primary" Click="@ShowAddForm" />
     }
 </div>
 
 @if (_saveSuccess)
 {
-    <div class="success-banner">Gespeichert. Neustart erforderlich damit neue/geloeschte Accounts wirksam werden. Risiko-/Watchlist-Aenderungen sind sofort aktiv.</div>
+    <RadzenAlert AlertStyle="AlertStyle.Success" Variant="Variant.Flat" Shade="Shade.Dark" AllowClose="true" Style="margin-bottom: 24px;">
+        Gespeichert. Neustart erforderlich damit neue/geloeschte Accounts wirksam werden. Risiko-/Watchlist-Aenderungen sind sofort aktiv.
+    </RadzenAlert>
 }
 
 @if (_errors.Any())
 {
-    <div class="error-banner">
+    <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Dark" AllowClose="false" Style="margin-bottom: 24px;">
         @foreach (var err in _errors)
         {
             <div>@err</div>
         }
-    </div>
+    </RadzenAlert>
 }
 
 @* ── Formular (Hinzufuegen oder Bearbeiten) ─────────────────────────── *@
 @if (_showForm)
 {
-    <div class="section" style="border: 1px solid var(--border, #45475a); border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+    <RadzenCard Style="margin-bottom: 24px; border: 1px solid var(--border, #45475a);">
         <h3 style="margin-top: 0;">@(_editMode ? $"\"{_editDisplayName}\" bearbeiten" : "Neuen Account anlegen")</h3>
 
         <EditForm Model="this" OnValidSubmit="SaveAccount" FormName="account-form">
             @* Schritt 1: Grunddaten *@
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
-                <div class="form-group">
-                    <label>Kurzname (ID)</label>
-                    <input type="text" @bind="_editId" placeholder="Demo1" />
-                    <div class="hint">Wird intern als Bezeichner verwendet. @(_editMode ? "Aendern erfordert Neustart." : "")</div>
-                </div>
-                <div class="form-group">
-                    <label>Anzeigename</label>
-                    <input type="text" @bind="_editDisplayName" placeholder="Mein Demo-Konto" />
-                </div>
-            </div>
+            <RadzenRow Gap="16px" Style="margin-bottom: 20px;">
+                <RadzenColumn Size="6">
+                    <RadzenLabel Text="Kurzname (ID)" Style="display: block; margin-bottom: 4px;" />
+                    <RadzenTextBox @bind-Value="_editId" Placeholder="Demo1" Style="width: 100%;" />
+                    <div class="hint" style="margin-top: 4px;">Wird intern als Bezeichner verwendet. @(_editMode ? "Aendern erfordert Neustart." : "")</div>
+                </RadzenColumn>
+                <RadzenColumn Size="6">
+                    <RadzenLabel Text="Anzeigename" Style="display: block; margin-bottom: 4px;" />
+                    <RadzenTextBox @bind-Value="_editDisplayName" Placeholder="Mein Demo-Konto" Style="width: 100%;" />
+                </RadzenColumn>
+            </RadzenRow>
 
             @* Schritt 2: Broker-Verbindung *@
             <details open="@(!_editMode)">
                 <summary style="cursor: pointer; font-weight: 600; margin-bottom: 12px;">Broker-Verbindung (TradeLocker)</summary>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
-                    <div class="form-group">
-                        <label>Server-URL</label>
-                        <select @bind="_editBaseUrl">
-                            <option value="https://demo.tradelocker.com/backend-api">Demo (demo.tradelocker.com)</option>
-                            <option value="https://live.tradelocker.com/backend-api">Live (live.tradelocker.com)</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Server-Name</label>
-                        <input type="text" @bind="_editServer" placeholder="z.B. OSP-DEMO" />
-                    </div>
-                    <div class="form-group">
-                        <label>Email</label>
-                        <input type="email" @bind="_editEmail" placeholder="deine@email.com" />
-                    </div>
-                    <div class="form-group">
-                        <label>Passwort</label>
-                        <input type="password" @bind="_editPassword" />
-                    </div>
-                </div>
+                <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
+                    <RadzenColumn Size="6">
+                        <RadzenLabel Text="Server-URL" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenDropDown @bind-Value="_editBaseUrl" Data="_serverUrlOptions" TextProperty="Text" ValueProperty="Value" Style="width: 100%;" />
+                    </RadzenColumn>
+                    <RadzenColumn Size="6">
+                        <RadzenLabel Text="Server-Name" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenTextBox @bind-Value="_editServer" Placeholder="z.B. OSP-DEMO" Style="width: 100%;" />
+                    </RadzenColumn>
+                    <RadzenColumn Size="6">
+                        <RadzenLabel Text="Email" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenTextBox @bind-Value="_editEmail" Placeholder="deine@email.com" Style="width: 100%;" />
+                    </RadzenColumn>
+                    <RadzenColumn Size="6">
+                        <RadzenLabel Text="Passwort" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenPassword @bind-Value="_editPassword" Style="width: 100%;" />
+                    </RadzenColumn>
+                </RadzenRow>
             </details>
 
             @* Schritt 3: Modus *@
             <details>
                 <summary style="cursor: pointer; font-weight: 600; margin-bottom: 12px;">Modus und Risiko</summary>
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px;">
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" @bind="_editPaperEnabled" style="margin-right: 8px;" />
-                            Paper-Trading (kein echtes Geld)
-                        </label>
-                    </div>
-                    <div class="form-group">
-                        <label>Paper-Startkapital ($)</label>
-                        <input type="number" @bind="_editPaperBalance" step="1000" min="100" />
-                    </div>
-                    <div></div>
-                    <div class="form-group">
-                        <label>Min. Confidence</label>
-                        <input type="number" @bind="_editMinConfidence" step="0.05" min="0" max="1" />
-                    </div>
-                    <div class="form-group">
-                        <label>Max. Positionsgroesse (%)</label>
-                        <input type="number" @bind="_editMaxPosSize" step="1" min="1" />
-                    </div>
-                    <div class="form-group">
-                        <label>Max. offene Positionen</label>
-                        <input type="number" @bind="_editMaxOpenPos" min="1" />
-                    </div>
-                </div>
+                <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
+                    <RadzenColumn Size="4">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px">
+                            <RadzenCheckBox @bind-Value="_editPaperEnabled" />
+                            <RadzenLabel Text="Paper-Trading (kein echtes Geld)" />
+                        </RadzenStack>
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Paper-Startkapital ($)" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="decimal" @bind-Value="_editPaperBalance" ShowUpDown="false" Min="100" Step="1000" Style="width: 100%;" />
+                    </RadzenColumn>
+                    <RadzenColumn Size="4"></RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Min. Confidence" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="double" @bind-Value="_editMinConfidence" ShowUpDown="false" Min="0" Max="1" Step="0.05" Style="width: 100%;" />
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Max. Positionsgroesse (%)" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="double" @bind-Value="_editMaxPosSize" ShowUpDown="false" Min="1" Step="1" Style="width: 100%;" />
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Max. offene Positionen" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="int" @bind-Value="_editMaxOpenPos" ShowUpDown="false" Min="1" Style="width: 100%;" />
+                    </RadzenColumn>
+                </RadzenRow>
             </details>
 
-            <div style="display: flex; gap: 8px; margin-top: 8px;">
-                <button type="submit" class="btn btn-primary">
-                    @(_editMode ? "Speichern" : "Account anlegen")
-                </button>
-                <button type="button" class="btn btn-outline" @onclick="HideForm">Abbrechen</button>
-            </div>
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="8px" Style="margin-top: 8px;">
+                <RadzenButton Text="@(_editMode ? "Speichern" : "Account anlegen")" ButtonStyle="ButtonStyle.Primary" ButtonType="ButtonType.Submit" />
+                <RadzenButton Text="Abbrechen" Variant="Variant.Outlined" Click="@HideForm" ButtonType="ButtonType.Button" />
+            </RadzenStack>
         </EditForm>
-    </div>
+    </RadzenCard>
 }
 
 @* ── Account-Karten ──────────────────────────────────────────────────── *@
 @if (_accounts.Count == 0 && !_showForm)
 {
-    <div class="warning-banner">
+    <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" Shade="Shade.Dark" AllowClose="false">
         Noch keine Accounts vorhanden. Legen Sie oben einen neuen Account an um den Trading Bot zu starten.
-    </div>
+    </RadzenAlert>
 }
 
 @foreach (var acc in _accounts)
@@ -130,7 +127,7 @@
     var isRunning = liveCtx?.Engine.IsRunning ?? false;
     var isPaused = liveCtx?.Engine.IsPaused ?? false;
 
-    <div class="section" style="border: 1px solid var(--border, #45475a); border-radius: 8px; padding: 16px 20px; margin-bottom: 12px;">
+    <RadzenCard Style="margin-bottom: 12px; border: 1px solid var(--border, #45475a); padding: 16px 20px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <div style="display: flex; align-items: center; gap: 12px;">
                 @* Status-Punkt *@
@@ -140,7 +137,7 @@
                     <span style="color: var(--muted, #6c7086); margin-left: 8px; font-size: 0.85rem;">@acc.Id</span>
                 </div>
             </div>
-            <div style="display: flex; gap: 6px; align-items: center;">
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="6px" AlignItems="AlignItems.Center">
                 @if (acc.PaperTrading.Enabled)
                 {
                     <span style="background: var(--yellow, #f9e2af); color: #1e1e2e; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">PAPER</span>
@@ -156,12 +153,12 @@
                         <span style="background: var(--green, #a6e3a1); color: #1e1e2e; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">AKTIV</span>
                     }
                 }
-                <button class="btn btn-outline btn-sm" @onclick="() => EditAccount(acc)">Bearbeiten</button>
+                <RadzenButton Text="Bearbeiten" Variant="Variant.Outlined" Size="ButtonSize.Small" Click="@(() => EditAccount(acc))" />
                 @if (_accounts.Count > 1)
                 {
-                    <button class="btn btn-danger btn-sm" @onclick="() => ConfirmRemove(acc.Id)">Entfernen</button>
+                    <RadzenButton Text="Entfernen" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(() => ConfirmRemove(acc.Id))" />
                 }
-            </div>
+            </RadzenStack>
         </div>
         <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; font-size: 0.85rem; color: var(--muted, #6c7086);">
             <div>Server: <strong style="color: var(--text, #cdd6f4);">@acc.TradeLocker.Server</strong></div>
@@ -169,21 +166,21 @@
             <div>Confidence: <strong style="color: var(--text, #cdd6f4);">@acc.RiskManagement.MinConfidence.ToString("P0")</strong></div>
             <div>Max. Positionen: <strong style="color: var(--text, #cdd6f4);">@acc.RiskManagement.MaxOpenPositions</strong></div>
         </div>
-    </div>
+    </RadzenCard>
 }
 
 @* ── Loeschen-Bestaetigungsdialog ─────────────────────────────────────── *@
 @if (_confirmRemoveId != null)
 {
     <div style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 100;">
-        <div style="background: var(--card-bg, #1e1e2e); border: 1px solid var(--border, #45475a); border-radius: 8px; padding: 24px; max-width: 400px;">
+        <RadzenCard Style="max-width: 400px;">
             <h3 style="margin-top: 0;">Account entfernen?</h3>
             <p>Account <strong>@_confirmRemoveId</strong> wirklich entfernen? Die Aenderung wird erst nach einem Neustart wirksam.</p>
-            <div style="display: flex; gap: 8px; justify-content: flex-end;">
-                <button class="btn btn-outline" @onclick="() => _confirmRemoveId = null">Abbrechen</button>
-                <button class="btn btn-danger" @onclick="DoRemove">Entfernen</button>
-            </div>
-        </div>
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="8px" JustifyContent="JustifyContent.End">
+                <RadzenButton Text="Abbrechen" Variant="Variant.Outlined" Click="@(() => _confirmRemoveId = null)" />
+                <RadzenButton Text="Entfernen" ButtonStyle="ButtonStyle.Danger" Click="@DoRemove" />
+            </RadzenStack>
+        </RadzenCard>
     </div>
 }
 
@@ -208,6 +205,13 @@
     private double _editMinConfidence = 0.65;
     private double _editMaxPosSize = 10.0;
     private int _editMaxOpenPos = 10;
+
+    private record DropDownItem(string Text, string Value);
+    private List<DropDownItem> _serverUrlOptions = new()
+    {
+        new("Demo (demo.tradelocker.com)", "https://demo.tradelocker.com/backend-api"),
+        new("Live (live.tradelocker.com)", "https://live.tradelocker.com/backend-api")
+    };
 
     protected override async Task OnInitializedAsync() => await LoadAccountsAsync();
 
