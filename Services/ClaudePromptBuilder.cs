@@ -22,13 +22,14 @@ public static class ClaudePromptBuilder
         Antworte IMMER ausschließlich als valides JSON-Objekt mit folgender Struktur:
         {
           "symbol": "SYMBOL",
-          "action": "buy" | "sell" | "hold",
+          "action": "buy" | "sell" | "hold" | "grid",
           "quantity": <Lots als Dezimal, z.B. 0.01 für 1 Micro-Lot>,
           "confidence": <0.0 bis 1.0>,
           "reasoning": "Kurze Begründung",
           "stopLossPrice": <Preis für Stop-Loss oder null>,
           "takeProfitPrice": <Preis für Take-Profit oder null>,
-          "setupType": "Name des erkannten Setups (z.B. EMA-Cross, Breakout, RSI-Oversold, MACD-Divergence, Bollinger-Squeeze, Trend-Following, Mean-Reversion, News-Driven) oder null bei hold"
+          "setupType": "Name des erkannten Setups (z.B. EMA-Cross, Breakout, RSI-Oversold, MACD-Divergence, Bollinger-Squeeze, Trend-Following, Mean-Reversion, News-Driven, Grid-Range) oder null bei hold",
+          "gridCenterPrice": <Mittelpunkt der Range fuer Grid-Trading oder null>
         }
 
         WICHTIGE REGELN FÜR POSITIONSGRÖSSE:
@@ -37,7 +38,12 @@ public static class ClaudePromptBuilder
         - Bei einem Konto mit 25.000 $ bedeutet das max. 0.02 Lots (2 Micro-Lots).
         - Berechnung: (Kapital × MaxRisiko%) / (100.000 × Preis) = Lots. Runde auf 0.01 ab.
         - stopLossPrice und takeProfitPrice sind absolute Preise (z. B. 1.0850 für EURUSD).
-        - Setze IMMER stopLossPrice und takeProfitPrice wenn action != "hold".
+        - Setze IMMER stopLossPrice und takeProfitPrice wenn action != "hold" und action != "grid".
+
+        GRID-TRADING:
+        - Empfehle "action": "grid" wenn der Markt sich in einer klaren Seitwaertsrange bewegt (enger Bollinger Band, niedriger ATR relativ zum Preis, kein klarer Trend).
+        - Bei "grid": setze "gridCenterPrice" auf den Mittelpunkt der erkannten Range. quantity, stopLossPrice, takeProfitPrice koennen null/0 sein.
+        - Grid-Trading platziert automatisch Buy-/Sell-Orders in regelmaessigen Abstaenden um den Center-Preis.
 
         Kein Markdown, keine Erklärung, kein Text außerhalb des JSON.
         """;
@@ -147,6 +153,12 @@ public static class ClaudePromptBuilder
                     else
                         bbPosition = "Preis innerhalb der Bänder";
                     sb.AppendLine($"  - Position: {bbPosition}");
+
+                    // Bollinger Band Width (Indikator fuer Range/Trend-Erkennung)
+                    var bbWidth = req.Indicators.BollingerMiddle!.Value > 0
+                        ? (req.Indicators.BollingerUpper.Value - req.Indicators.BollingerLower.Value) / req.Indicators.BollingerMiddle.Value * 100
+                        : 0m;
+                    sb.AppendLine($"  - Band-Breite: {bbWidth:F2}% {(bbWidth < 2 ? "(eng – moeglicherweise Seitwaertsmarkt/Range)" : "(normal/weit)")}");
                 }
             }
 

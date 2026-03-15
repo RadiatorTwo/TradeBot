@@ -11,6 +11,7 @@ public class AccountContext
     public PaperTradingBrokerDecorator PaperTrading { get; init; } = null!;
     public IBrokerService EffectiveBroker => PaperTrading;
     public RiskManager Risk { get; init; } = null!;
+    public GridTradingService GridTrading { get; init; } = null!;
     public TradingEngine Engine { get; init; } = null!;
     public RiskSettings RiskSettings { get; init; } = new();
 

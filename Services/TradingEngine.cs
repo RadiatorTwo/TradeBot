@@ -22,6 +22,7 @@ public class TradingEngine : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IOptionsMonitor<RiskSettings> _settingsMonitor;
     private readonly IOptionsMonitor<MultiTimeframeSettings> _mtfSettings;
+    private readonly GridTradingService _gridTrading;
     private readonly IConfiguration _config;
     private readonly ILogger<TradingEngine> _logger;
 
@@ -56,6 +57,7 @@ public class TradingEngine : BackgroundService
         NewsSentimentService news,
         PaperTradingBrokerDecorator paperTrading,
         NotificationService notification,
+        GridTradingService gridTrading,
         IServiceScopeFactory scopeFactory,
         IOptionsMonitor<RiskSettings> settingsMonitor,
         IOptionsMonitor<MultiTimeframeSettings> mtfSettings,
@@ -72,6 +74,7 @@ public class TradingEngine : BackgroundService
         _news = news;
         _paperTrading = paperTrading;
         _notification = notification;
+        _gridTrading = gridTrading;
         _scopeFactory = scopeFactory;
         _settingsMonitor = settingsMonitor;
         _mtfSettings = mtfSettings;
@@ -95,6 +98,10 @@ public class TradingEngine : BackgroundService
 
             // Broker-Verbindung herstellen
             await _broker.ConnectAsync(stoppingToken);
+
+            // Grid-State Recovery nach Neustart
+            try { await _gridTrading.RecoverGridsAsync(stoppingToken); }
+            catch (Exception ex) { _logger.LogWarning(ex, "Grid Recovery fehlgeschlagen"); }
 
             await LogAsync("Info", "TradingEngine", "Trading Engine gestartet");
 
@@ -236,6 +243,9 @@ public class TradingEngine : BackgroundService
                 }
             }
 
+            // Aktive Grids verwalten (unabhaengig von LLM-Analyse)
+            await _gridTrading.ManageAllActiveGridsAsync(Settings.Grid, ct);
+
             _logger.LogInformation("Trading cycle completed: {CorrelationId}", correlationId);
         }
     }
@@ -320,6 +330,53 @@ public class TradingEngine : BackgroundService
         {
             _logger.LogWarning("No recommendation received for {Symbol}", symbol);
             return;
+        }
+
+        // ── Grid-Trading (Phase 10.1) ─────────────────────────────────────
+        if (recommendation.Action.Equals("grid", StringComparison.OrdinalIgnoreCase))
+        {
+            if (Settings.Grid.Enabled)
+            {
+                await _gridTrading.HandleGridRecommendationAsync(
+                    symbol, currentPrice, recommendation, Settings.Grid, ct);
+            }
+            else
+            {
+                _logger.LogInformation("Grid-Trading empfohlen fuer {Symbol}, aber in Settings deaktiviert", symbol);
+            }
+
+            using var gridScope = _scopeFactory.CreateScope();
+            var gridDb = gridScope.ServiceProvider.GetRequiredService<TradingDbContext>();
+            gridDb.TradingLogs.Add(new TradingLog
+            {
+                AccountId = AccountId,
+                Source = "Claude",
+                Message = $"{symbol}: GRID empfohlen (Confidence: {recommendation.Confidence:P0})",
+                Details = recommendation.Reasoning
+            });
+            await gridDb.SaveChangesAsync(ct);
+            return;
+        }
+
+        // Wenn LLM buy/sell empfiehlt aber ein aktives Grid existiert: Grid deaktivieren
+        if (!recommendation.Action.Equals("hold", StringComparison.OrdinalIgnoreCase)
+            && Settings.Grid.Enabled
+            && await _gridTrading.HasActiveGridAsync(symbol, ct))
+        {
+            if (recommendation.Confidence >= 0.8)
+            {
+                _logger.LogInformation(
+                    "LLM empfiehlt {Action} {Symbol} mit hoher Confidence ({Conf:P0}) – deaktiviere Grid",
+                    recommendation.Action.ToUpper(), symbol, recommendation.Confidence);
+                await _gridTrading.DeactivateGridAsync(symbol, closePositions: true, ct);
+            }
+            else
+            {
+                _logger.LogDebug(
+                    "Grid aktiv fuer {Symbol}, LLM empfiehlt {Action} aber Confidence zu niedrig ({Conf:P0}) – Grid bleibt aktiv",
+                    symbol, recommendation.Action.ToUpper(), recommendation.Confidence);
+                return;
+            }
         }
 
         // ── Multi-Timeframe-Filter (Phase 5.3) ──────────────────────────

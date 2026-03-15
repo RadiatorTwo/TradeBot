@@ -92,6 +92,13 @@ public class AccountManager : IHostedService
             ? cfg.WatchList.ToArray()
             : globalWatchList.ToArray();
 
+        // Per-Account GridTradingService
+        var gridTrading = new GridTradingService(
+            paperTrading,
+            _sp.GetRequiredService<IServiceScopeFactory>(),
+            loggerFactory.CreateLogger<GridTradingService>())
+        { AccountId = cfg.Id };
+
         // Per-Account TradingEngine
         var mtfSettings = _sp.GetRequiredService<IOptionsMonitor<MultiTimeframeSettings>>();
         var engine = new TradingEngine(
@@ -105,6 +112,7 @@ public class AccountManager : IHostedService
             _sp.GetRequiredService<NewsSentimentService>(),
             paperTrading,
             _sp.GetRequiredService<NotificationService>(),
+            gridTrading,
             _sp.GetRequiredService<IServiceScopeFactory>(),
             riskMonitor,
             mtfSettings,
@@ -123,6 +131,7 @@ public class AccountManager : IHostedService
             Broker = broker,
             PaperTrading = paperTrading,
             Risk = riskManager,
+            GridTrading = gridTrading,
             Engine = engine,
             RiskSettings = cfg.RiskManagement,
             WatchList = watchList,

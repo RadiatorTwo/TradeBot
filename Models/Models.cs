@@ -269,6 +269,8 @@ public class ClaudeTradeRecommendation
     public decimal? TakeProfitPrice { get; set; }
     /// <summary>LLM-erkannter Setup-Typ (Phase 8.2).</summary>
     public string? SetupType { get; set; }
+    /// <summary>Center-Preis fuer Grid-Trading (Phase 10.1). Null wenn kein Grid empfohlen.</summary>
+    public decimal? GridCenterPrice { get; set; }
 }
 
 // ── Konfigurationsklassen ──────────────────────────────────────────────
@@ -395,6 +397,10 @@ public class RiskSettings
     public double ConfidenceLossStreakFactor { get; set; } = 0.05;
     /// <summary>Maximaler dynamischer Confidence-Wert (Obergrenze).</summary>
     public double MaxDynamicConfidence { get; set; } = 0.85;
+
+    // ── Phase 10.1: Grid-Trading ────────────────────────────────────
+    /// <summary>Grid-Trading-Einstellungen (Seitwaertsmarkt-Strategie).</summary>
+    public GridSettings Grid { get; set; } = new();
 
     // ── Phase 6.4: Partial Close / Pyramiding ───────────────────────
     /// <summary>Anteil der Position der bei TP1 geschlossen wird (0.0–1.0). 0 = deaktiviert.</summary>

@@ -14,6 +14,7 @@ public class TradingDbContext : DbContext
     public DbSet<AccountSettingsEntity> AccountSettings => Set<AccountSettingsEntity>();
     public DbSet<GlobalSettingsEntity> GlobalSettings => Set<GlobalSettingsEntity>();
     public DbSet<EngineStateSnapshot> EngineStateSnapshots => Set<EngineStateSnapshot>();
+    public DbSet<GridState> GridStates => Set<GridState>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -47,6 +48,12 @@ public class TradingDbContext : DbContext
         {
             e.HasIndex(s => s.AccountId);
             e.HasIndex(s => s.ShutdownAt);
+        });
+
+        modelBuilder.Entity<GridState>(e =>
+        {
+            e.HasIndex(g => new { g.AccountId, g.Symbol });
+            e.HasIndex(g => g.Status);
         });
     }
 }
