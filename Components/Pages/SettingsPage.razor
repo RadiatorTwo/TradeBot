@@ -7,10 +7,11 @@
 
 <PageTitle>Einstellungen - Claude Trading Bot</PageTitle>
 
-<h2 style="margin-bottom: 24px;">Einstellungen</h2>
+<h2 style="margin-bottom: 24px;">Globale Einstellungen</h2>
 
-<RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" Shade="Shade.Dark" AllowClose="false" Style="margin-bottom: 24px;">
-    Aenderungen werden in die Datenbank geschrieben und sind sofort wirksam (kein Neustart noetig).
+<RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" Shade="Shade.Dark" AllowClose="false" Style="margin-bottom: 24px;">
+    Hier werden globale Einstellungen verwaltet, die fuer alle Accounts gelten.
+    Account-spezifische Einstellungen (Risiko, Intervall, Paper-Trading) werden unter <a href="/accounts" style="color: var(--accent);">/accounts</a> pro Account konfiguriert.
 </RadzenAlert>
 
 @if (_saveSuccess)
@@ -39,70 +40,7 @@
         <h3 style="margin-top: 0; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border);">Watchlist</h3>
         <RadzenLabel Text="Symbole (komma-separiert)" Style="display: block; margin-bottom: 4px;" />
         <RadzenTextArea @bind-Value="WatchList" Rows="3" Style="width: 100%;" />
-        <div class="hint" style="margin-top: 4px;">z.B. EURUSD, GBPUSD, USDJPY, XAUUSD, US100</div>
-    </RadzenCard>
-
-    <!-- Risiko-Parameter -->
-    <RadzenCard Style="margin-bottom: 24px;">
-        <h3 style="margin-top: 0; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border);">Risiko-Parameter</h3>
-        <RadzenRow Gap="16px">
-            <RadzenColumn Size="6">
-                <RadzenLabel Text="Min. Confidence" Style="display: block; margin-bottom: 4px;" />
-                <RadzenNumeric TValue="double" @bind-Value="MinConfidence" ShowUpDown="false" Min="0" Max="1" Step="0.01" Style="width: 100%;" />
-                <div class="hint" style="margin-top: 4px;">Minimale KI-Confidence fuer Trade-Ausfuehrung (0-1)</div>
-            </RadzenColumn>
-            <RadzenColumn Size="6">
-                <RadzenLabel Text="Max. Positionsgroesse (%)" Style="display: block; margin-bottom: 4px;" />
-                <RadzenNumeric TValue="double" @bind-Value="MaxPositionSizePercent" ShowUpDown="false" Min="0" Step="0.5" Style="width: 100%;" />
-                <div class="hint" style="margin-top: 4px;">Maximaler Anteil am Portfolio pro Trade</div>
-            </RadzenColumn>
-            <RadzenColumn Size="6">
-                <RadzenLabel Text="Max. Tagesverlust (%)" Style="display: block; margin-bottom: 4px;" />
-                <RadzenNumeric TValue="double" @bind-Value="MaxDailyLossPercent" ShowUpDown="false" Min="0" Step="0.1" Style="width: 100%;" />
-                <div class="hint" style="margin-top: 4px;">Prozentualer Tagesverlust-Limit</div>
-            </RadzenColumn>
-            <RadzenColumn Size="6">
-                <RadzenLabel Text="Max. Tagesverlust (absolut)" Style="display: block; margin-bottom: 4px;" />
-                <RadzenNumeric TValue="decimal" @bind-Value="MaxDailyLossAbsolute" ShowUpDown="false" Min="0" Step="10" Style="width: 100%;" />
-                <div class="hint" style="margin-top: 4px;">Absoluter Tagesverlust-Limit in $</div>
-            </RadzenColumn>
-            <RadzenColumn Size="6">
-                <RadzenLabel Text="Stop-Loss (%)" Style="display: block; margin-bottom: 4px;" />
-                <RadzenNumeric TValue="double" @bind-Value="StopLossPercent" ShowUpDown="false" Min="0" Step="0.1" Style="width: 100%;" />
-                <div class="hint" style="margin-top: 4px;">Automatischer Stop-Loss pro Position</div>
-            </RadzenColumn>
-            <RadzenColumn Size="6">
-                <RadzenLabel Text="Max. offene Positionen" Style="display: block; margin-bottom: 4px;" />
-                <RadzenNumeric TValue="int" @bind-Value="MaxOpenPositions" ShowUpDown="false" Min="1" Style="width: 100%;" />
-            </RadzenColumn>
-        </RadzenRow>
-    </RadzenCard>
-
-    <!-- Intervall -->
-    <RadzenCard Style="margin-bottom: 24px;">
-        <h3 style="margin-top: 0; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border);">Trading-Intervall</h3>
-        <RadzenLabel Text="Analyse-Intervall (Minuten)" Style="display: block; margin-bottom: 4px;" />
-        <RadzenNumeric TValue="int" @bind-Value="TradingIntervalMinutes" ShowUpDown="false" Min="1" Style="width: 300px;" />
-        <div class="hint" style="margin-top: 4px;">Wie oft die Engine Marktdaten analysiert und Trades evaluiert</div>
-    </RadzenCard>
-
-    <!-- Paper-Trading -->
-    <RadzenCard Style="margin-bottom: 24px;">
-        <h3 style="margin-top: 0; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border);">Paper-Trading</h3>
-        <RadzenRow Gap="16px">
-            <RadzenColumn Size="6">
-                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px">
-                    <RadzenCheckBox @bind-Value="PaperTradingEnabled" />
-                    <RadzenLabel Text="Paper-Trading aktivieren" />
-                </RadzenStack>
-                <div class="hint" style="margin-top: 4px;">Wenn aktiv werden keine echten Orders platziert. Echte Marktdaten fliessen weiterhin.</div>
-            </RadzenColumn>
-            <RadzenColumn Size="6">
-                <RadzenLabel Text="Startkapital (Paper)" Style="display: block; margin-bottom: 4px;" />
-                <RadzenNumeric TValue="decimal" @bind-Value="PaperTradingBalance" ShowUpDown="false" Min="100" Step="100" Style="width: 100%;" />
-                <div class="hint" style="margin-top: 4px;">Simuliertes Startkapital fuer Paper-Trading</div>
-            </RadzenColumn>
-        </RadzenRow>
+        <div class="hint" style="margin-top: 4px;">z.B. EURUSD, GBPUSD, USDJPY, XAUUSD, US100 – gilt fuer alle Accounts ohne eigene Watchlist</div>
     </RadzenCard>
 
     <!-- Multi-Timeframe -->
@@ -161,17 +99,6 @@
 
 @code {
     private string WatchList { get; set; } = string.Empty;
-    private double MinConfidence { get; set; }
-    private double MaxPositionSizePercent { get; set; }
-    private double MaxDailyLossPercent { get; set; }
-    private double StopLossPercent { get; set; }
-    private int MaxOpenPositions { get; set; }
-    private int TradingIntervalMinutes { get; set; }
-    private decimal MaxDailyLossAbsolute { get; set; }
-
-    // Paper-Trading
-    private bool PaperTradingEnabled { get; set; }
-    private decimal PaperTradingBalance { get; set; } = 10000m;
 
     // Multi-Timeframe
     private bool MultiTimeframeEnabled { get; set; }
@@ -187,9 +114,6 @@
     private bool _saveSuccess;
     private List<string> _errors = new();
 
-    // Gewaehlter Account (Default-Account fuer globale Settings)
-    private string _selectedAccountId = string.Empty;
-
     private record DropDownItem(string Text, string Value);
     private List<DropDownItem> _timeframeOptions = new()
     {
@@ -198,7 +122,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _selectedAccountId = AccountMgr.DefaultAccount?.AccountId ?? string.Empty;
         await LoadCurrentValuesAsync();
     }
 
@@ -207,25 +130,6 @@
         _saveSuccess = false;
         _errors = new List<string>();
 
-        // Validierung
-        if (MinConfidence < 0 || MinConfidence > 1)
-            _errors.Add("Min. Confidence muss zwischen 0 und 1 liegen.");
-        if (MaxPositionSizePercent <= 0)
-            _errors.Add("Max. Positionsgroesse muss > 0 sein.");
-        if (MaxDailyLossPercent <= 0)
-            _errors.Add("Max. Tagesverlust muss > 0 sein.");
-        if (StopLossPercent <= 0)
-            _errors.Add("Stop-Loss muss > 0 sein.");
-        if (MaxOpenPositions < 1)
-            _errors.Add("Max. offene Positionen muss >= 1 sein.");
-        if (TradingIntervalMinutes < 1)
-            _errors.Add("Trading-Intervall muss >= 1 Minute sein.");
-        if (MaxDailyLossAbsolute <= 0)
-            _errors.Add("Max. Tagesverlust (absolut) muss > 0 sein.");
-
-        if (_errors.Any())
-            return;
-
         try
         {
             // Global WatchList in DB speichern
@@ -233,25 +137,6 @@
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .ToList();
             await SettingsRepo.SaveGlobalWatchListAsync(watchItems);
-
-            // Account-spezifische Settings in DB speichern
-            var account = await SettingsRepo.GetAccountAsync(_selectedAccountId);
-            if (account != null)
-            {
-                account.RiskManagement.MinConfidence = MinConfidence;
-                account.RiskManagement.MaxPositionSizePercent = MaxPositionSizePercent;
-                account.RiskManagement.MaxDailyLossPercent = MaxDailyLossPercent;
-                account.RiskManagement.StopLossPercent = StopLossPercent;
-                account.RiskManagement.MaxOpenPositions = MaxOpenPositions;
-                account.RiskManagement.TradingIntervalMinutes = TradingIntervalMinutes;
-                account.RiskManagement.MaxDailyLossAbsolute = MaxDailyLossAbsolute;
-                account.PaperTrading.Enabled = PaperTradingEnabled;
-                account.PaperTrading.InitialBalance = PaperTradingBalance;
-                await SettingsRepo.SaveAccountAsync(account);
-
-                // Hot-Reload
-                await AccountMgr.ReloadAccountSettingsAsync(_selectedAccountId);
-            }
 
             // MultiTimeframe in DB speichern
             var mtf = new MultiTimeframeSettings
@@ -276,21 +161,6 @@
         // Watchlist aus DB
         var globalWatchList = await SettingsRepo.GetGlobalWatchListAsync();
         WatchList = string.Join(", ", globalWatchList);
-
-        // Account-Settings aus DB
-        var account = await SettingsRepo.GetAccountAsync(_selectedAccountId);
-        if (account != null)
-        {
-            MinConfidence = account.RiskManagement.MinConfidence;
-            MaxPositionSizePercent = account.RiskManagement.MaxPositionSizePercent;
-            MaxDailyLossPercent = account.RiskManagement.MaxDailyLossPercent;
-            StopLossPercent = account.RiskManagement.StopLossPercent;
-            MaxOpenPositions = account.RiskManagement.MaxOpenPositions;
-            TradingIntervalMinutes = account.RiskManagement.TradingIntervalMinutes;
-            MaxDailyLossAbsolute = account.RiskManagement.MaxDailyLossAbsolute;
-            PaperTradingEnabled = account.PaperTrading.Enabled;
-            PaperTradingBalance = account.PaperTrading.InitialBalance;
-        }
 
         // MultiTimeframe aus DB
         var mtf = await SettingsRepo.GetMultiTimeframeSettingsAsync();

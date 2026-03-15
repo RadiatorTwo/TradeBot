@@ -12,6 +12,7 @@ namespace ClaudeTradingBot.Services;
 public class AccountManager : IHostedService
 {
     private readonly List<AccountContext> _accounts = new();
+    private readonly Dictionary<string, CancellationTokenSource> _accountCts = new();
     private readonly IServiceProvider _sp;
     private readonly IConfiguration _config;
     private readonly ISettingsRepository _settingsRepo;
@@ -133,6 +134,64 @@ public class AccountManager : IHostedService
     }
 
     /// <summary>
+    /// Fuegt zur Laufzeit einen neuen Account hinzu und startet seine TradingEngine.
+    /// Kein Neustart des Systems noetig.
+    /// </summary>
+    public async Task AddAccountAsync(AccountConfig cfg)
+    {
+        // Pruefen ob Account bereits existiert
+        if (_accounts.Any(a => a.AccountId.Equals(cfg.Id, StringComparison.OrdinalIgnoreCase)))
+        {
+            _logger.LogWarning("Account {Id} existiert bereits, ueberspringe Hinzufuegen", cfg.Id);
+            return;
+        }
+
+        var globalWatchList = await _settingsRepo.GetGlobalWatchListAsync();
+        var ctx = CreateAccountContext(cfg, globalWatchList);
+        _accounts.Add(ctx);
+
+        _logger.LogInformation("Account {Id} ({Name}) zur Laufzeit hinzugefuegt, starte Engine...", ctx.AccountId, ctx.DisplayName);
+
+        var cts = new CancellationTokenSource();
+        _accountCts[ctx.AccountId] = cts;
+        await ctx.Engine.StartAsync(cts.Token);
+    }
+
+    /// <summary>
+    /// Entfernt einen Account zur Laufzeit und stoppt seine TradingEngine.
+    /// Kein Neustart des Systems noetig.
+    /// </summary>
+    public async Task RemoveAccountAsync(string accountId)
+    {
+        var ctx = _accounts.FirstOrDefault(a => a.AccountId.Equals(accountId, StringComparison.OrdinalIgnoreCase));
+        if (ctx == null)
+        {
+            _logger.LogWarning("Account {Id} nicht gefunden, ueberspringe Entfernen", accountId);
+            return;
+        }
+
+        _logger.LogInformation("Stoppe und entferne Account {Id} zur Laufzeit...", accountId);
+
+        if (_accountCts.TryGetValue(accountId, out var cts))
+        {
+            cts.Cancel();
+            _accountCts.Remove(accountId);
+        }
+
+        try
+        {
+            await ctx.Engine.StopAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Fehler beim Stoppen der Engine fuer Account {Id}", accountId);
+        }
+
+        _accounts.Remove(ctx);
+        _logger.LogInformation("Account {Id} entfernt", accountId);
+    }
+
+    /// <summary>
     /// Hot-Reload: Liest Account-Settings aus der DB und aktualisiert die laufenden Services.
     /// Wirksam fuer: RiskSettings, Watchlist, StrategyPrompt, PaperTrading.
     /// </summary>
@@ -179,7 +238,9 @@ public class AccountManager : IHostedService
         foreach (var ctx in _accounts)
         {
             _logger.LogInformation("Starte TradingEngine fuer Account {Id}...", ctx.AccountId);
-            await ctx.Engine.StartAsync(cancellationToken);
+            var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _accountCts[ctx.AccountId] = cts;
+            await ctx.Engine.StartAsync(cts.Token);
         }
     }
 
@@ -188,8 +249,16 @@ public class AccountManager : IHostedService
         foreach (var ctx in _accounts)
         {
             _logger.LogInformation("Stoppe TradingEngine fuer Account {Id}...", ctx.AccountId);
+
+            if (_accountCts.TryGetValue(ctx.AccountId, out var cts))
+            {
+                cts.Cancel();
+            }
+
             await ctx.Engine.StopAsync(cancellationToken);
         }
+
+        _accountCts.Clear();
     }
 }
 
