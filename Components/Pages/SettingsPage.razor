@@ -1,9 +1,13 @@
 @page "/settings"
+@using ClaudeTradingBot.Data
 @using ClaudeTradingBot.Models
 @using ClaudeTradingBot.Services
+@using Microsoft.EntityFrameworkCore
 @inject ISettingsRepository SettingsRepo
 @inject AccountManager AccountMgr
 @inject IConfiguration Configuration
+@inject IDbContextFactory<TradingDbContext> DbFactory
+@inject DialogService DialogService
 
 <PageTitle>Einstellungen - NeuronTrade</PageTitle>
 
@@ -127,6 +131,27 @@
     <div class="hint" style="margin-top: 8px;">API-Keys koennen nur direkt in appsettings.json geaendert werden.</div>
 </RadzenCard>
 
+<!-- Wartung -->
+<RadzenCard Style="margin-top: 24px;">
+    <h3 style="margin-top: 0; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border);">Wartung</h3>
+
+    @if (!string.IsNullOrEmpty(_purgeResult))
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" AllowClose="true" Close="@(() => _purgeResult = null)" Style="margin-bottom: 12px;">
+            @_purgeResult
+        </RadzenAlert>
+    }
+
+    <RadzenStack Orientation="Orientation.Horizontal" Gap="12px" AlignItems="AlignItems.Center">
+        <RadzenButton Text="Trading-Daten zuruecksetzen" Icon="delete_sweep" ButtonStyle="ButtonStyle.Danger"
+                      Click="@PurgeTradeData" />
+        <span style="color: var(--muted); font-size: 0.85rem;">
+            Loescht Trades, Positionen, PnL-Historie, Logs, Grid-States und Engine-Snapshots.
+            Benutzer, Accounts und Einstellungen bleiben erhalten.
+        </span>
+    </RadzenStack>
+</RadzenCard>
+
 @code {
     private string WatchList { get; set; } = string.Empty;
 
@@ -146,6 +171,7 @@
     private List<string> _brokerSymbols = new();
     private HashSet<string> _currentWatchSymbols = new(StringComparer.OrdinalIgnoreCase);
     private bool _loadingSymbols;
+    private string? _purgeResult;
 
     private record DropDownItem(string Text, string Value);
     private List<DropDownItem> _timeframeOptions = new()
@@ -251,6 +277,36 @@
             _currentWatchSymbols.Add(symbol);
 
         WatchList = string.Join(", ", _currentWatchSymbols.OrderBy(s => s));
+    }
+
+    private async Task PurgeTradeData()
+    {
+        var confirmed = await DialogService.Confirm(
+            "Alle Trading-Daten loeschen? Dies umfasst Trades, Positionen, PnL-Historie, Logs, Grid-States und Engine-Snapshots. " +
+            "Benutzer, Accounts und Einstellungen bleiben erhalten. Diese Aktion kann nicht rueckgaengig gemacht werden.",
+            "Trading-Daten zuruecksetzen",
+            new ConfirmOptions { OkButtonText = "Endgueltig loeschen", CancelButtonText = "Abbrechen" });
+
+        if (confirmed != true) return;
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            var trades = await db.Trades.ExecuteDeleteAsync();
+            var positions = await db.Positions.ExecuteDeleteAsync();
+            var pnl = await db.DailyPnLs.ExecuteDeleteAsync();
+            var logs = await db.TradingLogs.ExecuteDeleteAsync();
+            var grids = await db.GridStates.ExecuteDeleteAsync();
+            var snapshots = await db.EngineStateSnapshots.ExecuteDeleteAsync();
+
+            _purgeResult = $"Geloescht: {trades} Trades, {positions} Positionen, {pnl} PnL-Eintraege, " +
+                           $"{logs} Logs, {grids} Grid-States, {snapshots} Snapshots.";
+        }
+        catch (Exception ex)
+        {
+            _errors.Add($"Fehler beim Loeschen: {ex.Message}");
+        }
     }
 
     private static string MaskKey(string? key)
