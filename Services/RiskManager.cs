@@ -16,6 +16,8 @@ public interface IRiskManager
     Task<double> GetDynamicMinConfidenceAsync(string symbol, CancellationToken ct = default);
     Task CheckStopLossesAsync(CancellationToken ct = default);
     Task RecordDailyPnLAsync(CancellationToken ct = default);
+    Task<List<SymbolAllocation>> GetCurrentAllocationsAsync(CancellationToken ct = default);
+    Task<int> CheckAndRebalanceAsync(CancellationToken ct = default);
 }
 
 public class RiskManager : IRiskManager
@@ -696,5 +698,109 @@ public class RiskManager : IRiskManager
             return 0;
 
         return trueRanges.TakeLast(14).Average();
+    }
+
+    // ── Phase 10.3: Portfolio-Allokation & Rebalancing ──────────────
+
+    public async Task<List<SymbolAllocation>> GetCurrentAllocationsAsync(CancellationToken ct = default)
+    {
+        var positions = await _broker.GetPositionsAsync(ct);
+        var portfolioValue = await _broker.GetPortfolioValueAsync(ct);
+        if (portfolioValue <= 0 || positions.Count == 0)
+            return new List<SymbolAllocation>();
+
+        var allocSettings = Settings.Allocation;
+        var allocations = new List<SymbolAllocation>();
+
+        foreach (var pos in positions)
+        {
+            var lotSize = GetLotSize(pos.Symbol);
+            var notional = pos.Quantity * lotSize * pos.CurrentPrice;
+            var percent = (double)(notional / portfolioValue) * 100.0;
+            var maxPercent = allocSettings.SymbolLimits
+                .GetValueOrDefault(pos.Symbol.ToUpperInvariant(), allocSettings.DefaultMaxPercent);
+
+            allocations.Add(new SymbolAllocation
+            {
+                Symbol = pos.Symbol,
+                NotionalValue = notional,
+                PercentOfPortfolio = percent,
+                MaxAllowedPercent = maxPercent,
+                IsOverweight = percent > maxPercent
+            });
+        }
+
+        return allocations;
+    }
+
+    public async Task<int> CheckAndRebalanceAsync(CancellationToken ct = default)
+    {
+        var allocSettings = Settings.Allocation;
+        if (!allocSettings.Enabled) return 0;
+
+        var allocations = await GetCurrentAllocationsAsync(ct);
+        var portfolioValue = await _broker.GetPortfolioValueAsync(ct);
+        var positions = await _broker.GetPositionsAsync(ct);
+        var rebalancedCount = 0;
+
+        foreach (var alloc in allocations)
+        {
+            var triggerThreshold = alloc.MaxAllowedPercent + allocSettings.RebalanceTriggerOverPercent;
+            if (alloc.PercentOfPortfolio <= triggerThreshold) continue;
+
+            // Uebergewicht berechnen
+            var excessPercent = alloc.PercentOfPortfolio - alloc.MaxAllowedPercent;
+            var excessNotional = (decimal)(excessPercent / 100.0) * portfolioValue;
+            var lotSize = GetLotSize(alloc.Symbol);
+            var pos = positions.FirstOrDefault(p =>
+                p.Symbol.Equals(alloc.Symbol, StringComparison.OrdinalIgnoreCase));
+
+            if (pos == null || pos.CurrentPrice <= 0 || lotSize <= 0) continue;
+
+            var excessLots = Math.Round(excessNotional / (lotSize * pos.CurrentPrice), 2);
+
+            if (excessLots < 0.01m) continue;
+
+            // Nicht mehr schliessen als die gesamte Position
+            excessLots = Math.Min(excessLots, pos.Quantity);
+
+            var posId = pos.BrokerPositionId ?? pos.Symbol;
+            var closed = await _broker.ClosePositionAsync(posId, excessLots, ct);
+
+            if (closed)
+            {
+                rebalancedCount++;
+                _logger.LogInformation(
+                    "[{AccountId}] Rebalancing: {Symbol} von {Current:F1}% auf ~{Target:F1}% reduziert ({Lots:F2} Lots geschlossen)",
+                    AccountId, alloc.Symbol, alloc.PercentOfPortfolio, alloc.MaxAllowedPercent, excessLots);
+
+                using var scope = _scopeFactory.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
+                db.TradingLogs.Add(new TradingLog
+                {
+                    AccountId = AccountId,
+                    Level = "Info",
+                    Source = "Rebalancing",
+                    Message = $"Rebalancing {alloc.Symbol}: {alloc.PercentOfPortfolio:F1}% → ~{alloc.MaxAllowedPercent:F1}% ({excessLots:F2} Lots reduziert)"
+                });
+                db.Trades.Add(new Trade
+                {
+                    AccountId = AccountId,
+                    Symbol = alloc.Symbol,
+                    Action = pos.Side == "buy" ? TradeAction.Sell : TradeAction.Buy,
+                    Quantity = excessLots,
+                    Price = pos.CurrentPrice,
+                    ExecutedPrice = pos.CurrentPrice,
+                    ExecutedAt = DateTime.UtcNow,
+                    Status = TradeStatus.Executed,
+                    ClaudeReasoning = $"Portfolio Rebalancing: {alloc.Symbol} war {alloc.PercentOfPortfolio:F1}% (Limit: {alloc.MaxAllowedPercent:F0}%)",
+                    ClaudeConfidence = 1.0,
+                    SetupType = "Rebalancing"
+                });
+                await db.SaveChangesAsync(ct);
+            }
+        }
+
+        return rebalancedCount;
     }
 }

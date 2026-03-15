@@ -195,6 +195,21 @@ public static class ClaudePromptBuilder
             sb.AppendLine("**Bestehende Position:** Keine");
         }
 
+        // ── Portfolio-Allokation (Phase 10.3) ────────────────────────────────
+        if (req.PortfolioAllocations.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("## Portfolio-Allokation");
+            sb.AppendLine();
+            foreach (var alloc in req.PortfolioAllocations)
+            {
+                var status = alloc.IsOverweight ? " **UEBERGEWICHTET**" : "";
+                sb.AppendLine($"- {alloc.Symbol}: {alloc.PercentOfPortfolio:F1}% (Limit: {alloc.MaxAllowedPercent:F0}%){status}");
+            }
+            sb.AppendLine();
+            sb.AppendLine("Beruecksichtige die Portfolio-Allokation. Vermeide uebergewichtete Positionen weiter auszubauen.");
+        }
+
         // ── News-Headlines (Sentiment-Kontext) ─────────────────────────────
         if (req.NewsHeadlines.Count > 0)
         {

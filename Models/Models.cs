@@ -234,6 +234,9 @@ public class ClaudeAnalysisRequest
 
     /// <summary>Optionaler Strategie-Prompt (Phase 7.3). Leer = Standard-System-Prompt.</summary>
     public string StrategyPrompt { get; set; } = string.Empty;
+
+    /// <summary>Aktuelle Portfolio-Allokation aller Positionen (Phase 10.3).</summary>
+    public List<SymbolAllocation> PortfolioAllocations { get; set; } = new();
 }
 
 /// <summary>Zusammenfassung eines geschlossenen Trades fuer den LLM-Feedback-Loop.</summary>
@@ -416,6 +419,10 @@ public class RiskSettings
     /// <summary>Maximaler dynamischer Confidence-Wert (Obergrenze).</summary>
     public double MaxDynamicConfidence { get; set; } = 0.85;
 
+    // ── Phase 10.3: Portfolio-Allokation ────────────────────────────
+    /// <summary>Portfolio-Allokation und Rebalancing.</summary>
+    public PortfolioAllocationSettings Allocation { get; set; } = new();
+
     // ── Phase 10.2: Pending Orders ──────────────────────────────────
     /// <summary>Maximales Alter von Pending Orders (Limit/Stop) in Minuten. Aeltere werden storniert. 0 = deaktiviert.</summary>
     public int PendingOrderMaxAgeMinutes { get; set; } = 240;
@@ -584,6 +591,29 @@ public class PlaceOrderResult
     public bool Success { get; set; }
     public string? BrokerOrderId { get; set; }
     public string? BrokerPositionId { get; set; }
+}
+
+/// <summary>Portfolio-Allokation: max. Gewichtung pro Symbol oder Asset-Klasse (Phase 10.3).</summary>
+public class PortfolioAllocationSettings
+{
+    /// <summary>Rebalancing aktivieren/deaktivieren.</summary>
+    public bool Enabled { get; set; }
+    /// <summary>Standard-Maximalgewichtung pro Symbol in % des Portfolios. 0 = unbegrenzt.</summary>
+    public double DefaultMaxPercent { get; set; } = 20.0;
+    /// <summary>Symbol-spezifische Limits. Key = Symbol (z.B. "XAUUSD"), Value = max %.</summary>
+    public Dictionary<string, double> SymbolLimits { get; set; } = new();
+    /// <summary>Toleranz in Prozentpunkten ueber dem Limit bevor Rebalancing ausgeloest wird.</summary>
+    public double RebalanceTriggerOverPercent { get; set; } = 2.0;
+}
+
+/// <summary>Aktuelle Allokation eines Symbols im Portfolio (Phase 10.3).</summary>
+public record SymbolAllocation
+{
+    public string Symbol { get; init; } = string.Empty;
+    public decimal NotionalValue { get; init; }
+    public double PercentOfPortfolio { get; init; }
+    public double MaxAllowedPercent { get; init; }
+    public bool IsOverweight { get; init; }
 }
 
 /// <summary>Snapshot des Engine-Zustands bei Shutdown (fuer Graceful Shutdown & Recovery).</summary>

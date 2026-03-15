@@ -193,6 +193,32 @@ public class TradingEngine : BackgroundService
                 "Starting analysis cycle: {Count} symbols, Cash: ${Cash:F2}, Portfolio: ${PV:F2}",
                 watchList.Length, cash, portfolioValue);
 
+            // Portfolio-Rebalancing (Phase 10.3)
+            if (Settings.Allocation.Enabled)
+            {
+                try
+                {
+                    var rebalanced = await _risk.CheckAndRebalanceAsync(ct);
+                    if (rebalanced > 0)
+                    {
+                        _logger.LogInformation("Portfolio rebalanced: {Count} Positionen angepasst", rebalanced);
+                        positions = await _broker.GetPositionsAsync(ct);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Portfolio-Rebalancing fehlgeschlagen");
+                }
+            }
+
+            // Allokation einmal pro Zyklus berechnen (fuer LLM-Kontext)
+            var allocations = new List<SymbolAllocation>();
+            if (Settings.Allocation.Enabled)
+            {
+                try { allocations = await _risk.GetCurrentAllocationsAsync(ct); }
+                catch (Exception ex) { _logger.LogDebug(ex, "Allokation-Berechnung fehlgeschlagen"); }
+            }
+
             foreach (var symbol in watchList)
             {
                 if (ct.IsCancellationRequested) break;
@@ -231,7 +257,7 @@ public class TradingEngine : BackgroundService
                             continue;
                         }
 
-                        await AnalyzeAndTradeAsync(symbol, cash, portfolioValue, positions, ct);
+                        await AnalyzeAndTradeAsync(symbol, cash, portfolioValue, positions, allocations, ct);
 
                         // Kurze Pause zwischen Analysen (Rate Limiting)
                         await Task.Delay(TimeSpan.FromSeconds(2), ct);
@@ -259,7 +285,7 @@ public class TradingEngine : BackgroundService
 
     private async Task AnalyzeAndTradeAsync(
         string symbol, decimal cash, decimal portfolioValue,
-        List<Position> positions, CancellationToken ct)
+        List<Position> positions, List<SymbolAllocation> allocations, CancellationToken ct)
     {
         var currentPrice = await _broker.GetCurrentPriceAsync(symbol, ct);
 
@@ -322,7 +348,8 @@ public class TradingEngine : BackgroundService
             PortfolioValue = portfolioValue,
             RecentTradeResults = recentTradeResults,
             NewsHeadlines = _news.GetHeadlines(symbol),
-            StrategyPrompt = StrategyPrompt
+            StrategyPrompt = StrategyPrompt,
+            PortfolioAllocations = allocations
         };
 
         _logger.LogDebug(
