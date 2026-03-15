@@ -371,7 +371,8 @@ public class PositionSyncService : BackgroundService
 
     /// <summary>
     /// Storniert verwaiste Pending Orders (Limit/Stop) nach Neustart.
-    /// SL/TP-Orders einer Position werden bei TradeLocker nicht als separate Orders gelistet.
+    /// Nur Orders die einen passenden Trade in der DB haben (von uns platziert) werden storniert.
+    /// Broker-eigene Orders (SL/TP) bleiben bestehen.
     /// </summary>
     private async Task CancelStalePendingOrdersAsync(AccountContext ctx, TradingDbContext db, CancellationToken ct)
     {
@@ -380,12 +381,32 @@ public class PositionSyncService : BackgroundService
             var pendingOrders = await ctx.EffectiveBroker.GetPendingOrdersAsync(ct);
             if (pendingOrders.Count == 0) return;
 
+            // Nur Orders stornieren die wir selbst platziert haben (BrokerOrderId in DB)
+            var ourOrderIds = await db.Trades
+                .Where(t => t.AccountId == ctx.AccountId
+                    && t.Status == TradeStatus.PendingOrder
+                    && t.BrokerOrderId != null)
+                .Select(t => t.BrokerOrderId!)
+                .ToListAsync(ct);
+
+            var orphanedOrders = pendingOrders
+                .Where(o => ourOrderIds.Contains(o.OrderId))
+                .ToList();
+
+            if (orphanedOrders.Count == 0)
+            {
+                _logger.LogDebug(
+                    "Recovery [{AccountId}]: {Count} Pending Orders beim Broker, keine davon von uns platziert – werden ignoriert",
+                    ctx.AccountId, pendingOrders.Count);
+                return;
+            }
+
             _logger.LogWarning(
-                "Recovery [{AccountId}]: {Count} Pending Orders gefunden, storniere...",
-                ctx.AccountId, pendingOrders.Count);
+                "Recovery [{AccountId}]: {Count} verwaiste Pending Orders gefunden (von {Total} total), storniere...",
+                ctx.AccountId, orphanedOrders.Count, pendingOrders.Count);
 
             var cancelledCount = 0;
-            foreach (var order in pendingOrders)
+            foreach (var order in orphanedOrders)
             {
                 var cancelled = await ctx.EffectiveBroker.CancelOrderAsync(order.OrderId, ct);
                 if (cancelled) cancelledCount++;
@@ -401,7 +422,7 @@ public class PositionSyncService : BackgroundService
                 AccountId = ctx.AccountId,
                 Level = "Warning",
                 Source = "StateRecovery",
-                Message = $"{cancelledCount}/{pendingOrders.Count} Pending Orders nach Neustart storniert"
+                Message = $"{cancelledCount}/{orphanedOrders.Count} verwaiste Pending Orders nach Neustart storniert"
             });
             await db.SaveChangesAsync(ct);
         }
