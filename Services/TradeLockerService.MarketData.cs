@@ -144,7 +144,7 @@ public partial class TradeLockerService
                 if (inst != null && (!string.IsNullOrWhiteSpace(inst.ResolvedSymbol) || inst.TradableInstrumentId != 0 || inst.Id != 0))
                     list.Add(inst);
             }
-            catch { /* einzelnes Element überspringen */ }
+            catch { /* Einzelnes Instrument ungueltig – naechstes versuchen */ }
         }
         return list.Count > 0 ? list : null;
     }

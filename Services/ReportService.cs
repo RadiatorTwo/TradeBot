@@ -116,9 +116,9 @@ public class ReportService : BackgroundService
                 var details = await ctx.EffectiveBroker.GetAccountDetailsAsync(ct);
                 sb.AppendLine($"*{EscapeMarkdownV2(ctx.DisplayName)}:* Equity ${details.Equity:N2}, Balance ${details.Balance:N2}");
             }
-            catch
+            catch (Exception ex)
             {
-                // Broker nicht erreichbar
+                _logger.LogDebug(ex, "Report: Broker-Daten nicht verfuegbar fuer {Account}", ctx.DisplayName);
             }
         }
         sb.AppendLine();

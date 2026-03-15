@@ -618,7 +618,7 @@ public class RiskManager : IRiskManager
                     }
                 }
             }
-            catch { /* ATR nicht verfuegbar – kein Adjustment */ }
+            catch (Exception ex) { _logger.LogDebug(ex, "ATR nicht verfuegbar fuer {Symbol} – kein Adjustment", symbol); }
         }
 
         // 2. Drawdown-basiert: im Drawdown konservativer

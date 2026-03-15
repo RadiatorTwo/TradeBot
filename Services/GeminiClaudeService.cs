@@ -181,7 +181,7 @@ public class GeminiClaudeService : IClaudeService
                 return true;
             }
         }
-        catch { /* ignore */ }
+        catch { /* Retry-After-Header konnte nicht geparst werden – Standard-Backoff verwenden */ }
         return false;
     }
 }

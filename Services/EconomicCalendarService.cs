@@ -216,10 +216,7 @@ public class EconomicCalendarService : BackgroundService
                 Currency = currency?.ToUpperInvariant() ?? ""
             };
         }
-        catch
-        {
-            return null;
-        }
+        catch { /* Einzelnes Event mit ungueltigem Format – ueberspringen */ return null; }
     }
 
     /// <summary>Statische Liste bekannter regelmaessiger High-Impact-Events.</summary>

@@ -395,7 +395,7 @@ public partial class TradeLockerService : IBrokerService
                 if (account != null && !string.IsNullOrWhiteSpace(account.Id))
                     list.Add(account);
             }
-            catch { /* einzelnes Element überspringen */ }
+            catch { /* Einzelnes Account-Element ungueltig – naechstes versuchen */ }
         }
         return list.Count > 0 ? list : null;
     }
