@@ -8,13 +8,18 @@
 
 <h2 style="margin-bottom: 24px;">Strategie-Vergleich</h2>
 
-@if (_stats.Count < 2)
+@if (!AccountMgr.HasAccounts)
 {
-    <div class="empty-state" style="padding: 40px; text-align: center;">
+    <RadzenAlert AlertStyle="AlertStyle.Warning" AllowClose="false">
+        Kein Account konfiguriert. Bitte unter <a href="/accounts">Accounts</a> einen Account anlegen.
+    </RadzenAlert>
+}
+else if (_stats.Count < 2)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Info" AllowClose="false">
         Mindestens 2 Accounts noetig fuer den Vergleich. Aktuell: @_stats.Count Account(s).
-        <br /><br />
-        <RadzenButton Text="Accounts verwalten" ButtonStyle="ButtonStyle.Primary" Click="@(() => Navigation.NavigateTo("/accounts"))" />
-    </div>
+        Weitere Accounts unter <a href="/accounts">Accounts</a> anlegen.
+    </RadzenAlert>
 }
 else
 {
@@ -22,59 +27,59 @@ else
         @foreach (var s in _stats)
         {
             var isWinner = _stats.Count > 1 && s.NetPnL == _stats.Max(x => x.NetPnL) && s.NetPnL != 0;
-            <RadzenCard Style="@($"border: 1px solid {(isWinner ? "var(--green, #a6e3a1)" : "var(--border, #45475a)")}; padding: 16px;")">
+            <RadzenCard Style="@($"border: 1px solid {(isWinner ? "var(--green)" : "var(--border)")}; padding: 16px;")">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                     <div>
                         <strong style="font-size: 1.1rem;">@s.DisplayName</strong>
                         @if (!string.IsNullOrEmpty(s.StrategyLabel))
                         {
-                            <span style="margin-left: 8px; background: var(--accent, #89b4fa); color: #1e1e2e; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem;">@s.StrategyLabel</span>
+                            <RadzenBadge Text="@s.StrategyLabel" BadgeStyle="BadgeStyle.Info" />
                         }
                     </div>
                     @if (isWinner)
                     {
-                        <span style="color: var(--green, #a6e3a1); font-weight: 600; font-size: 0.85rem;">FUEHREND</span>
+                        <RadzenBadge Text="FUEHREND" BadgeStyle="BadgeStyle.Success" />
                     }
                 </div>
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.9rem;">
                     <div>
-                        <div style="color: var(--muted, #6c7086);">Netto-PnL</div>
+                        <div style="color: var(--muted);">Netto-PnL</div>
                         <strong style="font-size: 1.2rem;" class="@(s.NetPnL >= 0 ? "pnl-positive" : "pnl-negative")">
                             @(s.NetPnL >= 0 ? "+" : "")$@s.NetPnL.ToString("N2")
                         </strong>
                     </div>
                     <div>
-                        <div style="color: var(--muted, #6c7086);">Win-Rate</div>
+                        <div style="color: var(--muted);">Win-Rate</div>
                         <strong style="font-size: 1.2rem;">@s.WinRate.ToString("F1")%</strong>
                     </div>
                     <div>
-                        <div style="color: var(--muted, #6c7086);">Trades</div>
+                        <div style="color: var(--muted);">Trades</div>
                         <strong>@s.TotalTrades</strong>
                     </div>
                     <div>
-                        <div style="color: var(--muted, #6c7086);">Profit Factor</div>
+                        <div style="color: var(--muted);">Profit Factor</div>
                         <strong>@s.ProfitFactor.ToString("F2")</strong>
                     </div>
                     <div>
-                        <div style="color: var(--muted, #6c7086);">Avg. Win</div>
+                        <div style="color: var(--muted);">Avg. Win</div>
                         <strong class="pnl-positive">+$@s.AvgWin.ToString("N2")</strong>
                     </div>
                     <div>
-                        <div style="color: var(--muted, #6c7086);">Avg. Loss</div>
+                        <div style="color: var(--muted);">Avg. Loss</div>
                         <strong class="pnl-negative">-$@s.AvgLoss.ToString("N2")</strong>
                     </div>
                     <div>
-                        <div style="color: var(--muted, #6c7086);">Max Drawdown</div>
+                        <div style="color: var(--muted);">Max Drawdown</div>
                         <strong>@s.MaxDrawdownPercent.ToString("F1")%</strong>
                     </div>
                     <div>
-                        <div style="color: var(--muted, #6c7086);">Sharpe Ratio</div>
+                        <div style="color: var(--muted);">Sharpe Ratio</div>
                         <strong>@s.SharpeRatio.ToString("F2")</strong>
                     </div>
                 </div>
 
-                <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--border, #45475a); font-size: 0.8rem; color: var(--muted, #6c7086);">
+                <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 0.8rem; color: var(--muted);">
                     Watchlist: @string.Join(", ", s.WatchList)
                 </div>
             </RadzenCard>
