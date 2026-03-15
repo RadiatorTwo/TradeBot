@@ -312,7 +312,11 @@ public partial class TradeLockerService
                     System.Globalization.CultureInfo.InvariantCulture, out var q) ? q : 0m;
                 var price = decimal.TryParse(item[5].ToString(), System.Globalization.NumberStyles.Any,
                     System.Globalization.CultureInfo.InvariantCulture, out var p) ? p : 0m;
-                var type = item.GetArrayLength() > 6 ? item[6].ToString() : "unknown";
+                var type = item.GetArrayLength() > 6 ? item[6].ToString().ToLowerInvariant() : "unknown";
+
+                // SL/TP-Orders gehoeren zu Positionen und sind keine eigenstaendigen Pending Orders
+                if (type is "stoploss" or "stop_loss" or "takeprofit" or "take_profit" or "sl" or "tp")
+                    continue;
 
                 var symbol = ResolveInstrumentIdToSymbol(instId) ?? $"UNKNOWN_{instId}";
 
@@ -328,7 +332,8 @@ public partial class TradeLockerService
                 });
             }
 
-            _logger.LogInformation("GetPendingOrders: {Count} pending orders", list.Count);
+            _logger.LogInformation("GetPendingOrders: {Count} pending orders (gefiltert von {Total} total)",
+                list.Count, ordersEl.GetArrayLength());
         }
         catch (Exception ex)
         {
