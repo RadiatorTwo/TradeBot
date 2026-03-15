@@ -122,6 +122,7 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
+app.UseSerilogRequestLogging();
 app.UseStaticFiles();
 app.UseRouting();
 app.UseAntiforgery();

@@ -2,6 +2,7 @@ using ClaudeTradingBot.Data;
 using ClaudeTradingBot.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Serilog.Context;
 
 namespace ClaudeTradingBot.Services;
 
@@ -79,147 +80,162 @@ public class TradingEngine : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Trading Engine starting...");
-
-        // Datenbank initialisieren
-        using (var scope = _scopeFactory.CreateScope())
+        // AccountId im LogContext fuer alle Logs dieser Engine-Instanz
+        using (LogContext.PushProperty("AccountId", AccountId))
         {
-            var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
-            await db.Database.EnsureCreatedAsync(stoppingToken);
-        }
+            _logger.LogInformation("[{AccountId}] Trading Engine starting...", AccountId);
 
-        // Broker-Verbindung herstellen
-        await _broker.ConnectAsync(stoppingToken);
-
-        await LogAsync("Info", "TradingEngine", "Trading Engine gestartet");
-
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            try
+            // Datenbank initialisieren
+            using (var scope = _scopeFactory.CreateScope())
             {
-                if (_pauseRequested || _risk.IsKillSwitchActive)
+                var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
+                await db.Database.EnsureCreatedAsync(stoppingToken);
+            }
+
+            // Broker-Verbindung herstellen
+            await _broker.ConnectAsync(stoppingToken);
+
+            await LogAsync("Info", "TradingEngine", "Trading Engine gestartet");
+
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                try
                 {
-                    _isRunning = false;
-                    await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
-                    continue;
+                    if (_pauseRequested || _risk.IsKillSwitchActive)
+                    {
+                        _isRunning = false;
+                        await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
+                        continue;
+                    }
+
+                    _isRunning = true;
+
+                    // Haupt-Trading-Zyklus
+                    await RunTradingCycleAsync(stoppingToken);
+
+                    // Stop-Losses prüfen
+                    await _risk.CheckStopLossesAsync(stoppingToken);
+
+                    // Tages-PnL aufzeichnen
+                    await _risk.RecordDailyPnLAsync(stoppingToken);
+
+                    _logger.LogInformation("Cycle complete. Next run in {Min} minutes.", Settings.TradingIntervalMinutes);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error in trading cycle");
+                    await LogAsync("Error", "TradingEngine", $"Fehler im Trading-Zyklus: {ex.Message}");
+
+                    // Auto-Reconnect: bei Verbindungsverlust erneut verbinden
+                    if (!_broker.IsConnected)
+                    {
+                        _logger.LogWarning("Broker-Verbindung verloren. Versuche Reconnect...");
+                        try
+                        {
+                            await _broker.ConnectAsync(stoppingToken);
+                        }
+                        catch (Exception reconnectEx)
+                        {
+                            _logger.LogWarning(reconnectEx, "Reconnect im TradingEngine fehlgeschlagen.");
+                        }
+                    }
                 }
 
-                _isRunning = true;
-
-                // Haupt-Trading-Zyklus
-                await RunTradingCycleAsync(stoppingToken);
-
-                // Stop-Losses prüfen
-                await _risk.CheckStopLossesAsync(stoppingToken);
-
-                // Tages-PnL aufzeichnen
-                await _risk.RecordDailyPnLAsync(stoppingToken);
-
-                _logger.LogInformation("Cycle complete. Next run in {Min} minutes.", Settings.TradingIntervalMinutes);
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error in trading cycle");
-                await LogAsync("Error", "TradingEngine", $"Fehler im Trading-Zyklus: {ex.Message}");
-
-                // Auto-Reconnect: bei Verbindungsverlust erneut verbinden
-                if (!_broker.IsConnected)
-                {
-                    _logger.LogWarning("Broker-Verbindung verloren. Versuche Reconnect...");
-                    try
-                    {
-                        await _broker.ConnectAsync(stoppingToken);
-                    }
-                    catch (Exception reconnectEx)
-                    {
-                        _logger.LogWarning(reconnectEx, "Reconnect im TradingEngine fehlgeschlagen.");
-                    }
-                }
+                // Interval bei jedem Durchlauf neu lesen (Config-Reload)
+                await Task.Delay(TimeSpan.FromMinutes(Settings.TradingIntervalMinutes), stoppingToken);
             }
 
-            // Interval bei jedem Durchlauf neu lesen (Config-Reload)
-            await Task.Delay(TimeSpan.FromMinutes(Settings.TradingIntervalMinutes), stoppingToken);
+            await _broker.DisconnectAsync();
+            _isRunning = false;
+            _logger.LogInformation("[{AccountId}] Trading Engine stopped.", AccountId);
         }
-
-        await _broker.DisconnectAsync();
-        _isRunning = false;
-        _logger.LogInformation("Trading Engine stopped.");
     }
 
     private async Task RunTradingCycleAsync(CancellationToken ct)
     {
-        var isPaper = _paperTrading.IsPaperTradingActive;
-
-        // Markt-Check: wenn Forex-Markt komplett geschlossen, gesamten Zyklus ueberspringen
-        // Im Paper-Trading-Modus wird der Markt-Check uebersprungen
-        if (!isPaper && !_marketHours.IsMarketOpen())
+        var correlationId = Guid.NewGuid().ToString("N")[..12];
+        using (LogContext.PushProperty("CorrelationId", correlationId))
         {
-            var nextOpen = _marketHours.GetNextOpen("EURUSD");
-            _logger.LogInformation("Markt geschlossen. Naechste Oeffnung: {NextOpen:dd.MM.yyyy HH:mm} UTC",
-                nextOpen);
-            return;
-        }
+            _logger.LogInformation("Trading cycle started: {CorrelationId}", correlationId);
 
-        var watchList = AccountWatchList.Length > 0
-            ? AccountWatchList
-            : _config.GetSection("TradingStrategy:WatchList").Get<string[]>() ?? Array.Empty<string>();
-        var cash = await _broker.GetAccountCashAsync(ct);
-        var portfolioValue = await _broker.GetPortfolioValueAsync(ct);
-        var positions = await _broker.GetPositionsAsync(ct);
+            var isPaper = _paperTrading.IsPaperTradingActive;
 
-        _logger.LogDebug(
-            "Starting analysis cycle: {Count} symbols, Cash: ${Cash:F2}, Portfolio: ${PV:F2}",
-            watchList.Length, cash, portfolioValue);
-
-        foreach (var symbol in watchList)
-        {
-            if (ct.IsCancellationRequested) break;
-
-            try
+            // Markt-Check: wenn Forex-Markt komplett geschlossen, gesamten Zyklus ueberspringen
+            // Im Paper-Trading-Modus wird der Markt-Check uebersprungen
+            if (!isPaper && !_marketHours.IsMarketOpen())
             {
-                // Markt-/Session-Checks (im Paper-Trading-Modus uebersprungen)
-                if (!isPaper)
+                var nextOpen = _marketHours.GetNextOpen("EURUSD");
+                _logger.LogInformation("Markt geschlossen. Naechste Oeffnung: {NextOpen:dd.MM.yyyy HH:mm} UTC",
+                    nextOpen);
+                return;
+            }
+
+            var watchList = AccountWatchList.Length > 0
+                ? AccountWatchList
+                : _config.GetSection("TradingStrategy:WatchList").Get<string[]>() ?? Array.Empty<string>();
+            var cash = await _broker.GetAccountCashAsync(ct);
+            var portfolioValue = await _broker.GetPortfolioValueAsync(ct);
+            var positions = await _broker.GetPositionsAsync(ct);
+
+            _logger.LogDebug(
+                "Starting analysis cycle: {Count} symbols, Cash: ${Cash:F2}, Portfolio: ${PV:F2}",
+                watchList.Length, cash, portfolioValue);
+
+            foreach (var symbol in watchList)
+            {
+                if (ct.IsCancellationRequested) break;
+
+                using (LogContext.PushProperty("Symbol", symbol))
                 {
-                    if (!_marketHours.IsMarketOpen(symbol))
+                    try
                     {
-                        _logger.LogDebug("Ueberspringe {Symbol} – Markt geschlossen", symbol);
-                        continue;
-                    }
+                        // Markt-/Session-Checks (im Paper-Trading-Modus uebersprungen)
+                        if (!isPaper)
+                        {
+                            if (!_marketHours.IsMarketOpen(symbol))
+                            {
+                                _logger.LogDebug("Ueberspringe {Symbol} – Markt geschlossen", symbol);
+                                continue;
+                            }
 
-                    if (!_marketHours.IsSafeToOpenPosition(symbol))
-                    {
-                        _logger.LogDebug("Ueberspringe {Symbol} – zu nah am Marktschluss", symbol);
-                        continue;
-                    }
+                            if (!_marketHours.IsSafeToOpenPosition(symbol))
+                            {
+                                _logger.LogDebug("Ueberspringe {Symbol} – zu nah am Marktschluss", symbol);
+                                continue;
+                            }
 
-                    if (!_session.IsSessionActive(symbol))
+                            if (!_session.IsSessionActive(symbol))
+                            {
+                                _logger.LogDebug("Ueberspringe {Symbol} – ausserhalb der erlaubten Trading-Session", symbol);
+                                continue;
+                            }
+                        }
+
+                        // News-Filter: Symbol ueberspringen wenn High-Impact-Event bevorsteht
+                        if (_calendar.IsSymbolAffectedByEvent(symbol))
+                        {
+                            _logger.LogInformation(
+                                "Ueberspringe {Symbol} – High-Impact-Event in der Naehe", symbol);
+                            continue;
+                        }
+
+                        await AnalyzeAndTradeAsync(symbol, cash, portfolioValue, positions, ct);
+
+                        // Kurze Pause zwischen Analysen (Rate Limiting)
+                        await Task.Delay(TimeSpan.FromSeconds(2), ct);
+                    }
+                    catch (Exception ex)
                     {
-                        _logger.LogDebug("Ueberspringe {Symbol} – ausserhalb der erlaubten Trading-Session", symbol);
-                        continue;
+                        _logger.LogError(ex, "Error analyzing {Symbol}", symbol);
                     }
                 }
-
-                // News-Filter: Symbol ueberspringen wenn High-Impact-Event bevorsteht
-                if (_calendar.IsSymbolAffectedByEvent(symbol))
-                {
-                    _logger.LogInformation(
-                        "Ueberspringe {Symbol} – High-Impact-Event in der Naehe", symbol);
-                    continue;
-                }
-
-                await AnalyzeAndTradeAsync(symbol, cash, portfolioValue, positions, ct);
-
-                // Kurze Pause zwischen Analysen (Rate Limiting)
-                await Task.Delay(TimeSpan.FromSeconds(2), ct);
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error analyzing {Symbol}", symbol);
-            }
+
+            _logger.LogInformation("Trading cycle completed: {CorrelationId}", correlationId);
         }
     }
 
