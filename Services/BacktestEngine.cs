@@ -10,6 +10,7 @@ public class BacktestEngine
 {
     private readonly AccountManager _accountMgr;
     private readonly TechnicalAnalysisService _ta;
+    private readonly IClaudeService _claude;
     private readonly ILogger<BacktestEngine> _logger;
 
     private IBrokerService? Broker => _accountMgr.DefaultAccount?.EffectiveBroker;
@@ -17,10 +18,12 @@ public class BacktestEngine
     public BacktestEngine(
         AccountManager accountMgr,
         TechnicalAnalysisService ta,
+        IClaudeService claude,
         ILogger<BacktestEngine> logger)
     {
         _accountMgr = accountMgr;
         _ta = ta;
+        _claude = claude;
         _logger = logger;
     }
 
@@ -65,6 +68,7 @@ public class BacktestEngine
             BacktestPosition? openPosition = null;
             var trades = new List<BacktestTrade>();
             var equityCurve = new List<BacktestEquityPoint>();
+            var llmCallCount = 0;
 
             var pipSize = PipCalculator.GetPipSize(config.Symbol);
             var slDistance = (decimal)config.StopLossPips * pipSize;
@@ -103,6 +107,8 @@ public class BacktestEngine
                     var closed = CheckStopLossTakeProfit(openPosition, candle, candleTime);
                     if (closed != null)
                     {
+                        closed.Confidence = openPosition.Confidence;
+                        closed.LlmReasoning = openPosition.LlmReasoning;
                         balance += closed.PnL;
                         trades.Add(closed);
                         openPosition = null;
@@ -117,31 +123,73 @@ public class BacktestEngine
                     var highsUpToNow = allHighs.GetRange(0, i + 1);
                     var lowsUpToNow = allLows.GetRange(0, i + 1);
 
-                    var signal = GenerateSignal(config.Strategy, closesUpToNow, highsUpToNow, lowsUpToNow);
+                    string? signal = null;
+                    ClaudeTradeRecommendation? llmRec = null;
+
+                    if (config.Strategy == "LLM")
+                    {
+                        // LLM-Strategie: nur jede N-te Candle und maximal MaxLlmCalls
+                        if ((i - startIndex) % config.LlmSampleEveryN == 0
+                            && (config.MaxLlmCalls <= 0 || llmCallCount < config.MaxLlmCalls))
+                        {
+                            llmRec = await GenerateLlmSignalAsync(
+                                config.Symbol, candle, closesUpToNow, highsUpToNow, lowsUpToNow,
+                                balance, ct);
+                            llmCallCount++;
+
+                            if (llmRec != null && !llmRec.Action.Equals("hold", StringComparison.OrdinalIgnoreCase))
+                            {
+                                signal = llmRec.Action.Equals("buy", StringComparison.OrdinalIgnoreCase) ? "buy" : "sell";
+                            }
+                        }
+                    }
+                    else
+                    {
+                        signal = GenerateSignal(config.Strategy, closesUpToNow, highsUpToNow, lowsUpToNow);
+                    }
 
                     if (signal != null)
                     {
                         // Position Sizing
                         var riskAmount = balance * (decimal)(config.RiskPerTradePercent / 100.0);
                         var pipValue = PipCalculator.GetPipValuePerLot(config.Symbol, candle.Close);
-                        var lots = pipValue > 0 && config.StopLossPips > 0
-                            ? riskAmount / ((decimal)config.StopLossPips * pipValue)
-                            : 0.01m;
+
+                        decimal lots;
+                        decimal actualSl, actualTp;
+
+                        if (llmRec != null && llmRec.StopLossPrice.HasValue && llmRec.TakeProfitPrice.HasValue)
+                        {
+                            // LLM-definierte SL/TP verwenden
+                            actualSl = llmRec.StopLossPrice.Value;
+                            actualTp = llmRec.TakeProfitPrice.Value;
+                            var slDistPips = PipCalculator.PriceToPips(config.Symbol, Math.Abs(candle.Close - actualSl));
+                            lots = pipValue > 0 && slDistPips > 0
+                                ? riskAmount / (slDistPips * pipValue)
+                                : llmRec.Quantity > 0 ? llmRec.Quantity : 0.01m;
+                        }
+                        else
+                        {
+                            // Standard SL/TP
+                            var isBuySignal = signal == "buy";
+                            actualSl = isBuySignal ? candle.Close - slDistance : candle.Close + slDistance;
+                            actualTp = isBuySignal ? candle.Close + tpDistance : candle.Close - tpDistance;
+                            lots = pipValue > 0 && config.StopLossPips > 0
+                                ? riskAmount / ((decimal)config.StopLossPips * pipValue)
+                                : 0.01m;
+                        }
+
                         lots = Math.Max(Math.Round(lots, 2), 0.01m);
 
-                        var isBuy = signal == "buy";
                         openPosition = new BacktestPosition
                         {
                             Side = signal,
                             EntryPrice = candle.Close,
                             EntryTime = candleTime,
                             Quantity = lots,
-                            StopLoss = isBuy
-                                ? candle.Close - slDistance
-                                : candle.Close + slDistance,
-                            TakeProfit = isBuy
-                                ? candle.Close + tpDistance
-                                : candle.Close - tpDistance
+                            StopLoss = actualSl,
+                            TakeProfit = actualTp,
+                            Confidence = llmRec?.Confidence,
+                            LlmReasoning = llmRec?.Reasoning
                         };
                     }
                 }
@@ -183,7 +231,9 @@ public class BacktestEngine
                     ExitTime = lastTime,
                     Quantity = openPosition.Quantity,
                     PnL = pnl,
-                    Reason = "Backtest-Ende"
+                    Reason = "Backtest-Ende",
+                    Confidence = openPosition.Confidence,
+                    LlmReasoning = openPosition.LlmReasoning
                 });
             }
 
@@ -191,6 +241,7 @@ public class BacktestEngine
             result.Trades = trades;
             result.EquityCurve = equityCurve;
             result.Stats = CalculateStats(trades, config.InitialBalance, balance, peakBalance, maxDrawdown);
+            result.Stats.LlmCallCount = llmCallCount;
 
             progress?.Report(100);
 
@@ -281,6 +332,71 @@ public class BacktestEngine
             return "sell";
 
         return null;
+    }
+
+    /// <summary>
+    /// LLM-Strategie: Fragt das LLM fuer eine einzelne Candle nach einem Signal.
+    /// Baut einen reduzierten Prompt mit den letzten Candles und Indikatoren.
+    /// </summary>
+    private async Task<ClaudeTradeRecommendation?> GenerateLlmSignalAsync(
+        string symbol, OhlcCandle currentCandle,
+        List<decimal> closes, List<decimal> highs, List<decimal> lows,
+        decimal balance, CancellationToken ct)
+    {
+        try
+        {
+            // Indikatoren berechnen
+            TechnicalIndicators? indicators = null;
+            if (closes.Count > 20)
+                indicators = _ta.Calculate(closes, highs, lows);
+
+            // Letzte 20 Close-Preise als "Recent Prices"
+            var recentCloses = closes.Count > 20
+                ? closes.GetRange(closes.Count - 20, 20)
+                : closes;
+
+            // Letzte 30 1D-Candles simulieren (jede 24. 1H-Candle)
+            var candles1D = new List<decimal>();
+            for (int j = Math.Max(0, closes.Count - 720); j < closes.Count; j += 24)
+                candles1D.Add(closes[j]);
+
+            var request = new ClaudeAnalysisRequest
+            {
+                Symbol = symbol,
+                CurrentPrice = currentCandle.Close,
+                Bid = currentCandle.Close,
+                Ask = currentCandle.Close,
+                DayChange = recentCloses.Count > 1 && recentCloses[0] != 0
+                    ? ((currentCandle.Close - recentCloses[0]) / recentCloses[0]) * 100
+                    : 0,
+                RecentPrices = recentCloses,
+                Candles1D = candles1D,
+                Candles4H = new List<decimal>(),
+                Candles1H = recentCloses,
+                Indicators = indicators,
+                AvailableCash = balance,
+                PortfolioValue = balance
+            };
+
+            var rec = await _claude.AnalyzeAsync(request, ct);
+
+            if (rec != null)
+            {
+                _logger.LogDebug(
+                    "Backtest LLM: {Symbol} @ {Price:F5} → {Action} (Conf: {Conf:P0})",
+                    symbol, currentCandle.Close, rec.Action, rec.Confidence);
+            }
+
+            // Rate Limiting: kurze Pause zwischen LLM-Aufrufen
+            await Task.Delay(500, ct);
+
+            return rec;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Backtest LLM-Aufruf fehlgeschlagen");
+            return null;
+        }
     }
 
     /// <summary>Prueft ob SL oder TP innerhalb der Candle getroffen wurde.</summary>
@@ -388,5 +504,7 @@ public class BacktestEngine
         public decimal Quantity { get; set; }
         public decimal StopLoss { get; set; }
         public decimal TakeProfit { get; set; }
+        public double? Confidence { get; set; }
+        public string? LlmReasoning { get; set; }
     }
 }

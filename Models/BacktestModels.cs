@@ -11,8 +11,14 @@ public class BacktestConfig
     public double RiskPerTradePercent { get; set; } = 1.0;
     public double StopLossPips { get; set; } = 30;
     public double TakeProfitPips { get; set; } = 60;
-    /// <summary>Strategie: "EMA_Cross" oder "RSI_Reversal".</summary>
+    /// <summary>Strategie: "EMA_Cross", "RSI_Reversal" oder "LLM".</summary>
     public string Strategy { get; set; } = "EMA_Cross";
+
+    /// <summary>LLM-Strategie: Max. Anzahl LLM-Aufrufe (Kostenkontrolle). 0 = unbegrenzt.</summary>
+    public int MaxLlmCalls { get; set; } = 100;
+
+    /// <summary>LLM-Strategie: Nur jede N-te Candle analysieren (Batch/Sampling). 1 = jede Candle.</summary>
+    public int LlmSampleEveryN { get; set; } = 4;
 }
 
 /// <summary>Ergebnis eines Backtest-Laufs.</summary>
@@ -35,6 +41,10 @@ public class BacktestTrade
     public decimal Quantity { get; set; }
     public decimal PnL { get; set; }
     public string Reason { get; set; } = string.Empty;
+    /// <summary>LLM-Confidence bei Einstieg (nur LLM-Strategie).</summary>
+    public double? Confidence { get; set; }
+    /// <summary>LLM-Begruendung (nur LLM-Strategie).</summary>
+    public string? LlmReasoning { get; set; }
 }
 
 /// <summary>Ein Punkt in der Equity-Kurve.</summary>
@@ -60,4 +70,6 @@ public class BacktestStats
     public double SharpeRatio { get; set; }
     public decimal FinalBalance { get; set; }
     public decimal PeakBalance { get; set; }
+    /// <summary>Anzahl LLM-Aufrufe (nur LLM-Strategie).</summary>
+    public int LlmCallCount { get; set; }
 }
