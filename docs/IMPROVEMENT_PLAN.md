@@ -22,7 +22,7 @@ Priorisierte Uebersicht der Verbesserungen fuer Produktionsreife und Codequalita
 
 | # | Verbesserung | Aufwand | Status |
 |---|---|---|---|
-| 7 | **Thread Safety** – `_accounts` ist eine `List<>` die concurrent gelesen/geschrieben wird, `_partialClosedPositions` unsynchronisiert | 1 Tag | Offen |
+| 7 | **Thread Safety** – `_accounts` mit Lock-Pattern, `_accountCts` als ConcurrentDictionary, `_partialClosedPositions` als ConcurrentDictionary | 1 Tag | Erledigt |
 | 8 | **DB-Optimierung** – Composite-Indexes, Daten-Retention (Logs aelter als 90 Tage loeschen), evtl. PostgreSQL | 1-2 Tage | Offen |
 | 9 | **Metriken** – OpenTelemetry/Prometheus Counters fuer Trades, Rejections, LLM-Latenz, Broker-API-Latenz | 2 Tage | Offen |
 | 10 | **Circuit Breaker** – Polly fuer externe APIs (TradeLocker, LLM, Finnhub), um Kaskadenfehler zu verhindern | 1-2 Tage | Offen |

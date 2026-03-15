@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using ClaudeTradingBot.Models;
 using Microsoft.Extensions.Options;
 
@@ -12,26 +13,30 @@ namespace ClaudeTradingBot.Services;
 public class AccountManager : IHostedService
 {
     private readonly List<AccountContext> _accounts = new();
-    private readonly Dictionary<string, CancellationTokenSource> _accountCts = new();
+    private readonly object _accountsLock = new();
+    private readonly ConcurrentDictionary<string, CancellationTokenSource> _accountCts = new();
     private readonly IServiceProvider _sp;
     private readonly IConfiguration _config;
     private readonly ISettingsRepository _settingsRepo;
     private readonly ILogger<AccountManager> _logger;
 
-    public IReadOnlyList<AccountContext> Accounts => _accounts;
+    public IReadOnlyList<AccountContext> Accounts { get { lock (_accountsLock) { return _accounts.ToList(); } } }
 
     /// <summary>Erster Account oder null wenn keine Accounts konfiguriert sind.</summary>
-    public AccountContext? DefaultAccount => _accounts.Count > 0 ? _accounts[0] : null;
+    public AccountContext? DefaultAccount { get { lock (_accountsLock) { return _accounts.Count > 0 ? _accounts[0] : null; } } }
 
-    public bool HasAccounts => _accounts.Count > 0;
+    public bool HasAccounts { get { lock (_accountsLock) { return _accounts.Count > 0; } } }
 
     public AccountContext? GetAccount(string? accountId)
     {
-        if (!HasAccounts) return null;
-        if (string.IsNullOrEmpty(accountId))
-            return DefaultAccount;
-        return _accounts.FirstOrDefault(a => a.AccountId.Equals(accountId, StringComparison.OrdinalIgnoreCase))
-            ?? DefaultAccount;
+        lock (_accountsLock)
+        {
+            if (_accounts.Count == 0) return null;
+            if (string.IsNullOrEmpty(accountId))
+                return _accounts[0];
+            return _accounts.FirstOrDefault(a => a.AccountId.Equals(accountId, StringComparison.OrdinalIgnoreCase))
+                ?? _accounts[0];
+        }
     }
 
     public AccountManager(IServiceProvider sp, IConfiguration config, ISettingsRepository settingsRepo, ILogger<AccountManager> logger)
@@ -56,7 +61,7 @@ public class AccountManager : IHostedService
         foreach (var cfg in accountConfigs)
         {
             var ctx = CreateAccountContext(cfg, globalWatchList);
-            _accounts.Add(ctx);
+            lock (_accountsLock) { _accounts.Add(ctx); }
             _logger.LogInformation("Account registriert: {Id} ({Name})", ctx.AccountId, ctx.DisplayName);
         }
     }
@@ -149,15 +154,18 @@ public class AccountManager : IHostedService
     public async Task AddAccountAsync(AccountConfig cfg)
     {
         // Pruefen ob Account bereits existiert
-        if (_accounts.Any(a => a.AccountId.Equals(cfg.Id, StringComparison.OrdinalIgnoreCase)))
+        lock (_accountsLock)
         {
-            _logger.LogWarning("Account {Id} existiert bereits, ueberspringe Hinzufuegen", cfg.Id);
-            return;
+            if (_accounts.Any(a => a.AccountId.Equals(cfg.Id, StringComparison.OrdinalIgnoreCase)))
+            {
+                _logger.LogWarning("Account {Id} existiert bereits, ueberspringe Hinzufuegen", cfg.Id);
+                return;
+            }
         }
 
         var globalWatchList = await _settingsRepo.GetGlobalWatchListAsync();
         var ctx = CreateAccountContext(cfg, globalWatchList);
-        _accounts.Add(ctx);
+        lock (_accountsLock) { _accounts.Add(ctx); }
 
         _logger.LogInformation("Account {Id} ({Name}) zur Laufzeit hinzugefuegt, starte Engine...", ctx.AccountId, ctx.DisplayName);
 
@@ -172,7 +180,11 @@ public class AccountManager : IHostedService
     /// </summary>
     public async Task RemoveAccountAsync(string accountId)
     {
-        var ctx = _accounts.FirstOrDefault(a => a.AccountId.Equals(accountId, StringComparison.OrdinalIgnoreCase));
+        AccountContext? ctx;
+        lock (_accountsLock)
+        {
+            ctx = _accounts.FirstOrDefault(a => a.AccountId.Equals(accountId, StringComparison.OrdinalIgnoreCase));
+        }
         if (ctx == null)
         {
             _logger.LogWarning("Account {Id} nicht gefunden, ueberspringe Entfernen", accountId);
@@ -181,10 +193,9 @@ public class AccountManager : IHostedService
 
         _logger.LogInformation("Stoppe und entferne Account {Id} zur Laufzeit...", accountId);
 
-        if (_accountCts.TryGetValue(accountId, out var cts))
+        if (_accountCts.TryRemove(accountId, out var cts))
         {
             cts.Cancel();
-            _accountCts.Remove(accountId);
         }
 
         try
@@ -196,7 +207,7 @@ public class AccountManager : IHostedService
             _logger.LogWarning(ex, "Fehler beim Stoppen der Engine fuer Account {Id}", accountId);
         }
 
-        _accounts.Remove(ctx);
+        lock (_accountsLock) { _accounts.Remove(ctx); }
         _logger.LogInformation("Account {Id} entfernt", accountId);
     }
 
@@ -209,7 +220,8 @@ public class AccountManager : IHostedService
         var cfg = await _settingsRepo.GetAccountAsync(accountId);
         if (cfg == null) return;
 
-        var ctx = _accounts.FirstOrDefault(a => a.AccountId == accountId);
+        AccountContext? ctx;
+        lock (_accountsLock) { ctx = _accounts.FirstOrDefault(a => a.AccountId == accountId); }
         if (ctx == null) return;
 
         var globalWatchList = await _settingsRepo.GetGlobalWatchListAsync();
@@ -237,14 +249,18 @@ public class AccountManager : IHostedService
     /// <summary>Hot-Reload fuer alle Accounts.</summary>
     public async Task ReloadAllAccountSettingsAsync()
     {
-        await Task.WhenAll(_accounts.Select(ctx => ReloadAccountSettingsAsync(ctx.AccountId)));
+        List<AccountContext> snapshot;
+        lock (_accountsLock) { snapshot = _accounts.ToList(); }
+        await Task.WhenAll(snapshot.Select(ctx => ReloadAccountSettingsAsync(ctx.AccountId)));
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         await BuildAccountsAsync();
 
-        foreach (var ctx in _accounts)
+        List<AccountContext> snapshot;
+        lock (_accountsLock) { snapshot = _accounts.ToList(); }
+        foreach (var ctx in snapshot)
         {
             _logger.LogInformation("Starte TradingEngine fuer Account {Id}...", ctx.AccountId);
             var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -255,10 +271,12 @@ public class AccountManager : IHostedService
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("AccountManager: Graceful shutdown fuer {Count} Accounts...", _accounts.Count);
+        List<AccountContext> snapshot;
+        lock (_accountsLock) { snapshot = _accounts.ToList(); }
+        _logger.LogInformation("AccountManager: Graceful shutdown fuer {Count} Accounts...", snapshot.Count);
 
         // Phase 1: State persistieren BEVOR CancellationTokens gefeuert werden
-        foreach (var ctx in _accounts)
+        foreach (var ctx in snapshot)
         {
             try
             {
@@ -271,11 +289,11 @@ public class AccountManager : IHostedService
         }
 
         // Phase 2: Engines stoppen
-        foreach (var ctx in _accounts)
+        foreach (var ctx in snapshot)
         {
             _logger.LogInformation("Stoppe TradingEngine fuer Account {Id}...", ctx.AccountId);
 
-            if (_accountCts.TryGetValue(ctx.AccountId, out var cts))
+            if (_accountCts.TryRemove(ctx.AccountId, out var cts))
             {
                 cts.Cancel();
             }

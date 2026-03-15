@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using ClaudeTradingBot.Data;
 using ClaudeTradingBot.Models;
 using Microsoft.EntityFrameworkCore;
@@ -34,8 +35,8 @@ public class RiskManager : IRiskManager
     private volatile bool _killSwitchActive;
     private string? _killSwitchReason;
 
-    /// <summary>BrokerPositionIds die bereits partial-closed wurden (verhindert doppelten Partial Close).</summary>
-    private readonly HashSet<string> _partialClosedPositions = new();
+    /// <summary>BrokerPositionIds die bereits partial-closed wurden (verhindert doppelten Partial Close). Thread-safe.</summary>
+    private readonly ConcurrentDictionary<string, byte> _partialClosedPositions = new();
 
     private RiskSettings Settings => _settingsMonitor.CurrentValue;
 
@@ -244,7 +245,7 @@ public class RiskManager : IRiskManager
             if (Settings.PartialClosePercent > 0
                 && gainPips >= Settings.PartialCloseTriggerPips
                 && pos.BrokerPositionId != null
-                && !_partialClosedPositions.Contains(pos.BrokerPositionId))
+                && !_partialClosedPositions.ContainsKey(pos.BrokerPositionId))
             {
                 var closeQty = Math.Round(pos.Quantity * (decimal)Settings.PartialClosePercent, 2);
                 if (closeQty >= 0.01m)
@@ -252,7 +253,7 @@ public class RiskManager : IRiskManager
                     var success = await _broker.ClosePositionAsync(pos.BrokerPositionId, closeQty, ct);
                     if (success)
                     {
-                        _partialClosedPositions.Add(pos.BrokerPositionId);
+                        _partialClosedPositions.TryAdd(pos.BrokerPositionId, 0);
                         _logger.LogInformation(
                             "Partial Close: {Pct:P0} von {Symbol} geschlossen ({CloseQty:F2} von {TotalQty:F2} Lots, Gewinn: {Gain:F1} Pips)",
                             Settings.PartialClosePercent, pos.Symbol, closeQty, pos.Quantity, gainPips);
