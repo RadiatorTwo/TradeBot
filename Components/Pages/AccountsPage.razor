@@ -107,6 +107,11 @@
                         <div class="hint" style="margin-top: 4px;">Minimale KI-Confidence (0-1)</div>
                     </RadzenColumn>
                     <RadzenColumn Size="4">
+                        <RadzenLabel Text="Risiko pro Trade (%)" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="double" @bind-Value="_editRiskPerTrade" ShowUpDown="false" Min="0" Max="10" Step="0.5" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">Position Sizing basierend auf SL-Distanz. 0 = LLM entscheidet Lotgroesse</div>
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
                         <RadzenLabel Text="Max. Positionsgroesse (%)" Style="display: block; margin-bottom: 4px;" />
                         <RadzenNumeric TValue="double" @bind-Value="_editMaxPosSize" ShowUpDown="false" Min="1" Step="1" Style="width: 100%;" />
                     </RadzenColumn>
@@ -115,21 +120,81 @@
                         <RadzenNumeric TValue="int" @bind-Value="_editMaxOpenPos" ShowUpDown="false" Min="1" Style="width: 100%;" />
                     </RadzenColumn>
                     <RadzenColumn Size="4">
-                        <RadzenLabel Text="Max. Tagesverlust (%)" Style="display: block; margin-bottom: 4px;" />
-                        <RadzenNumeric TValue="double" @bind-Value="_editMaxDailyLossPercent" ShowUpDown="false" Min="0" Step="0.1m" Style="width: 100%;" />
-                    </RadzenColumn>
-                    <RadzenColumn Size="4">
-                        <RadzenLabel Text="Max. Tagesverlust ($)" Style="display: block; margin-bottom: 4px;" />
-                        <RadzenNumeric TValue="decimal" @bind-Value="_editMaxDailyLossAbsolute" ShowUpDown="false" Min="0" Step="10" Style="width: 100%;" />
-                    </RadzenColumn>
-                    <RadzenColumn Size="4">
-                        <RadzenLabel Text="Stop-Loss (%)" Style="display: block; margin-bottom: 4px;" />
-                        <RadzenNumeric TValue="double" @bind-Value="_editStopLossPercent" ShowUpDown="false" Min="0" Step="0.1m" Style="width: 100%;" />
-                    </RadzenColumn>
-                    <RadzenColumn Size="4">
                         <RadzenLabel Text="Analyse-Intervall (Min.)" Style="display: block; margin-bottom: 4px;" />
                         <RadzenNumeric TValue="int" @bind-Value="_editTradingInterval" ShowUpDown="false" Min="1" Style="width: 100%;" />
                         <div class="hint" style="margin-top: 4px;">Wie oft die Engine Marktdaten analysiert</div>
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Max. Spread (Pips)" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="double" @bind-Value="_editMaxSpreadPips" ShowUpDown="false" Min="0" Step="0.5" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">Trade wird abgelehnt bei hoeherem Spread. 0 = deaktiviert</div>
+                    </RadzenColumn>
+                </RadzenRow>
+            </details>
+
+            @* Schritt 4b: Verlustlimits *@
+            <details>
+                <summary style="cursor: pointer; font-weight: 600; margin-bottom: 12px;">Verlustlimits</summary>
+                <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Stop-Loss (%)" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="double" @bind-Value="_editStopLossPercent" ShowUpDown="false" Min="0" Step="0.5" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">Lokaler Stop-Loss pro Position (% vom Einstiegspreis)</div>
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Max. Tagesverlust (%)" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="double" @bind-Value="_editMaxDailyLossPercent" ShowUpDown="false" Min="0" Step="0.5" Style="width: 100%;" />
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Max. Tagesverlust ($)" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="decimal" @bind-Value="_editMaxDailyLossAbsolute" ShowUpDown="false" Min="0" Step="50" Style="width: 100%;" />
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Max. Wochenverlust (%)" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="double" @bind-Value="_editMaxWeeklyLoss" ShowUpDown="false" Min="0" Step="1" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">0 = deaktiviert</div>
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Max. Monatsverlust (%)" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="double" @bind-Value="_editMaxMonthlyLoss" ShowUpDown="false" Min="0" Step="1" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">0 = deaktiviert</div>
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Max. Drawdown vom Peak (%)" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="double" @bind-Value="_editMaxDrawdown" ShowUpDown="false" Min="0" Step="1" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">Kill Switch bei Ueberschreitung. 0 = deaktiviert</div>
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Max. korrelierte Exposure (%)" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="double" @bind-Value="_editMaxCorrelatedExposure" ShowUpDown="false" Min="0" Step="5" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">Blockiert Trades bei hoher Korrelation. 0 = deaktiviert</div>
+                    </RadzenColumn>
+                </RadzenRow>
+            </details>
+
+            @* Schritt 4c: Gewinnschutz *@
+            <details>
+                <summary style="cursor: pointer; font-weight: 600; margin-bottom: 12px;">Gewinnschutz</summary>
+                <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Trailing Stop (Pips)" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="double" @bind-Value="_editTrailingStop" ShowUpDown="false" Min="0" Step="5" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">SL folgt dem Kurs im Gewinn. 0 = deaktiviert</div>
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Breakeven ab (Pips)" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="double" @bind-Value="_editBreakevenTrigger" ShowUpDown="false" Min="0" Step="5" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">SL auf Einstiegspreis bei X Pips Gewinn. 0 = deaktiviert</div>
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Partial Close (%)" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="double" @bind-Value="_editPartialClosePercent" ShowUpDown="false" Min="0" Max="1" Step="0.1" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">Anteil der Position der bei TP1 geschlossen wird (0-1). 0 = deaktiviert</div>
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Partial Close ab (Pips)" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="double" @bind-Value="_editPartialCloseTrigger" ShowUpDown="false" Min="0" Step="5" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">Gewinn in Pips ab dem Partial Close ausgeloest wird</div>
                     </RadzenColumn>
                 </RadzenRow>
             </details>
@@ -307,6 +372,16 @@
     private decimal _editMaxDailyLossAbsolute = 500m;
     private double _editStopLossPercent = 5.0;
     private int _editTradingInterval = 15;
+    private double _editRiskPerTrade = 2.0;
+    private double _editMaxSpreadPips = 0;
+    private double _editMaxWeeklyLoss = 0;
+    private double _editMaxMonthlyLoss = 0;
+    private double _editMaxDrawdown = 0;
+    private double _editMaxCorrelatedExposure = 0;
+    private double _editTrailingStop = 0;
+    private double _editBreakevenTrigger = 0;
+    private double _editPartialClosePercent = 0;
+    private double _editPartialCloseTrigger = 30;
     // Grid-Trading
     private bool _editGridEnabled;
     private double _editGridSpacing = 20;
@@ -372,6 +447,16 @@
         _editMaxDailyLossAbsolute = acc.RiskManagement.MaxDailyLossAbsolute;
         _editStopLossPercent = acc.RiskManagement.StopLossPercent;
         _editTradingInterval = acc.RiskManagement.TradingIntervalMinutes;
+        _editRiskPerTrade = acc.RiskManagement.RiskPerTradePercent;
+        _editMaxSpreadPips = acc.RiskManagement.MaxSpreadPips;
+        _editMaxWeeklyLoss = acc.RiskManagement.MaxWeeklyLossPercent;
+        _editMaxMonthlyLoss = acc.RiskManagement.MaxMonthlyLossPercent;
+        _editMaxDrawdown = acc.RiskManagement.MaxDrawdownPercent;
+        _editMaxCorrelatedExposure = acc.RiskManagement.MaxCorrelatedExposurePercent;
+        _editTrailingStop = acc.RiskManagement.TrailingStopPips;
+        _editBreakevenTrigger = acc.RiskManagement.BreakevenTriggerPips;
+        _editPartialClosePercent = acc.RiskManagement.PartialClosePercent;
+        _editPartialCloseTrigger = acc.RiskManagement.PartialCloseTriggerPips;
         _editGridEnabled = acc.RiskManagement.Grid.Enabled;
         _editGridSpacing = acc.RiskManagement.Grid.GridSpacingPips;
         _editGridLotSize = acc.RiskManagement.Grid.LotSizePerLevel;
@@ -402,6 +487,16 @@
         _editMaxDailyLossAbsolute = 500m;
         _editStopLossPercent = 5.0;
         _editTradingInterval = 15;
+        _editRiskPerTrade = 2.0;
+        _editMaxSpreadPips = 0;
+        _editMaxWeeklyLoss = 0;
+        _editMaxMonthlyLoss = 0;
+        _editMaxDrawdown = 0;
+        _editMaxCorrelatedExposure = 0;
+        _editTrailingStop = 0;
+        _editBreakevenTrigger = 0;
+        _editPartialClosePercent = 0;
+        _editPartialCloseTrigger = 30;
         _editGridEnabled = false;
         _editGridSpacing = 20;
         _editGridLotSize = 0.01m;
@@ -469,6 +564,16 @@
         acc.RiskManagement.MaxDailyLossAbsolute = _editMaxDailyLossAbsolute;
         acc.RiskManagement.StopLossPercent = _editStopLossPercent;
         acc.RiskManagement.TradingIntervalMinutes = _editTradingInterval;
+        acc.RiskManagement.RiskPerTradePercent = _editRiskPerTrade;
+        acc.RiskManagement.MaxSpreadPips = _editMaxSpreadPips;
+        acc.RiskManagement.MaxWeeklyLossPercent = _editMaxWeeklyLoss;
+        acc.RiskManagement.MaxMonthlyLossPercent = _editMaxMonthlyLoss;
+        acc.RiskManagement.MaxDrawdownPercent = _editMaxDrawdown;
+        acc.RiskManagement.MaxCorrelatedExposurePercent = _editMaxCorrelatedExposure;
+        acc.RiskManagement.TrailingStopPips = _editTrailingStop;
+        acc.RiskManagement.BreakevenTriggerPips = _editBreakevenTrigger;
+        acc.RiskManagement.PartialClosePercent = _editPartialClosePercent;
+        acc.RiskManagement.PartialCloseTriggerPips = _editPartialCloseTrigger;
         acc.RiskManagement.Grid.Enabled = _editGridEnabled;
         acc.RiskManagement.Grid.GridSpacingPips = _editGridSpacing;
         acc.RiskManagement.Grid.LotSizePerLevel = _editGridLotSize;
