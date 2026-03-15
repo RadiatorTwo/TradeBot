@@ -613,6 +613,36 @@ public class TradingEngine : BackgroundService
             }
         }
 
+        // SL/TP-Schutz: wenn LLM keinen SL/TP liefert, Default setzen
+        var stopLoss = recommendation.StopLossPrice;
+        var takeProfit = recommendation.TakeProfitPrice;
+
+        if (!stopLoss.HasValue || stopLoss.Value <= 0)
+        {
+            // Default SL: 50 Pips (anpassbar via StopLossPips-Logik)
+            var defaultSlPips = 50m;
+            var slDistance = PipCalculator.PipsToPrice(symbol, defaultSlPips);
+            var isBuyAction = action == TradeAction.Buy;
+            stopLoss = isBuyAction ? currentPrice - slDistance : currentPrice + slDistance;
+
+            _logger.LogWarning(
+                "LLM hat keinen StopLoss geliefert fuer {Symbol}. Default-SL gesetzt: {SL:F5} ({Pips} Pips)",
+                symbol, stopLoss.Value, defaultSlPips);
+        }
+
+        if (!takeProfit.HasValue || takeProfit.Value <= 0)
+        {
+            // Default TP: 1.5x SL-Distanz (Risk/Reward 1:1.5)
+            var slDist = Math.Abs(currentPrice - stopLoss.Value);
+            var tpDist = slDist * 1.5m;
+            var isBuyAction = action == TradeAction.Buy;
+            takeProfit = isBuyAction ? currentPrice + tpDist : currentPrice - tpDist;
+
+            _logger.LogWarning(
+                "LLM hat keinen TakeProfit geliefert fuer {Symbol}. Default-TP gesetzt: {TP:F5} (1.5x SL-Distanz)",
+                symbol, takeProfit.Value);
+        }
+
         // Neue Position eröffnen (Lots, StopLoss, TakeProfit)
         var trade = new Trade
         {
@@ -633,7 +663,7 @@ public class TradingEngine : BackgroundService
         var execTimer = System.Diagnostics.Stopwatch.StartNew();
         var result = await _broker.PlaceOrderAsync(
             symbol, action, quantity,
-            recommendation.StopLossPrice, recommendation.TakeProfitPrice,
+            stopLoss, takeProfit,
             orderType, recommendation.EntryPrice, ct);
         execTimer.Stop();
         TradingMetrics.TradeExecutionDuration.Observe(execTimer.Elapsed.TotalSeconds);
