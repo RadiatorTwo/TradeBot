@@ -63,6 +63,15 @@ public partial class TradeLockerService
         }
     }
 
+    /// <summary>Alle verfuegbaren Symbole die vom Broker geladen wurden.</summary>
+    public List<string> GetAvailableSymbols()
+    {
+        lock (_symbolToInstrumentId)
+        {
+            return _symbolToInstrumentId.Keys.OrderBy(s => s).ToList();
+        }
+    }
+
     private int? ResolveSymbolToInstrumentId(string symbol)
     {
         if (string.IsNullOrWhiteSpace(symbol)) return null;

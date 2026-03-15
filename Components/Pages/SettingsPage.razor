@@ -41,6 +41,36 @@
         <RadzenLabel Text="Symbole (komma-separiert)" Style="display: block; margin-bottom: 4px;" />
         <RadzenTextArea @bind-Value="WatchList" Rows="3" Style="width: 100%;" />
         <div class="hint" style="margin-top: 4px;">z.B. EURUSD, GBPUSD, USDJPY, XAUUSD, US100 – gilt fuer alle Accounts ohne eigene Watchlist</div>
+
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="8px" AlignItems="AlignItems.Center" Style="margin-top: 12px;">
+            <RadzenButton Text="Symbole vom Broker laden" Icon="download" ButtonStyle="ButtonStyle.Light"
+                          Size="ButtonSize.Small" Click="@LoadBrokerSymbols" Disabled="@_loadingSymbols" />
+            @if (_loadingSymbols)
+            {
+                <RadzenText Style="color: var(--muted); font-size: 0.85rem;">Lade...</RadzenText>
+            }
+            @if (_brokerSymbols.Count > 0)
+            {
+                <RadzenText Style="color: var(--muted); font-size: 0.85rem;">@_brokerSymbols.Count Symbole verfuegbar</RadzenText>
+            }
+        </RadzenStack>
+
+        @if (_brokerSymbols.Count > 0)
+        {
+            <div style="margin-top: 12px; padding: 12px; background: var(--bg-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); max-height: 200px; overflow-y: auto;">
+                <RadzenStack Orientation="Orientation.Horizontal" Gap="6px" Wrap="FlexWrap.Wrap">
+                    @foreach (var sym in _brokerSymbols)
+                    {
+                        var isSelected = _currentWatchSymbols.Contains(sym);
+                        <RadzenButton Text="@sym" Size="ButtonSize.ExtraSmall"
+                                      ButtonStyle="@(isSelected ? ButtonStyle.Primary : ButtonStyle.Light)"
+                                      Variant="@(isSelected ? Variant.Filled : Variant.Outlined)"
+                                      Click="@(() => ToggleSymbol(sym))"
+                                      Style="font-size: 0.75rem; padding: 2px 8px;" />
+                    }
+                </RadzenStack>
+            </div>
+        }
     </RadzenCard>
 
     <!-- Multi-Timeframe -->
@@ -113,6 +143,9 @@
 
     private bool _saveSuccess;
     private List<string> _errors = new();
+    private List<string> _brokerSymbols = new();
+    private HashSet<string> _currentWatchSymbols = new(StringComparer.OrdinalIgnoreCase);
+    private bool _loadingSymbols;
 
     private record DropDownItem(string Text, string Value);
     private List<DropDownItem> _timeframeOptions = new()
@@ -174,6 +207,50 @@
         _geminiKeyMasked = MaskKey(Configuration.GetValue<string>("Gemini:ApiKey"));
         _openAIKeyMasked = MaskKey(Configuration.GetValue<string>("OpenAICompatible:ApiKey"));
         _tradeLockerEmail = Configuration.GetValue<string>("TradeLocker:Email") ?? string.Empty;
+    }
+
+    private async Task LoadBrokerSymbols()
+    {
+        _loadingSymbols = true;
+        _brokerSymbols = new();
+        StateHasChanged();
+
+        try
+        {
+            // Vom ersten verbundenen Account die Symbole laden
+            var ctx = AccountMgr.Accounts.FirstOrDefault(a => a.EffectiveBroker.IsConnected);
+            if (ctx is null)
+            {
+                _errors.Add("Kein Account verbunden. Bitte zuerst einen Account unter Accounts anlegen und verbinden.");
+                return;
+            }
+
+            _brokerSymbols = ctx.Broker.GetAvailableSymbols();
+            _currentWatchSymbols = WatchList
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            if (_brokerSymbols.Count == 0)
+                _errors.Add("Broker hat keine Instrumente geladen. Ist der Account verbunden?");
+        }
+        catch (Exception ex)
+        {
+            _errors.Add($"Fehler beim Laden: {ex.Message}");
+        }
+        finally
+        {
+            _loadingSymbols = false;
+        }
+    }
+
+    private void ToggleSymbol(string symbol)
+    {
+        if (_currentWatchSymbols.Contains(symbol))
+            _currentWatchSymbols.Remove(symbol);
+        else
+            _currentWatchSymbols.Add(symbol);
+
+        WatchList = string.Join(", ", _currentWatchSymbols.OrderBy(s => s));
     }
 
     private static string MaskKey(string? key)
