@@ -56,8 +56,8 @@ public class ClaudeTradeRecommendation
 {
     public string Symbol { get; set; } = string.Empty;
     public string Action { get; set; } = "hold";
-    public decimal Quantity { get; set; }
-    public double Confidence { get; set; }
+    public decimal? Quantity { get; set; }
+    public double? Confidence { get; set; }
     public string Reasoning { get; set; } = string.Empty;
     public decimal? StopLossPrice { get; set; }
     public decimal? TakeProfitPrice { get; set; }

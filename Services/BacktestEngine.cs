@@ -165,7 +165,7 @@ public class BacktestEngine
                             var slDistPips = PipCalculator.PriceToPips(config.Symbol, Math.Abs(candle.Close - actualSl));
                             lots = pipValue > 0 && slDistPips > 0
                                 ? riskAmount / (slDistPips * pipValue)
-                                : llmRec.Quantity > 0 ? llmRec.Quantity : 0.01m;
+                                : (llmRec.Quantity ?? 0m) > 0 ? (llmRec.Quantity ?? 0.01m) : 0.01m;
                         }
                         else
                         {

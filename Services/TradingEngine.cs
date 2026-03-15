@@ -496,7 +496,7 @@ public class TradingEngine : BackgroundService
                     ExecutedAt = closeSuccess ? DateTime.UtcNow : null,
                     Status = closeSuccess ? TradeStatus.Executed : TradeStatus.Failed,
                     ClaudeReasoning = $"Position geschlossen: LLM empfiehlt {recommendation.Action.ToUpper()} (Confidence: {recommendation.Confidence:P0}). {recommendation.Reasoning}",
-                    ClaudeConfidence = recommendation.Confidence,
+                    ClaudeConfidence = recommendation.Confidence ?? 0.0,
                     BrokerPositionId = pos.BrokerPositionId,
                     ErrorMessage = closeSuccess ? null : "Close-Order fehlgeschlagen",
                     SetupType = recommendation.SetupType
@@ -536,10 +536,10 @@ public class TradingEngine : BackgroundService
                     AccountId = AccountId,
                     Symbol = symbol,
                     Action = action,
-                    Quantity = recommendation.Quantity,
+                    Quantity = recommendation.Quantity ?? 0.01m,
                     Price = currentPrice,
                     ClaudeReasoning = recommendation.Reasoning,
-                    ClaudeConfidence = recommendation.Confidence,
+                    ClaudeConfidence = recommendation.Confidence ?? 0.0,
                     Status = TradeStatus.Rejected,
                     ErrorMessage = "Trade rejected by RiskManager",
                     SetupType = recommendation.SetupType
@@ -595,7 +595,7 @@ public class TradingEngine : BackgroundService
         }
 
         // Risk-based Position Sizing: Lot-Größe aus SL-Distanz berechnen
-        var quantity = recommendation.Quantity;
+        var quantity = recommendation.Quantity ?? 0.01m;
         if (Settings.RiskPerTradePercent > 0 && recommendation.StopLossPrice.HasValue && recommendation.StopLossPrice.Value > 0)
         {
             var calculatedLots = CalculatePositionSize(
@@ -625,7 +625,7 @@ public class TradingEngine : BackgroundService
             Price = currentPrice,
             SpreadAtEntry = spreadPips > 0 ? spreadPips : null,
             ClaudeReasoning = recommendation.Reasoning,
-            ClaudeConfidence = recommendation.Confidence,
+            ClaudeConfidence = recommendation.Confidence ?? 0.0,
             Status = TradeStatus.Pending,
             SetupType = recommendation.SetupType
         };
