@@ -332,8 +332,15 @@ public partial class TradeLockerService
                 });
             }
 
-            _logger.LogInformation("GetPendingOrders: {Count} pending orders (gefiltert von {Total} total)",
-                list.Count, ordersEl.GetArrayLength());
+            // Alle Order-Typen loggen fuer Debugging
+            var allTypes = new List<string>();
+            foreach (var item in ordersEl.EnumerateArray())
+            {
+                if (item.ValueKind == System.Text.Json.JsonValueKind.Array && item.GetArrayLength() > 6)
+                    allTypes.Add(item[6].ToString());
+            }
+            _logger.LogInformation("GetPendingOrders: {Count} pending orders (von {Total} total). Typen: {Types}",
+                list.Count, ordersEl.GetArrayLength(), string.Join(", ", allTypes.Distinct()));
         }
         catch (Exception ex)
         {
