@@ -7,6 +7,7 @@
 @inject EconomicCalendarService Calendar
 @inject IDbContextFactory<TradingDbContext> DbFactory
 @inject NavigationManager Navigation
+@inject DialogService DialogService
 @implements IAsyncDisposable
 
 <PageTitle>Dashboard - Claude Trading Bot</PageTitle>
@@ -390,14 +391,28 @@ else
         vm = vm with { IsEnginePaused = false };
     }
 
-    private void ActivateKillSwitch()
+    private async Task ActivateKillSwitch()
     {
+        var confirmed = await DialogService.Confirm(
+            "Kill Switch aktivieren? Alle Trading-Aktivitaeten werden sofort gestoppt. Offene Positionen bleiben bestehen.",
+            "Kill Switch aktivieren",
+            new ConfirmOptions { OkButtonText = "Aktivieren", CancelButtonText = "Abbrechen" });
+
+        if (confirmed != true) return;
+
         SelectedAccount?.Risk.ActivateKillSwitch("Manuell via Dashboard aktiviert");
         vm = vm with { IsKillSwitchActive = true, IsEnginePaused = false };
     }
 
-    private void ResetKillSwitch()
+    private async Task ResetKillSwitch()
     {
+        var confirmed = await DialogService.Confirm(
+            "Kill Switch zuruecksetzen? Der Trading Bot wird wieder Trades ausfuehren.",
+            "Kill Switch zuruecksetzen",
+            new ConfirmOptions { OkButtonText = "Zuruecksetzen", CancelButtonText = "Abbrechen" });
+
+        if (confirmed != true) return;
+
         SelectedAccount?.Risk.ResetKillSwitch();
         vm = vm with { IsKillSwitchActive = false };
     }

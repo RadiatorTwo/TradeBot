@@ -33,7 +33,7 @@ Priorisierte Uebersicht der Verbesserungen fuer Produktionsreife und Codequalita
 | # | Verbesserung | Aufwand | Status |
 |---|---|---|---|
 | 12 | **Dead Code entfernen** – `SimulatedBrokerService` (230 Zeilen) und `IBSettings` entfernt | 0.5 Tage | Erledigt |
-| 13 | **UX** – Bestaetigungsdialoge fuer destruktive Aktionen, Pagination bei Trade-History | 1-2 Tage | Offen |
+| 13 | **UX** – Pagination (50/Seite) mit PnL-Spalte in Trade-History, Bestaetigungsdialoge fuer Kill Switch Aktivierung/Reset | 1-2 Tage | Erledigt |
 
 ## Empfehlung
 

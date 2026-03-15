@@ -1,6 +1,8 @@
 @page "/trades"
 @using ClaudeTradingBot.Data
+@using Microsoft.AspNetCore.Authorization
 @using Microsoft.EntityFrameworkCore
+@attribute [Authorize]
 @inject IDbContextFactory<TradingDbContext> DbFactory
 
 <PageTitle>Trade-Historie - Claude Trading Bot</PageTitle>
@@ -31,7 +33,9 @@
 
 @if (_trades.Any())
 {
-    <RadzenDataGrid Data="@_trades" TItem="Trade" Density="Density.Compact" AllowSorting="true">
+    <RadzenDataGrid Data="@_trades" TItem="Trade" Density="Density.Compact" AllowSorting="true"
+                    AllowPaging="true" PageSize="50" PagerHorizontalAlign="HorizontalAlign.Center"
+                    ShowPagingSummary="true" PagingSummaryFormat="Seite {0} von {1} ({2} Trades)">
         <Columns>
             <RadzenDataGridColumn TItem="Trade" Property="CreatedAt" Title="Zeit" Width="150px">
                 <Template Context="t">
@@ -55,7 +59,21 @@
             <RadzenDataGridColumn TItem="Trade" Property="Price" Title="Preis" Width="100px">
                 <Template Context="t">$@t.Price.ToString("F4")</Template>
             </RadzenDataGridColumn>
-            <RadzenDataGridColumn TItem="Trade" Property="ClaudeConfidence" Title="Confidence" Width="100px">
+            <RadzenDataGridColumn TItem="Trade" Property="RealizedPnL" Title="PnL" Width="100px">
+                <Template Context="t">
+                    @if (t.RealizedPnL.HasValue)
+                    {
+                        <span style="color: @(t.RealizedPnL >= 0 ? "var(--rz-success)" : "var(--rz-danger)");">
+                            @t.RealizedPnL.Value.ToString("+0.00;-0.00")
+                        </span>
+                    }
+                    else
+                    {
+                        <span>—</span>
+                    }
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="Trade" Property="ClaudeConfidence" Title="Confidence" Width="90px">
                 <Template Context="t">@t.ClaudeConfidence.ToString("P0")</Template>
             </RadzenDataGridColumn>
             <RadzenDataGridColumn TItem="Trade" Title="Status" Width="120px" Sortable="false">
@@ -81,7 +99,6 @@ else
     private string FilterStatus { get; set; } = string.Empty;
 
     private List<Trade> _trades = new();
-    private List<string> _availableSymbols = new();
 
     private record DropDownItem(string Text, string Value);
 
@@ -108,14 +125,14 @@ else
     private async Task LoadSymbols()
     {
         await using var db = await DbFactory.CreateDbContextAsync();
-        _availableSymbols = await db.Trades
+        var symbols = await db.Trades
             .Select(t => t.Symbol)
             .Distinct()
             .OrderBy(s => s)
             .ToListAsync();
 
         _symbolOptions = new List<DropDownItem> { new("Alle", "") };
-        _symbolOptions.AddRange(_availableSymbols.Select(s => new DropDownItem(s, s)));
+        _symbolOptions.AddRange(symbols.Select(s => new DropDownItem(s, s)));
     }
 
     private async Task ApplyFilter()
@@ -137,7 +154,7 @@ else
 
         _trades = await query
             .OrderByDescending(t => t.CreatedAt)
-            .Take(200)
+            .Take(2000)
             .ToListAsync();
     }
 }
