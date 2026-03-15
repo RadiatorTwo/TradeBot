@@ -14,8 +14,8 @@
             <AuthorizeView>
                 <Authorized>
                     <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px">
-                        <RadzenIcon Icon="person" Style="font-size: 18px; color: #aaa;" />
-                        <RadzenText TextStyle="TextStyle.Body2" Style="margin: 0; color: #ccc;">@context.User.Identity?.Name</RadzenText>
+                        <RadzenIcon Icon="person" Style="font-size: 18px; color: var(--muted);" />
+                        <RadzenText TextStyle="TextStyle.Body2" Style="margin: 0; color: var(--text-secondary);">@context.User.Identity?.Name</RadzenText>
                         <RadzenButton Text="Logout" Icon="logout" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
                                       Click="@DoLogout" />
                     </RadzenStack>

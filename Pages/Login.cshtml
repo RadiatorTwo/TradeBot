@@ -9,76 +9,92 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Login - Claude Trading Bot</title>
+    <link rel="stylesheet" href="/css/theme.css" />
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #1a1a2e;
-            color: #e0e0e0;
+            font-family: var(--font-sans);
+            background: var(--bg);
+            color: var(--text);
             display: flex;
             align-items: center;
             justify-content: center;
             min-height: 100vh;
         }
         .login-card {
-            background: #16213e;
-            border-radius: 12px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
             padding: 40px;
             width: 100%;
             max-width: 400px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            box-shadow: var(--shadow-lg);
         }
         .login-title {
             font-size: 1.5rem;
             margin-bottom: 8px;
             text-align: center;
+            font-weight: 700;
         }
-        .login-title span { color: #7c4dff; }
+        .login-title span { color: var(--accent); }
         .login-subtitle {
-            color: #888;
+            color: var(--muted);
             text-align: center;
-            margin-bottom: 24px;
+            margin-bottom: 28px;
             font-size: 0.9rem;
         }
-        .form-group { margin-bottom: 16px; }
+        .form-group { margin-bottom: 18px; }
         .form-group label {
             display: block;
             margin-bottom: 6px;
-            font-size: 0.875rem;
-            color: #aaa;
+            font-size: 0.75rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
         .form-group input {
             width: 100%;
-            padding: 10px 14px;
-            border: 1px solid #333;
-            border-radius: 6px;
-            background: #0f3460;
-            color: #e0e0e0;
-            font-size: 1rem;
+            padding: 11px 14px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--bg-raised);
+            color: var(--text);
+            font-size: 0.95rem;
+            font-family: var(--font-sans);
             outline: none;
-            transition: border-color 0.2s;
+            transition: border-color 0.2s, box-shadow 0.2s;
         }
-        .form-group input:focus { border-color: #7c4dff; }
+        .form-group input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px var(--accent-glow);
+        }
         .btn-login {
             width: 100%;
             padding: 12px;
-            background: #7c4dff;
+            background: var(--accent);
             color: #fff;
             border: none;
-            border-radius: 6px;
-            font-size: 1rem;
+            border-radius: var(--radius-sm);
+            font-size: 0.95rem;
+            font-weight: 600;
+            font-family: var(--font-sans);
             cursor: pointer;
-            transition: background 0.2s;
+            transition: background 0.2s, box-shadow 0.2s;
             margin-top: 8px;
+            box-shadow: 0 2px 8px var(--accent-glow);
         }
-        .btn-login:hover { background: #651fff; }
+        .btn-login:hover {
+            background: var(--accent-hover);
+            box-shadow: var(--shadow-glow);
+        }
         .error-msg {
-            background: rgba(244, 67, 54, 0.15);
-            color: #ef5350;
+            background: var(--red-bg);
+            color: var(--red);
             padding: 10px 14px;
-            border-radius: 6px;
+            border-radius: var(--radius-sm);
             margin-bottom: 16px;
-            font-size: 0.875rem;
+            font-size: 0.85rem;
+            border: 1px solid rgba(244, 63, 94, 0.25);
         }
     </style>
 </head>

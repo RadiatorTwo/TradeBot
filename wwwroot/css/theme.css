@@ -1,0 +1,133 @@
+/*
+ * Theme: Modern Fintech
+ *
+ * Um das Farbschema zu aendern, nur diese Datei anpassen.
+ * Alle Komponenten und Radzen-Overrides verwenden ausschliesslich diese Variablen.
+ *
+ * Alternativen (auskommentiert am Ende der Datei):
+ * - Bloomberg Terminal
+ * - Dark Slate (Warm Finance)
+ */
+
+:root {
+    /* ── Hintergruende ───────────────────────────────────────── */
+    --bg:              #0c1222;
+    --bg-raised:       #0f1729;
+    --surface:         #131c31;
+    --surface-hover:   #182440;
+
+    /* ── Borders & Dividers ──────────────────────────────────── */
+    --border:          #1e2d4a;
+    --border-subtle:   #162038;
+
+    /* ── Text ────────────────────────────────────────────────── */
+    --text:            #e2e8f0;
+    --text-secondary:  #94a3b8;
+    --muted:           #64748b;
+
+    /* ── Akzent (primaer) ────────────────────────────────────── */
+    --accent:          #06b6d4;
+    --accent-hover:    #0891b2;
+    --accent-glow:     rgba(6, 182, 212, 0.15);
+    --accent-subtle:   rgba(6, 182, 212, 0.08);
+
+    /* ── Semantische Farben ──────────────────────────────────── */
+    --green:           #10b981;
+    --green-bg:        rgba(16, 185, 129, 0.12);
+    --red:             #f43f5e;
+    --red-bg:          rgba(244, 63, 94, 0.12);
+    --yellow:          #f59e0b;
+    --yellow-bg:       rgba(245, 158, 11, 0.12);
+    --blue:            #3b82f6;
+    --blue-bg:         rgba(59, 130, 246, 0.12);
+
+    /* ── Geometrie ───────────────────────────────────────────── */
+    --radius-sm:       6px;
+    --radius-md:       10px;
+    --radius-lg:       14px;
+
+    /* ── Schatten ─────────────────────────────────────────────── */
+    --shadow-sm:       0 1px 3px rgba(0, 0, 0, 0.3);
+    --shadow-md:       0 4px 12px rgba(0, 0, 0, 0.4);
+    --shadow-lg:       0 8px 32px rgba(0, 0, 0, 0.5);
+    --shadow-glow:     0 0 20px var(--accent-glow);
+
+    /* ── Typographie ─────────────────────────────────────────── */
+    --font-sans:       'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono:       'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+}
+
+/* ════════════════════════════════════════════════════════════════
+ * ALTERNATIVE THEMES (auskommentieren und :root oben ersetzen)
+ * ════════════════════════════════════════════════════════════════
+ *
+ * --- Bloomberg Terminal ---
+ *
+ * :root {
+ *     --bg:              #000000;
+ *     --bg-raised:       #0a0a0a;
+ *     --surface:         #111111;
+ *     --surface-hover:   #1a1a1a;
+ *     --border:          #222222;
+ *     --border-subtle:   #1a1a1a;
+ *     --text:            #d4d4d4;
+ *     --text-secondary:  #888888;
+ *     --muted:           #666666;
+ *     --accent:          #00d4aa;
+ *     --accent-hover:    #00b894;
+ *     --accent-glow:     rgba(0, 212, 170, 0.15);
+ *     --accent-subtle:   rgba(0, 212, 170, 0.08);
+ *     --green:           #00d4aa;
+ *     --green-bg:        rgba(0, 212, 170, 0.12);
+ *     --red:             #ff4757;
+ *     --red-bg:          rgba(255, 71, 87, 0.12);
+ *     --yellow:          #ffa502;
+ *     --yellow-bg:       rgba(255, 165, 2, 0.12);
+ *     --blue:            #3742fa;
+ *     --blue-bg:         rgba(55, 66, 250, 0.12);
+ *     --radius-sm:       4px;
+ *     --radius-md:       6px;
+ *     --radius-lg:       8px;
+ *     --shadow-sm:       none;
+ *     --shadow-md:       none;
+ *     --shadow-lg:       0 4px 16px rgba(0, 0, 0, 0.6);
+ *     --shadow-glow:     0 0 12px rgba(0, 212, 170, 0.2);
+ *     --font-sans:       'SF Mono', 'Cascadia Code', monospace;
+ *     --font-mono:       'SF Mono', 'Cascadia Code', monospace;
+ * }
+ *
+ * --- Dark Slate (Warm Finance) ---
+ *
+ * :root {
+ *     --bg:              #111318;
+ *     --bg-raised:       #15171e;
+ *     --surface:         #1c1f26;
+ *     --surface-hover:   #24272f;
+ *     --border:          #2e3139;
+ *     --border-subtle:   #252830;
+ *     --text:            #e4e4e7;
+ *     --text-secondary:  #a1a1aa;
+ *     --muted:           #71717a;
+ *     --accent:          #f59e0b;
+ *     --accent-hover:    #d97706;
+ *     --accent-glow:     rgba(245, 158, 11, 0.15);
+ *     --accent-subtle:   rgba(245, 158, 11, 0.08);
+ *     --green:           #22c55e;
+ *     --green-bg:        rgba(34, 197, 94, 0.12);
+ *     --red:             #ef4444;
+ *     --red-bg:          rgba(239, 68, 68, 0.12);
+ *     --yellow:          #f59e0b;
+ *     --yellow-bg:       rgba(245, 158, 11, 0.12);
+ *     --blue:            #6366f1;
+ *     --blue-bg:         rgba(99, 102, 241, 0.12);
+ *     --radius-sm:       8px;
+ *     --radius-md:       12px;
+ *     --radius-lg:       16px;
+ *     --shadow-sm:       0 1px 2px rgba(0, 0, 0, 0.2);
+ *     --shadow-md:       0 4px 8px rgba(0, 0, 0, 0.3);
+ *     --shadow-lg:       0 8px 24px rgba(0, 0, 0, 0.4);
+ *     --shadow-glow:     0 0 16px rgba(245, 158, 11, 0.15);
+ *     --font-sans:       'Inter', -apple-system, sans-serif;
+ *     --font-mono:       'JetBrains Mono', monospace;
+ * }
+ */
