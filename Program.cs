@@ -312,8 +312,8 @@ static void ConfigureLlmResilience(Microsoft.Extensions.Http.Resilience.HttpStan
     // Retry: 2 Versuche mit exponentiellem Backoff
     o.Retry.MaxRetryAttempts = 2;
     o.Retry.Delay = TimeSpan.FromSeconds(3);
-    // Circuit Breaker: nach 5 Fehlern 30s offen
-    o.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(60);
+    // Circuit Breaker: nach 5 Fehlern 30s offen (SamplingDuration >= 2x AttemptTimeout)
+    o.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(120);
     o.CircuitBreaker.FailureRatio = 0.8;
     o.CircuitBreaker.MinimumThroughput = 5;
     o.CircuitBreaker.BreakDuration = TimeSpan.FromSeconds(30);
