@@ -248,7 +248,7 @@ app.MapGet("/account/logout", async (HttpContext context) =>
 // ── Blazor + SignalR ────────────────────────────────────────────────────
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
-app.MapHub<TradingHub>("/tradinghub").RequireAuthorization();
+app.MapHub<TradingHub>("/tradinghub").AllowAnonymous(); // Auth via Login-Middleware, SignalR-Client sendet keine Cookies beim negotiate
 
 // ── Health Check Endpunkt ──────────────────────────────────────────────
 app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
