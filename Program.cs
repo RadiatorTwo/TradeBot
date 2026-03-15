@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Prometheus;
 using Radzen;
 using Serilog;
 
@@ -175,6 +176,10 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
+app.UseHttpMetrics(); // Prometheus HTTP-Metriken
+
+// ── Prometheus Metriken ──────────────────────────────────────────────────
+app.MapMetrics(); // /metrics Endpunkt (Prometheus-Format)
 
 // ── Razor Pages (Login) ──────────────────────────────────────────────────
 app.MapRazorPages().AllowAnonymous();

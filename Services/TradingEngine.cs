@@ -358,7 +358,12 @@ public class TradingEngine : BackgroundService
             symbol, currentPrice, bid, ask,
             recentPrices.Count, candles1D.Count, candles4H.Count, candles1H.Count);
 
+        var llmTimer = System.Diagnostics.Stopwatch.StartNew();
         var recommendation = await _claude.AnalyzeAsync(request, ct);
+        llmTimer.Stop();
+        TradingMetrics.LlmAnalysisDuration.WithLabels(_config["Llm:Provider"] ?? "unknown")
+            .Observe(llmTimer.Elapsed.TotalSeconds);
+        TradingMetrics.LlmCallsTotal.WithLabels(_config["Llm:Provider"] ?? "unknown", recommendation != null ? "success" : "null").Inc();
 
         if (recommendation == null)
         {
@@ -539,7 +544,10 @@ public class TradingEngine : BackgroundService
                     ErrorMessage = "Trade rejected by RiskManager",
                     SetupType = recommendation.SetupType
                 });
+                TradingMetrics.TradesTotal.WithLabels("rejected", AccountId).Inc();
+                TradingMetrics.RejectedTrades.WithLabels("risk_manager").Inc();
             }
+            TradingMetrics.TradesByAction.WithLabels(recommendation.Action.ToLower(), symbol, AccountId).Inc();
             db.TradingLogs.Add(new TradingLog
             {
                 AccountId = AccountId,
@@ -622,10 +630,13 @@ public class TradingEngine : BackgroundService
             SetupType = recommendation.SetupType
         };
 
+        var execTimer = System.Diagnostics.Stopwatch.StartNew();
         var result = await _broker.PlaceOrderAsync(
             symbol, action, quantity,
             recommendation.StopLossPrice, recommendation.TakeProfitPrice,
             orderType, recommendation.EntryPrice, ct);
+        execTimer.Stop();
+        TradingMetrics.TradeExecutionDuration.Observe(execTimer.Elapsed.TotalSeconds);
 
         if (orderType == OrderType.Market)
         {
@@ -643,6 +654,9 @@ public class TradingEngine : BackgroundService
         trade.BrokerPositionId = result.BrokerPositionId;
         if (!result.Success)
             trade.ErrorMessage = "Order execution failed at broker";
+
+        TradingMetrics.TradesTotal.WithLabels(trade.Status.ToString().ToLower(), AccountId).Inc();
+        TradingMetrics.TradesByAction.WithLabels(recommendation.Action.ToLower(), symbol, AccountId).Inc();
 
         db.Trades.Add(trade);
 

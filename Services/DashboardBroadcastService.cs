@@ -109,6 +109,11 @@ public class DashboardBroadcastService : BackgroundService
             }
         }
 
+        // Prometheus-Gauges aktualisieren
+        TradingMetrics.PortfolioEquity.WithLabels(ctx.AccountId).Set((double)portfolioValue);
+        TradingMetrics.OpenPositionCount.WithLabels(ctx.AccountId).Set(positions.Count);
+        TradingMetrics.KillSwitchActive.WithLabels(ctx.AccountId).Set(ctx.Risk.IsKillSwitchActive ? 1 : 0);
+
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var aid = ctx.AccountId;
 
