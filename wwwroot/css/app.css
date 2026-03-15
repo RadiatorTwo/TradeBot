@@ -614,7 +614,7 @@ tr:last-child td { border-bottom: none; }
 
 .rz-alert {
     border-radius: var(--radius-md) !important;
-    font-size: 0.85rem !important;
+    font-size: 0.95rem !important;
 }
 
 /* ── ProgressBar ──────────────────────────────────────────────────── */
