@@ -15,7 +15,7 @@ Priorisierte Uebersicht der Verbesserungen fuer Produktionsreife und Codequalita
 |---|---|---|---|
 | 3 | **Fehlende UI-Seiten** – Grid Dashboard, Pending Orders, Portfolio-Allokation, News & Kalender hinzugefuegt | 5-8 Tage | Erledigt |
 | 4 | **Models.cs aufteilen** – 949 Zeilen in 7 fokussierte Dateien: Enums, Entities, ConfigSettings, Dtos, TradingCalculations, TradeLockerModels, ViewModels | 1-2 Tage | Erledigt |
-| 5 | **TradeLockerService.cs aufteilen** – ~2000 Zeilen, mischt Auth, Marktdaten, Orders in Auth/MarketData/Order-Services splitten | 2-3 Tage | Offen |
+| 5 | **TradeLockerService.cs aufteilen** – 1739 Zeilen in 4 partial classes: Core (488), MarketData (583), Account (328), Orders (363) | 2-3 Tage | Erledigt |
 | 6 | **Silent Error Swallowing** – 6 leere `catch {}`-Bloecke, u.a. in kritischen Pfaden (Dashboard, RiskManager, GridModels) | 0.5 Tage | Offen |
 
 ## P2 – Operationale Exzellenz
