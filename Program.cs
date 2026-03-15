@@ -116,6 +116,7 @@ builder.Services.AddAuthorization(options =>
         .Build();
 });
 builder.Services.AddRazorPages();
+builder.Services.AddHttpContextAccessor();
 
 // ── Rate Limiting ────────────────────────────────────────────────────
 builder.Services.AddRateLimiter(options =>
@@ -223,6 +224,7 @@ app.Use(async (context, next) =>
         && !path.StartsWith("/health", StringComparison.OrdinalIgnoreCase)
         && !path.StartsWith("/metrics", StringComparison.OrdinalIgnoreCase)
         && !path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase)
+        && !path.StartsWith("/tradinghub", StringComparison.OrdinalIgnoreCase)
         && !Path.HasExtension(path))
     {
         context.Response.Redirect("/login");
@@ -248,7 +250,7 @@ app.MapGet("/account/logout", async (HttpContext context) =>
 // ── Blazor + SignalR ────────────────────────────────────────────────────
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
-app.MapHub<TradingHub>("/tradinghub").AllowAnonymous(); // Auth via Login-Middleware, SignalR-Client sendet keine Cookies beim negotiate
+app.MapHub<TradingHub>("/tradinghub"); // Geschuetzt durch FallbackPolicy (RequireAuthenticatedUser)
 
 // ── Health Check Endpunkt ──────────────────────────────────────────────
 app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions

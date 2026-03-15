@@ -8,6 +8,7 @@
 @inject IDbContextFactory<TradingDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject DialogService DialogService
+@inject IHttpContextAccessor HttpContextAccessor
 @implements IAsyncDisposable
 
 <PageTitle>Dashboard - NeuronTrade</PageTitle>
@@ -257,8 +258,14 @@ else
     {
         _selectedAccountId = AccountMgr.DefaultAccount?.AccountId ?? "default";
 
+        // Auth-Cookie aus dem aktuellen Request an den SignalR-Client weiterreichen
+        var cookies = HttpContextAccessor.HttpContext?.Request.Headers.Cookie.ToString();
         _hubConnection = new HubConnectionBuilder()
-            .WithUrl(Navigation.ToAbsoluteUri("/tradinghub"))
+            .WithUrl(Navigation.ToAbsoluteUri("/tradinghub"), options =>
+            {
+                if (!string.IsNullOrEmpty(cookies))
+                    options.Headers["Cookie"] = cookies;
+            })
             .WithAutomaticReconnect()
             .Build();
 
