@@ -176,6 +176,23 @@
                 </RadzenRow>
             </details>
 
+            @* Schritt 6: Strategie / LLM-Prompt *@
+            <details>
+                <summary style="cursor: pointer; font-weight: 600; margin-bottom: 12px;">Strategie / LLM-Prompt</summary>
+                <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
+                    <RadzenColumn Size="6">
+                        <RadzenLabel Text="Strategie-Label" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenTextBox @bind-Value="_editStrategyLabel" Placeholder="z.B. Konservativ, Aggressiv" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">Wird im Strategie-Vergleich angezeigt</div>
+                    </RadzenColumn>
+                    <RadzenColumn Size="12">
+                        <RadzenLabel Text="Custom System-Prompt (optional)" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenTextArea @bind-Value="_editStrategyPrompt" Rows="6" Style="width: 100%;" Placeholder="Leer = Standard-Prompt. Hier eigene Trading-Strategie beschreiben die das LLM befolgen soll..." />
+                        <div class="hint" style="margin-top: 4px;">Ueberschreibt den Standard-System-Prompt fuer diesen Account. Beschreibt die Handelsstrategie, erlaubte Instrumente, Risikoverhalten etc.</div>
+                    </RadzenColumn>
+                </RadzenRow>
+            </details>
+
             <RadzenStack Orientation="Orientation.Horizontal" Gap="8px" Style="margin-top: 8px;">
                 <RadzenButton Text="@(_editMode ? "Speichern" : "Account anlegen")" ButtonStyle="ButtonStyle.Primary" ButtonType="ButtonType.Submit" />
                 <RadzenButton Text="Abbrechen" Variant="Variant.Outlined" Click="@HideForm" ButtonType="ButtonType.Button" />
@@ -292,6 +309,9 @@
     private int _editGridLevelsBelow = 5;
     private int _editGridMaxActive = 3;
     private int _editGridMaxPerCycle = 2;
+    // Strategie
+    private string _editStrategyPrompt = string.Empty;
+    private string _editStrategyLabel = string.Empty;
 
     private record DropDownItem(string Text, string Value);
     private List<DropDownItem> _serverUrlOptions = new()
@@ -353,6 +373,8 @@
         _editGridLevelsBelow = acc.RiskManagement.Grid.GridLevelsBelow;
         _editGridMaxActive = acc.RiskManagement.Grid.MaxActiveGrids;
         _editGridMaxPerCycle = acc.RiskManagement.Grid.MaxLevelsPerCycle;
+        _editStrategyPrompt = acc.StrategyPrompt;
+        _editStrategyLabel = acc.StrategyLabel;
     }
 
     private void ResetFormFields()
@@ -381,6 +403,8 @@
         _editGridLevelsBelow = 5;
         _editGridMaxActive = 3;
         _editGridMaxPerCycle = 2;
+        _editStrategyPrompt = string.Empty;
+        _editStrategyLabel = string.Empty;
     }
 
     private async Task SaveAccount()
@@ -446,6 +470,8 @@
         acc.RiskManagement.Grid.GridLevelsBelow = _editGridLevelsBelow;
         acc.RiskManagement.Grid.MaxActiveGrids = _editGridMaxActive;
         acc.RiskManagement.Grid.MaxLevelsPerCycle = _editGridMaxPerCycle;
+        acc.StrategyPrompt = _editStrategyPrompt;
+        acc.StrategyLabel = _editStrategyLabel;
 
         try
         {
