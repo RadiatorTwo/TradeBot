@@ -323,7 +323,7 @@ app.MapGet("/api/trades/export", async (
         fileName);
 }).RequireAuthorization().RequireRateLimiting("export");
 
-Log.Information("Claude Trading Bot starting...");
+Log.Information("NeuronTrade starting...");
 app.Run();
 
 // ── Circuit Breaker Konfigurationen ─────────────────────────────────────
