@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using System.Threading.RateLimiting;
 using Prometheus;
 using Radzen;
 using Serilog;
@@ -116,6 +117,30 @@ builder.Services.AddAuthorization(options =>
 });
 builder.Services.AddRazorPages();
 
+// ── Rate Limiting ────────────────────────────────────────────────────
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    // API-Endpunkte: max 30 Requests pro Minute pro User
+    options.AddPolicy("api", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.User.Identity?.Name ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 30,
+                Window = TimeSpan.FromMinutes(1)
+            }));
+    // Export: max 5 pro Minute (schwere DB-Query)
+    options.AddPolicy("export", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.User.Identity?.Name ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(1)
+            }));
+});
+
 // ── Blazor Server + Radzen ────────────────────────────────────────────
 builder.Services.AddRadzenComponents();
 builder.Services.AddRazorComponents()
@@ -180,6 +205,7 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
+app.UseRateLimiter();
 app.UseHttpMetrics(); // Prometheus HTTP-Metriken
 
 // ── Prometheus Metriken ──────────────────────────────────────────────────
@@ -232,7 +258,7 @@ app.MapGet("/api/pnl-history", async (TradingDbContext db) =>
         .Select(d => new { date = d.Date.ToString("yyyy-MM-dd"), portfolio = d.PortfolioValue, pnl = d.RealizedPnL })
         .ToListAsync();
     return Results.Ok(history);
-}).RequireAuthorization();
+}).RequireAuthorization().RequireRateLimiting("api");
 
 // ── CSV-Export für Trade-Historie ────────────────────────────────────────
 app.MapGet("/api/trades/export", async (
@@ -271,7 +297,7 @@ app.MapGet("/api/trades/export", async (
         System.Text.Encoding.UTF8.GetBytes(sb.ToString()),
         "text/csv",
         fileName);
-}).RequireAuthorization();
+}).RequireAuthorization().RequireRateLimiting("export");
 
 Log.Information("Claude Trading Bot starting...");
 app.Run();

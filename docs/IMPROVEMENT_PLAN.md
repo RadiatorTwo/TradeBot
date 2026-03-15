@@ -26,7 +26,7 @@ Priorisierte Uebersicht der Verbesserungen fuer Produktionsreife und Codequalita
 | 8 | **DB-Optimierung** – 4 Composite-Indexes (Trade, TradingLog), Daten-Retention (Logs > 90 Tage bei Startup loeschen) | 1-2 Tage | Erledigt |
 | 9 | **Metriken** – Prometheus /metrics Endpunkt: Trade-Counter, LLM-Latenz-Histogram, Broker-Latenz, Portfolio-Gauge, Kill-Switch-Gauge, Rejection-Counter | 2 Tage | Erledigt |
 | 10 | **Circuit Breaker** – StandardResilienceHandler (Polly) fuer LLM, Broker und News HttpClients mit angepassten Timeouts, Retry und Circuit Breaker | 1-2 Tage | Erledigt |
-| 11 | **Rate Limiting** auf API-Endpunkten (`/api/pnl-history`, `/api/trades/export`) | 0.5 Tage | Offen |
+| 11 | **Rate Limiting** – Built-in .NET RateLimiter: /api/pnl-history (30/min), /api/trades/export (5/min), per User | 0.5 Tage | Erledigt |
 
 ## P3 – Polish
 
