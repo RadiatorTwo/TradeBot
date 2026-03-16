@@ -129,6 +129,7 @@ public class RiskManagerTests
         _broker.Setup(b => b.GetPortfolioValueAsync(It.IsAny<CancellationToken>())).ReturnsAsync(100000m);
         _broker.Setup(b => b.GetCurrentPriceAsync("EURUSD", It.IsAny<CancellationToken>())).ReturnsAsync(1.1m);
         _broker.Setup(b => b.GetPositionsAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new List<Position>());
+        _broker.Setup(b => b.GetPendingOrdersAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new List<BrokerPendingOrder>());
 
         var result = await rm.ValidateTradeAsync(BuyRec(confidence: 0.70, qty: 0.01m));
 
@@ -160,6 +161,7 @@ public class RiskManagerTests
         _broker.Setup(b => b.GetPortfolioValueAsync(It.IsAny<CancellationToken>())).ReturnsAsync(100000m);
         _broker.Setup(b => b.GetCurrentPriceAsync("EURUSD", It.IsAny<CancellationToken>())).ReturnsAsync(1.1m);
         _broker.Setup(b => b.GetPositionsAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new List<Position>());
+        _broker.Setup(b => b.GetPendingOrdersAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new List<BrokerPendingOrder>());
 
         // 1 pip spread: 0.0001
         var result = await rm.ValidateTradeAsync(BuyRec(qty: 0.01m), bid: 1.1000m, ask: 1.1001m);
@@ -177,6 +179,7 @@ public class RiskManagerTests
         _broker.Setup(b => b.GetPortfolioValueAsync(It.IsAny<CancellationToken>())).ReturnsAsync(100000m);
         _broker.Setup(b => b.GetCurrentPriceAsync("EURUSD", It.IsAny<CancellationToken>())).ReturnsAsync(1.1m);
         _broker.Setup(b => b.GetPositionsAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new List<Position>());
+        _broker.Setup(b => b.GetPendingOrdersAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new List<BrokerPendingOrder>());
 
         // Even with huge spread, filter is disabled
         var result = await rm.ValidateTradeAsync(BuyRec(qty: 0.01m), bid: 1.1000m, ask: 1.1050m);
@@ -196,6 +199,7 @@ public class RiskManagerTests
         _broker.Setup(b => b.GetPortfolioValueAsync(It.IsAny<CancellationToken>())).ReturnsAsync(10000m);
         _broker.Setup(b => b.GetCurrentPriceAsync("EURUSD", It.IsAny<CancellationToken>())).ReturnsAsync(1.1m);
         _broker.Setup(b => b.GetPositionsAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new List<Position>());
+        _broker.Setup(b => b.GetPendingOrdersAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new List<BrokerPendingOrder>());
 
         // 1.0 Lot EURUSD = 100.000 * 1.1 = 110.000 → 1100% of 10k portfolio
         var result = await rm.ValidateTradeAsync(BuyRec(qty: 1.0m));
@@ -219,6 +223,7 @@ public class RiskManagerTests
             new() { Symbol = "GBPUSD", Quantity = 0.1m, Side = "buy" },
             new() { Symbol = "AUDUSD", Quantity = 0.1m, Side = "buy" }
         });
+        _broker.Setup(b => b.GetPendingOrdersAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new List<BrokerPendingOrder>());
 
         // New symbol, max already reached
         var result = await rm.ValidateTradeAsync(BuyRec(symbol: "EURUSD"));
@@ -240,6 +245,7 @@ public class RiskManagerTests
             new() { Symbol = "EURUSD", Quantity = 0.1m, Side = "buy" },
             new() { Symbol = "GBPUSD", Quantity = 0.1m, Side = "buy" }
         });
+        _broker.Setup(b => b.GetPendingOrdersAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new List<BrokerPendingOrder>());
 
         // Same symbol already open -> allowed (small qty to pass position size check)
         var result = await rm.ValidateTradeAsync(BuyRec(symbol: "EURUSD", qty: 0.01m));
@@ -260,6 +266,7 @@ public class RiskManagerTests
         {
             new() { Symbol = "GBPUSD", Quantity = 0.1m, Side = "buy" }
         });
+        _broker.Setup(b => b.GetPendingOrdersAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new List<BrokerPendingOrder>());
 
         // buy_limit should be normalized to "buy" for position check
         var rec = new ClaudeTradeRecommendation
@@ -271,14 +278,14 @@ public class RiskManagerTests
         result.Should().BeFalse();
     }
 
-    // ── Sell bypasses max positions ─────────────────────────────────────
+    // ── Sell respects max positions (inkl. Pending Orders) ─────────────────
 
     [Fact]
-    public async Task ValidateTrade_SellAction_BypassesMaxPositions()
+    public async Task ValidateTrade_SellAction_RespectsMaxPositions()
     {
         var settings = DefaultSettings();
         settings.MaxOpenPositions = 1;
-        var rm = CreateRiskManager(settings, nameof(ValidateTrade_SellAction_BypassesMaxPositions));
+        var rm = CreateRiskManager(settings, nameof(ValidateTrade_SellAction_RespectsMaxPositions));
 
         _broker.Setup(b => b.GetPortfolioValueAsync(It.IsAny<CancellationToken>())).ReturnsAsync(100000m);
         _broker.Setup(b => b.GetCurrentPriceAsync("EURUSD", It.IsAny<CancellationToken>())).ReturnsAsync(1.1m);
@@ -286,14 +293,39 @@ public class RiskManagerTests
         {
             new() { Symbol = "GBPUSD", Quantity = 0.1m, Side = "buy" }
         });
+        _broker.Setup(b => b.GetPendingOrdersAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new List<BrokerPendingOrder>());
 
-        // Sell should not be blocked by max positions
+        // Sell öffnet neue Short-Position – bei MaxOpenPositions=1 blockieren
         var rec = new ClaudeTradeRecommendation
         {
             Symbol = "EURUSD", Action = "sell", Confidence = 0.8, Quantity = 0.01m
         };
         var result = await rm.ValidateTradeAsync(rec);
 
-        result.Should().BeTrue();
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ValidateTrade_MaxPositionsWithPendingOrders_ReturnsFalse()
+    {
+        var settings = DefaultSettings();
+        settings.MaxOpenPositions = 2;
+        var rm = CreateRiskManager(settings, nameof(ValidateTrade_MaxPositionsWithPendingOrders_ReturnsFalse));
+
+        _broker.Setup(b => b.GetPortfolioValueAsync(It.IsAny<CancellationToken>())).ReturnsAsync(100000m);
+        _broker.Setup(b => b.GetCurrentPriceAsync("EURUSD", It.IsAny<CancellationToken>())).ReturnsAsync(1.1m);
+        _broker.Setup(b => b.GetPositionsAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new List<Position>
+        {
+            new() { Symbol = "GBPUSD", Quantity = 0.1m, Side = "buy" }
+        });
+        _broker.Setup(b => b.GetPendingOrdersAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new List<BrokerPendingOrder>
+        {
+            new() { Symbol = "AUDUSD", Side = "buy", Qty = 0.1m }
+        });
+
+        // 1 Position + 1 Pending = 2 → Limit erreicht, neuer Buy blockieren
+        var result = await rm.ValidateTradeAsync(BuyRec(symbol: "EURUSD"));
+
+        result.Should().BeFalse();
     }
 }

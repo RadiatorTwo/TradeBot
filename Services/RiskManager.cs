@@ -116,6 +116,7 @@ public class RiskManager : IRiskManager
         var portfolioValue = await _broker.GetPortfolioValueAsync(ct);
         var price = await _broker.GetCurrentPriceAsync(rec.Symbol, ct);
         var positions = await _broker.GetPositionsAsync(ct);
+        var pendingOrders = await _broker.GetPendingOrdersAsync(ct);
 
         // 4. Maximale Positionsgröße prüfen (quantity in Lots; Notional = Lots × LotSize × Price)
         var lotSize = GetLotSize(rec.Symbol);
@@ -132,17 +133,20 @@ public class RiskManager : IRiskManager
             return false;
         }
 
-        // 5. Max offene Positionen prüfen (nur bei Kauf)
+        // 5. Max offene Positionen prüfen (inkl. Pending Orders – buy/sell öffnen neue Positionen)
         var normalizedAction = rec.Action.Replace("_limit", "", StringComparison.OrdinalIgnoreCase)
             .Replace("_stop", "", StringComparison.OrdinalIgnoreCase);
-        if (normalizedAction.Equals("buy", StringComparison.OrdinalIgnoreCase))
+        var isNewPosition = normalizedAction.Equals("buy", StringComparison.OrdinalIgnoreCase)
+            || normalizedAction.Equals("sell", StringComparison.OrdinalIgnoreCase);
+        if (isNewPosition)
         {
-            if (positions.Count >= Settings.MaxOpenPositions &&
+            var effectivePositionCount = positions.Count + (pendingOrders?.Count ?? 0);
+            if (effectivePositionCount >= Settings.MaxOpenPositions &&
                 !positions.Any(p => p.Symbol == rec.Symbol))
             {
                 _logger.LogWarning(
-                    "Trade rejected – max open positions ({Max}) reached",
-                    Settings.MaxOpenPositions);
+                    "Trade rejected – max open positions ({Max}) reached (positions: {Pos}, pending: {Pending})",
+                    Settings.MaxOpenPositions, positions.Count, pendingOrders?.Count ?? 0);
                 return false;
             }
         }
