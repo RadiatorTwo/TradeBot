@@ -300,11 +300,10 @@ public partial class TradeLockerService
 
     private async Task<List<OhlcCandle>> GetCandlesInternalAsync(int tradableInstrumentId, string resolution, int lookbackCandles, CancellationToken ct)
     {
-        await ThrottleAsync(ct);
         var result = new List<OhlcCandle>();
         try
         {
-            var to = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var toMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             var resolutionMs = resolution switch
             {
                 "1D" => 24 * 60 * 60 * 1000L,
@@ -313,28 +312,70 @@ public partial class TradeLockerService
                 "15" or "15m" => 15 * 60 * 1000L,
                 _ => 60 * 60 * 1000L
             };
-            var from = to - (lookbackCandles * resolutionMs);
             var routeId = GetInfoRouteId(tradableInstrumentId);
             if (routeId == null) return result;
 
-            var url = $"trade/history?tradableInstrumentId={tradableInstrumentId}&routeId={routeId}&resolution={resolution}&from={from}&to={to}";
-            using var client = GetHttpClient();
-            var response = await client.GetAsync(url, ct);
-            if (!response.IsSuccessStatusCode) return result;
+            // Bei grossen Anfragen (>500 Candles) in Chunks laden
+            var chunkSize = 500;
+            var fromMs = toMs - ((long)lookbackCandles * resolutionMs);
+            var currentFrom = fromMs;
 
-            var body = await response.Content.ReadAsStringAsync(ct);
-            var parsed = ParseCandles(body);
-            if (parsed != null && parsed.Count > 0)
+            _logger.LogInformation(
+                "GetCandlesInternal: instrument={Id} res={Res} lookback={Count} from={From} to={To}",
+                tradableInstrumentId, resolution, lookbackCandles,
+                DateTimeOffset.FromUnixTimeMilliseconds(fromMs).UtcDateTime.ToString("dd.MM.yyyy HH:mm"),
+                DateTimeOffset.FromUnixTimeMilliseconds(toMs).UtcDateTime.ToString("dd.MM.yyyy HH:mm"));
+
+            while (currentFrom < toMs && !ct.IsCancellationRequested)
             {
-                result.AddRange(parsed.OrderBy(c => c.Time).TakeLast(lookbackCandles).Select(c => new OhlcCandle
+                var currentTo = Math.Min(currentFrom + (long)chunkSize * resolutionMs, toMs);
+                await ThrottleAsync(ct);
+
+                var url = $"trade/history?tradableInstrumentId={tradableInstrumentId}&routeId={routeId}&resolution={resolution}&from={currentFrom}&to={currentTo}";
+                _logger.LogDebug("GetCandlesInternal URL: {Url}", url);
+                using var client = GetHttpClient();
+                var response = await client.GetAsync(url, ct);
+                if (!response.IsSuccessStatusCode)
                 {
-                    Open = c.Open,
-                    High = c.High,
-                    Low = c.Low,
-                    Close = c.Close,
-                    Time = c.Time
-                }));
+                    _logger.LogWarning("GetCandlesInternal: HTTP {Status} fuer {Url}", (int)response.StatusCode, url);
+                    break;
+                }
+
+                var body = await response.Content.ReadAsStringAsync(ct);
+                _logger.LogInformation("GetCandlesInternal Chunk response ({Len} chars): {Body}",
+                    body.Length, body.Length > 500 ? body[..500] + "..." : body);
+
+                if (body.Contains("\"no_data\"", StringComparison.OrdinalIgnoreCase))
+                {
+                    currentFrom = currentTo;
+                    continue;
+                }
+
+                var parsed = ParseCandles(body);
+                if (parsed != null && parsed.Count > 0)
+                {
+                    _logger.LogInformation("GetCandlesInternal: Parsed {Count} candles from chunk", parsed.Count);
+                    result.AddRange(parsed.Select(c => new OhlcCandle
+                    {
+                        Open = c.Open, High = c.High, Low = c.Low, Close = c.Close, Time = c.Time
+                    }));
+                }
+                else
+                {
+                    _logger.LogWarning("GetCandlesInternal: ParseCandles returned null/empty for body: {Body}",
+                        body.Length > 500 ? body[..500] : body);
+                }
+
+                currentFrom = currentTo;
             }
+
+            // Deduplizieren, sortieren, auf gewuenschte Anzahl begrenzen
+            result = result
+                .GroupBy(c => c.Time)
+                .Select(g => g.First())
+                .OrderBy(c => c.Time)
+                .TakeLast(lookbackCandles)
+                .ToList();
         }
         catch (Exception ex)
         {
@@ -378,12 +419,16 @@ public partial class TradeLockerService
 
         var result = new List<OhlcCandle>();
         var resolutionMs = (long)(resolutionHours * 60 * 60 * 1000);
-        var chunkSize = 500;
+        // Kleinere Chunks (max 100 Candles) damit TradeLocker nicht mit zu grossen Zeitraeumen ueberfordert wird
+        var chunkSize = resolution == "1D" ? 100 : 500;
         var fromMs = new DateTimeOffset(from, TimeSpan.Zero).ToUnixTimeMilliseconds();
         var toMs = new DateTimeOffset(to, TimeSpan.Zero).ToUnixTimeMilliseconds();
 
         var currentFrom = fromMs;
         var chunkCount = 0;
+        var consecutiveNoData = 0;
+        const int maxConsecutiveNoData = 3;
+
         while (currentFrom < toMs && !ct.IsCancellationRequested)
         {
             var currentTo = Math.Min(currentFrom + chunkSize * resolutionMs, toMs);
@@ -400,6 +445,7 @@ public partial class TradeLockerService
                 }
 
                 var url = $"trade/history?tradableInstrumentId={instrumentId.Value}&routeId={routeId}&resolution={resolution}&from={currentFrom}&to={currentTo}";
+                _logger.LogInformation("GetHistoricalCandles Chunk {Chunk}: URL={Url}", chunkCount, url);
                 using var client = GetHttpClient();
                 var response = await client.GetAsync(url, ct);
 
@@ -414,24 +460,32 @@ public partial class TradeLockerService
                 }
 
                 var body = await response.Content.ReadAsStringAsync(ct);
+                _logger.LogInformation("GetHistoricalCandles Chunk {Chunk} response ({Len} chars): {Body}",
+                    chunkCount, body.Length, body.Length > 500 ? body[..500] + "..." : body);
 
                 // TradeLocker gibt {"s":"no_data"} wenn keine Daten verfuegbar
                 if (body.Contains("\"no_data\"", StringComparison.OrdinalIgnoreCase))
                 {
+                    consecutiveNoData++;
                     _logger.LogDebug(
-                        "GetHistoricalCandles Chunk {Chunk}: API meldet 'no_data'. " +
-                        "TradeLocker liefert moeglicherweise keine historischen Daten wenn der Markt geschlossen ist (Wochenende).",
-                        chunkCount);
+                        "GetHistoricalCandles Chunk {Chunk}: 'no_data' ({ConsecCount}/{Max}). Von={From} Bis={To}",
+                        chunkCount, consecutiveNoData, maxConsecutiveNoData,
+                        DateTimeOffset.FromUnixTimeMilliseconds(currentFrom).UtcDateTime.ToString("dd.MM.yyyy"),
+                        DateTimeOffset.FromUnixTimeMilliseconds(currentTo).UtcDateTime.ToString("dd.MM.yyyy"));
 
-                    if (result.Count == 0)
+                    // Zum naechsten Chunk springen statt sofort abbrechen
+                    currentFrom = currentTo;
+
+                    // Erst nach mehreren aufeinanderfolgenden no_data abbrechen
+                    if (consecutiveNoData >= maxConsecutiveNoData)
                     {
-                        // Erster Chunk hat keine Daten — abbrechen
+                        _logger.LogDebug("GetHistoricalCandles: {Max} aufeinanderfolgende no_data, abbruch.", maxConsecutiveNoData);
                         break;
                     }
-                    // Spaetere Chunks: Luecke moeglich, weiter versuchen
-                    currentFrom = currentTo;
                     continue;
                 }
+
+                consecutiveNoData = 0; // Reset bei erfolgreichen Daten
 
                 var parsed = ParseCandles(body);
                 if (parsed != null && parsed.Count > 0)
@@ -446,7 +500,10 @@ public partial class TradeLockerService
                 {
                     _logger.LogDebug("GetHistoricalCandles Chunk {Chunk}: Keine Candles, Response (200c): {Body}",
                         chunkCount, Truncate(body, 200));
-                    break;
+                    // Nicht abbrechen, naechsten Chunk versuchen
+                    consecutiveNoData++;
+                    if (consecutiveNoData >= maxConsecutiveNoData)
+                        break;
                 }
             }
             catch (Exception ex)

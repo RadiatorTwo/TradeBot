@@ -3,6 +3,7 @@
 @using ClaudeTradingBot.Services
 @using Microsoft.EntityFrameworkCore
 @inject IDbContextFactory<TradingDbContext> DbFactory
+@inject AccountManager AccountMgr
 
 <PageTitle>Trade-Journal - NeuronTrade</PageTitle>
 
@@ -10,6 +11,10 @@
 
 <!-- Filter -->
 <RadzenStack Orientation="Orientation.Horizontal" Gap="12px" Style="margin-bottom: 24px;" Wrap="FlexWrap.Wrap" AlignItems="AlignItems.End">
+    <RadzenStack Gap="4px">
+        <RadzenLabel Text="Account" Style="font-size: 0.75rem; color: var(--muted); text-transform: uppercase;" />
+        <RadzenDropDown @bind-Value="_filterAccount" Data="_accountOptions" TextProperty="Text" ValueProperty="Value" Style="min-width: 160px;" />
+    </RadzenStack>
     <RadzenStack Gap="4px">
         <RadzenLabel Text="Von" Style="font-size: 0.75rem; color: var(--muted); text-transform: uppercase;" />
         <RadzenDatePicker @bind-Value="_filterFrom" DateFormat="dd.MM.yyyy" />
@@ -135,6 +140,7 @@ else
 }
 
 @code {
+    private string _filterAccount = string.Empty;
     private DateTime? _filterFrom;
     private DateTime? _filterTo;
     private string _filterSymbol = string.Empty;
@@ -148,6 +154,7 @@ else
 
     private record DropDownItem(string Text, string Value);
 
+    private List<DropDownItem> _accountOptions = new() { new("Alle Accounts", "") };
     private List<DropDownItem> _symbolOptions = new() { new("Alle", "") };
     private List<DropDownItem> _setupTypeOptions = new() { new("Alle", "") };
     private List<DropDownItem> _statusOptions = new()
@@ -159,6 +166,10 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        _accountOptions = new List<DropDownItem> { new("Alle Accounts", "") };
+        _accountOptions.AddRange(
+            AccountMgr.Accounts.Select(a => new DropDownItem(a.DisplayName, a.AccountId)));
+
         await using var db = await DbFactory.CreateDbContextAsync();
 
         _availableSymbols = await db.Trades
@@ -184,6 +195,8 @@ else
         await using var db = await DbFactory.CreateDbContextAsync();
         var query = db.Trades.AsQueryable();
 
+        if (!string.IsNullOrEmpty(_filterAccount))
+            query = query.Where(t => t.AccountId == _filterAccount);
         if (_filterFrom.HasValue)
             query = query.Where(t => t.CreatedAt >= _filterFrom.Value);
         if (_filterTo.HasValue)

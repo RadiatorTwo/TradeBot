@@ -4,6 +4,7 @@
 @using Microsoft.EntityFrameworkCore
 @attribute [Authorize]
 @inject IDbContextFactory<TradingDbContext> DbFactory
+@inject AccountManager AccountMgr
 
 <PageTitle>Trade-Historie - NeuronTrade</PageTitle>
 
@@ -11,6 +12,10 @@
 
 <!-- Filter -->
 <RadzenStack Orientation="Orientation.Horizontal" Gap="12px" Style="margin-bottom: 24px;" Wrap="FlexWrap.Wrap" AlignItems="AlignItems.End">
+    <RadzenStack Gap="4px">
+        <RadzenLabel Text="Account" Style="font-size: 0.75rem; color: var(--muted); text-transform: uppercase;" />
+        <RadzenDropDown @bind-Value="FilterAccount" Data="_accountOptions" TextProperty="Text" ValueProperty="Value" Style="min-width: 160px;" />
+    </RadzenStack>
     <RadzenStack Gap="4px">
         <RadzenLabel Text="Von" Style="font-size: 0.75rem; color: var(--muted); text-transform: uppercase;" />
         <RadzenDatePicker @bind-Value="FilterFrom" DateFormat="dd.MM.yyyy" />
@@ -93,6 +98,7 @@ else
 @code {
     [Inject] private NavigationManager Navigation { get; set; } = default!;
 
+    private string FilterAccount { get; set; } = string.Empty;
     private DateTime? FilterFrom { get; set; }
     private DateTime? FilterTo { get; set; }
     private string FilterSymbol { get; set; } = string.Empty;
@@ -102,6 +108,7 @@ else
 
     private record DropDownItem(string Text, string Value);
 
+    private List<DropDownItem> _accountOptions = new() { new("Alle Accounts", "") };
     private List<DropDownItem> _symbolOptions = new() { new("Alle", "") };
     private List<DropDownItem> _statusOptions = new()
     {
@@ -114,12 +121,20 @@ else
     };
 
     private string CsvExportUrl =>
-        $"/api/trades/export?from={FilterFrom?.ToString("yyyy-MM-dd")}&to={FilterTo?.ToString("yyyy-MM-dd")}&symbol={FilterSymbol}&status={FilterStatus}";
+        $"/api/trades/export?from={FilterFrom?.ToString("yyyy-MM-dd")}&to={FilterTo?.ToString("yyyy-MM-dd")}&symbol={FilterSymbol}&status={FilterStatus}&account={FilterAccount}";
 
     protected override async Task OnInitializedAsync()
     {
+        LoadAccountOptions();
         await LoadSymbols();
         await ApplyFilter();
+    }
+
+    private void LoadAccountOptions()
+    {
+        _accountOptions = new List<DropDownItem> { new("Alle Accounts", "") };
+        _accountOptions.AddRange(
+            AccountMgr.Accounts.Select(a => new DropDownItem(a.DisplayName, a.AccountId)));
     }
 
     private async Task LoadSymbols()
@@ -139,6 +154,9 @@ else
     {
         await using var db = await DbFactory.CreateDbContextAsync();
         var query = db.Trades.AsQueryable();
+
+        if (!string.IsNullOrEmpty(FilterAccount))
+            query = query.Where(t => t.AccountId == FilterAccount);
 
         if (FilterFrom.HasValue)
             query = query.Where(t => t.CreatedAt >= FilterFrom.Value);

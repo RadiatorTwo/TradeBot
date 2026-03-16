@@ -45,8 +45,76 @@ public class BacktestEngine
                 return result;
             }
 
+            // Vorlaufzeitraum berechnen: 250 Candles vor dem Startdatum fuer Indikatoren (EMA200 + Puffer)
+            const int warmupCandles = 250;
+            var resolutionHours = config.Timeframe switch
+            {
+                "1D" => 24.0,
+                "4H" => 4.0,
+                "1H" => 1.0,
+                "15" or "15m" => 0.25,
+                _ => 1.0
+            };
+            // Forex hat ~5/7 Handelstage, also Faktor 1.5 fuer Wochenend-Luecken
+            var warmupHours = warmupCandles * resolutionHours * 1.5;
+            var extendedStartDate = config.StartDate.AddHours(-warmupHours);
+
+            _logger.LogInformation(
+                "Backtest: Lade Candles von {ExtFrom:dd.MM.yyyy} (Vorlauf) bis {To:dd.MM.yyyy} fuer {Symbol} {Tf}",
+                extendedStartDate, config.EndDate, config.Symbol, config.Timeframe);
+
             var candles = await Broker.GetHistoricalCandlesAsync(
-                config.Symbol, config.Timeframe, config.StartDate, config.EndDate, ct);
+                config.Symbol, config.Timeframe, extendedStartDate, config.EndDate, ct);
+
+            _logger.LogInformation("Backtest: GetHistoricalCandlesAsync lieferte {Count} Candles", candles.Count);
+
+            // Fallback 1: Wenn die Datums-basierte API zu wenig liefert,
+            // lade die letzten N Candles vom aktuellen Zeitpunkt via GetCandlesAsync
+            if (candles.Count < warmupCandles + 20)
+            {
+                var totalNeeded = warmupCandles + (int)Math.Ceiling((config.EndDate - config.StartDate).TotalHours / resolutionHours) + 50;
+                _logger.LogInformation(
+                    "Backtest: Zu wenig Candles ({Count}), versuche Fallback mit GetCandlesAsync({Needed})",
+                    candles.Count, totalNeeded);
+
+                var fallbackCandles = await Broker.GetCandlesAsync(config.Symbol, config.Timeframe, totalNeeded, ct);
+                if (fallbackCandles.Count > candles.Count)
+                {
+                    candles = fallbackCandles;
+                    _logger.LogInformation("Backtest: Fallback lieferte {Count} Candles", candles.Count);
+                }
+            }
+
+            // Fallback 2: Wenn 4H/1D zu wenig Daten hat, aus 1H-Candles aggregieren
+            if (candles.Count < 50 && config.Timeframe is "1D" or "4H")
+            {
+                _logger.LogInformation(
+                    "Backtest: {Tf} lieferte nur {Count} Candles, aggregiere aus 1H-Candles...",
+                    config.Timeframe, candles.Count);
+
+                var hoursPerCandle = config.Timeframe == "1D" ? 24 : 4;
+                var hourlyNeeded = (warmupCandles + (int)Math.Ceiling((config.EndDate - config.StartDate).TotalHours) + 50) * hoursPerCandle;
+
+                // Zuerst historisch versuchen, dann Fallback
+                var hourlyCandles = await Broker.GetHistoricalCandlesAsync(
+                    config.Symbol, "1H", extendedStartDate, config.EndDate, ct);
+
+                if (hourlyCandles.Count < hourlyNeeded)
+                {
+                    var hourlyFallback = await Broker.GetCandlesAsync(config.Symbol, "1H", hourlyNeeded, ct);
+                    if (hourlyFallback.Count > hourlyCandles.Count)
+                        hourlyCandles = hourlyFallback;
+                }
+
+                _logger.LogInformation("Backtest: {Count} 1H-Candles geladen, aggregiere zu {Tf}...",
+                    hourlyCandles.Count, config.Timeframe);
+
+                if (hourlyCandles.Count > 0)
+                {
+                    candles = AggregateCandles(hourlyCandles, hoursPerCandle);
+                    _logger.LogInformation("Backtest: Aggregation ergab {Count} {Tf}-Candles", candles.Count, config.Timeframe);
+                }
+            }
 
             if (candles.Count < 50)
             {
@@ -59,7 +127,7 @@ public class BacktestEngine
                 return result;
             }
 
-            _logger.LogInformation("Backtest: {Count} Candles geladen", candles.Count);
+            _logger.LogInformation("Backtest: {Count} Candles geladen (davon Vorlauf fuer Indikatoren)", candles.Count);
 
             // 2. Simulation durchfuehren
             var balance = config.InitialBalance;
@@ -79,11 +147,20 @@ public class BacktestEngine
             var allHighs = candles.Select(c => c.High).ToList();
             var allLows = candles.Select(c => c.Low).ToList();
 
-            // Startpunkt: genuegend Candles fuer Indikatoren (EMA200 braucht 200)
+            // Startpunkt: genuegend Candles fuer Indikatoren (EMA200 braucht 200),
+            // aber nicht vor dem gewaehlten Startdatum des Backtests
+            var startDateMs = new DateTimeOffset(config.StartDate, TimeSpan.Zero).ToUnixTimeMilliseconds();
             var startIndex = 200;
+
+            // Finde den ersten Candle-Index der im gewuenschten Backtest-Zeitraum liegt
+            var userStartIndex = candles.FindIndex(c => c.Time >= startDateMs);
+            if (userStartIndex >= 0 && userStartIndex > startIndex)
+                startIndex = userStartIndex;
+
             if (candles.Count <= startIndex)
             {
-                result.ErrorMessage = $"Nicht genuegend Candles fuer Indikatoren ({candles.Count}, mindestens {startIndex + 1} benoetigt).";
+                result.ErrorMessage = $"Nicht genuegend Candles fuer Indikatoren ({candles.Count} geladen, Index {startIndex} benoetigt). " +
+                    "Bitte einen groesseren Zeitraum waehlen oder einen kleineren Timeframe verwenden.";
                 return result;
             }
 
@@ -493,6 +570,47 @@ public class BacktestEngine
         }
 
         return stats;
+    }
+
+    /// <summary>
+    /// Aggregiert 1H-Candles zu groesseren Timeframes (4H oder 1D).
+    /// Gruppiert nach UTC-Tag (fuer 1D) oder 4-Stunden-Blöcken (fuer 4H).
+    /// </summary>
+    private static List<OhlcCandle> AggregateCandles(List<OhlcCandle> hourlyCandles, int hoursPerCandle)
+    {
+        var result = new List<OhlcCandle>();
+        if (hourlyCandles.Count == 0) return result;
+
+        var sorted = hourlyCandles.OrderBy(c => c.Time).ToList();
+
+        // Gruppiere nach Zeitblock
+        var groups = sorted.GroupBy(c =>
+        {
+            var dt = DateTimeOffset.FromUnixTimeMilliseconds(c.Time).UtcDateTime;
+            if (hoursPerCandle >= 24)
+            {
+                // Tages-Candles: nach UTC-Datum gruppieren
+                return new DateTime(dt.Year, dt.Month, dt.Day, 0, 0, 0, DateTimeKind.Utc);
+            }
+            // 4H-Candles: auf 4-Stunden-Bloecke runden
+            var blockHour = (dt.Hour / hoursPerCandle) * hoursPerCandle;
+            return new DateTime(dt.Year, dt.Month, dt.Day, blockHour, 0, 0, DateTimeKind.Utc);
+        });
+
+        foreach (var group in groups.OrderBy(g => g.Key))
+        {
+            var candlesInGroup = group.ToList();
+            result.Add(new OhlcCandle
+            {
+                Time = new DateTimeOffset(group.Key, TimeSpan.Zero).ToUnixTimeMilliseconds(),
+                Open = candlesInGroup.First().Open,
+                High = candlesInGroup.Max(c => c.High),
+                Low = candlesInGroup.Min(c => c.Low),
+                Close = candlesInGroup.Last().Close
+            });
+        }
+
+        return result;
     }
 
     /// <summary>Interne Klasse fuer eine offene Backtest-Position.</summary>

@@ -241,7 +241,51 @@
                 </RadzenRow>
             </details>
 
-            @* Schritt 6: Strategie / LLM-Prompt *@
+            @* Schritt 6: Watchlist (Symbole) *@
+            <details>
+                <summary style="cursor: pointer; font-weight: 600; margin-bottom: 12px;">Watchlist (Symbole)</summary>
+                <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
+                    <RadzenColumn Size="12">
+                        <RadzenLabel Text="Symbole (komma-separiert)" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenTextArea @bind-Value="_editWatchList" Rows="3" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">z.B. EURUSD, GBPUSD, XAUUSD – leer = globale Watchlist wird verwendet</div>
+                    </RadzenColumn>
+                    <RadzenColumn Size="12">
+                        <RadzenStack Orientation="Orientation.Horizontal" Gap="8px" AlignItems="AlignItems.Center">
+                            <RadzenButton Text="Symbole vom Broker laden" Icon="download" ButtonStyle="ButtonStyle.Light"
+                                          Size="ButtonSize.Small" Click="@LoadBrokerSymbolsForAccount" Disabled="@_loadingBrokerSymbols" />
+                            @if (_loadingBrokerSymbols)
+                            {
+                                <RadzenText Style="color: var(--muted); font-size: 0.85rem;">Lade...</RadzenText>
+                            }
+                            @if (_brokerSymbols.Count > 0)
+                            {
+                                <RadzenText Style="color: var(--muted); font-size: 0.85rem;">@_brokerSymbols.Count Symbole verfuegbar</RadzenText>
+                            }
+                        </RadzenStack>
+                    </RadzenColumn>
+                    @if (_brokerSymbols.Count > 0)
+                    {
+                        <RadzenColumn Size="12">
+                            <div style="padding: 12px; background: var(--bg-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); max-height: 200px; overflow-y: auto;">
+                                <RadzenStack Orientation="Orientation.Horizontal" Gap="6px" Wrap="FlexWrap.Wrap">
+                                    @foreach (var sym in _brokerSymbols)
+                                    {
+                                        var isSelected = _editWatchSymbols.Contains(sym);
+                                        <RadzenButton Text="@sym" Size="ButtonSize.ExtraSmall"
+                                                      ButtonStyle="@(isSelected ? ButtonStyle.Primary : ButtonStyle.Light)"
+                                                      Variant="@(isSelected ? Variant.Filled : Variant.Outlined)"
+                                                      Click="@(() => ToggleWatchSymbol(sym))"
+                                                      Style="font-size: 0.75rem; padding: 2px 8px;" />
+                                    }
+                                </RadzenStack>
+                            </div>
+                        </RadzenColumn>
+                    }
+                </RadzenRow>
+            </details>
+
+            @* Schritt 7: Strategie / LLM-Prompt *@
             <details>
                 <summary style="cursor: pointer; font-weight: 600; margin-bottom: 12px;">Strategie / LLM-Prompt</summary>
                 <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
@@ -328,6 +372,19 @@
             <div>Broker-Account: <strong style="color: var(--text);">@(acc.TradeLocker.AccountId ?? "Auto")</strong></div>
             <div>Confidence: <strong style="color: var(--text);">@acc.RiskManagement.MinConfidence.ToString("P0")</strong></div>
         </div>
+        @if (acc.WatchList.Count > 0)
+        {
+            <div style="margin-top: 8px; font-size: 0.8rem;">
+                <span style="color: var(--muted);">Symbole:</span>
+                <span style="color: var(--text);">@string.Join(", ", acc.WatchList)</span>
+            </div>
+        }
+        else
+        {
+            <div style="margin-top: 8px; font-size: 0.8rem; color: var(--muted);">
+                Symbole: <em>globale Watchlist</em>
+            </div>
+        }
     </RadzenCard>
 }
 
@@ -390,6 +447,11 @@
     private int _editGridLevelsBelow = 5;
     private int _editGridMaxActive = 3;
     private int _editGridMaxPerCycle = 2;
+    // Watchlist
+    private string _editWatchList = string.Empty;
+    private List<string> _brokerSymbols = new();
+    private HashSet<string> _editWatchSymbols = new(StringComparer.OrdinalIgnoreCase);
+    private bool _loadingBrokerSymbols;
     // Strategie
     private string _editStrategyPrompt = string.Empty;
     private string _editStrategyLabel = string.Empty;
@@ -464,6 +526,9 @@
         _editGridLevelsBelow = acc.RiskManagement.Grid.GridLevelsBelow;
         _editGridMaxActive = acc.RiskManagement.Grid.MaxActiveGrids;
         _editGridMaxPerCycle = acc.RiskManagement.Grid.MaxLevelsPerCycle;
+        _editWatchList = acc.WatchList.Count > 0 ? string.Join(", ", acc.WatchList) : string.Empty;
+        _editWatchSymbols = acc.WatchList.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _brokerSymbols = new();
         _editStrategyPrompt = acc.StrategyPrompt;
         _editStrategyLabel = acc.StrategyLabel;
     }
@@ -504,6 +569,9 @@
         _editGridLevelsBelow = 5;
         _editGridMaxActive = 3;
         _editGridMaxPerCycle = 2;
+        _editWatchList = string.Empty;
+        _editWatchSymbols = new(StringComparer.OrdinalIgnoreCase);
+        _brokerSymbols = new();
         _editStrategyPrompt = string.Empty;
         _editStrategyLabel = string.Empty;
     }
@@ -581,6 +649,9 @@
         acc.RiskManagement.Grid.GridLevelsBelow = _editGridLevelsBelow;
         acc.RiskManagement.Grid.MaxActiveGrids = _editGridMaxActive;
         acc.RiskManagement.Grid.MaxLevelsPerCycle = _editGridMaxPerCycle;
+        acc.WatchList = _editWatchList
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
         acc.StrategyPrompt = _editStrategyPrompt;
         acc.StrategyLabel = _editStrategyLabel;
 
@@ -617,6 +688,53 @@
     }
 
     private void ConfirmRemove(string id) => _confirmRemoveId = id;
+
+    private async Task LoadBrokerSymbolsForAccount()
+    {
+        _loadingBrokerSymbols = true;
+        _brokerSymbols = new();
+        StateHasChanged();
+
+        try
+        {
+            // Finde den passenden Account-Kontext oder nutze den ersten verbundenen
+            var ctx = AccountMgr.Accounts
+                .FirstOrDefault(a => _editMode && a.AccountId.Equals(_editOriginalId ?? _editId, StringComparison.OrdinalIgnoreCase) && a.EffectiveBroker.IsConnected)
+                ?? AccountMgr.Accounts.FirstOrDefault(a => a.EffectiveBroker.IsConnected);
+
+            if (ctx is null)
+            {
+                _errors.Add("Kein Account verbunden. Bitte den Account zuerst speichern und die Verbindung herstellen.");
+                return;
+            }
+
+            _brokerSymbols = ctx.Broker.GetAvailableSymbols();
+            _editWatchSymbols = _editWatchList
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            if (_brokerSymbols.Count == 0)
+                _errors.Add("Broker hat keine Instrumente geladen. Ist der Account verbunden?");
+        }
+        catch (Exception ex)
+        {
+            _errors.Add($"Fehler beim Laden: {ex.Message}");
+        }
+        finally
+        {
+            _loadingBrokerSymbols = false;
+        }
+    }
+
+    private void ToggleWatchSymbol(string symbol)
+    {
+        if (_editWatchSymbols.Contains(symbol))
+            _editWatchSymbols.Remove(symbol);
+        else
+            _editWatchSymbols.Add(symbol);
+
+        _editWatchList = string.Join(", ", _editWatchSymbols.OrderBy(s => s));
+    }
 
     private async Task DoRemove()
     {
