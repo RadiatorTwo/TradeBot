@@ -100,6 +100,33 @@
         </RadzenRow>
     </RadzenCard>
 
+    <!-- News & Sentiment -->
+    <RadzenCard Style="margin-bottom: 24px;">
+        <h3 style="margin-top: 0; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border);">News & Sentiment</h3>
+        <RadzenRow Gap="16px">
+            <RadzenColumn Size="12">
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px">
+                    <RadzenCheckBox @bind-Value="NewsEnabled" />
+                    <RadzenLabel Text="News-Sentiment-Analyse aktivieren" />
+                </RadzenStack>
+                <div class="hint" style="margin-top: 4px;">Beruecksichtigt Finanznachrichten bei der Analyse</div>
+            </RadzenColumn>
+            <RadzenColumn Size="6">
+                <RadzenLabel Text="Finnhub API Key" Style="display: block; margin-bottom: 4px;" />
+                <RadzenTextBox @bind-Value="NewsApiKey" Placeholder="Finnhub API Key" Style="width: 100%;" />
+                <div class="hint" style="margin-top: 4px;">Kostenlos unter finnhub.io erhaeltlich</div>
+            </RadzenColumn>
+            <RadzenColumn Size="3">
+                <RadzenLabel Text="Max. Headlines" Style="display: block; margin-bottom: 4px;" />
+                <RadzenNumeric TValue="int" @bind-Value="NewsMaxHeadlines" ShowUpDown="false" Min="1" Max="20" Style="width: 100%;" />
+            </RadzenColumn>
+            <RadzenColumn Size="3">
+                <RadzenLabel Text="Refresh (Min.)" Style="display: block; margin-bottom: 4px;" />
+                <RadzenNumeric TValue="int" @bind-Value="NewsRefreshInterval" ShowUpDown="false" Min="15" Max="1440" Style="width: 100%;" />
+            </RadzenColumn>
+        </RadzenRow>
+    </RadzenCard>
+
     <RadzenButton Text="Einstellungen Speichern" ButtonStyle="ButtonStyle.Primary" ButtonType="ButtonType.Submit" />
 </EditForm>
 
@@ -118,14 +145,17 @@
         <RadzenColumn Size="6">
             <RadzenLabel Text="Anthropic API Key" Style="display: block; margin-bottom: 4px;" />
             <RadzenTextBox Value="@_anthropicKeyMasked" ReadOnly="true" Style="width: 100%;" />
+            <div class="hint" style="margin-top: 2px;">Model: @_anthropicModel, MaxTokens: @_anthropicMaxTokens</div>
         </RadzenColumn>
         <RadzenColumn Size="6">
             <RadzenLabel Text="Gemini API Key" Style="display: block; margin-bottom: 4px;" />
             <RadzenTextBox Value="@_geminiKeyMasked" ReadOnly="true" Style="width: 100%;" />
+            <div class="hint" style="margin-top: 2px;">Model: @_geminiModel, MaxTokens: @_geminiMaxTokens</div>
         </RadzenColumn>
         <RadzenColumn Size="6">
             <RadzenLabel Text="OpenAI-Compatible API Key" Style="display: block; margin-bottom: 4px;" />
             <RadzenTextBox Value="@_openAIKeyMasked" ReadOnly="true" Style="width: 100%;" />
+            <div class="hint" style="margin-top: 2px;">Model: @_openAIModel, MaxTokens: @_openAIMaxTokens</div>
         </RadzenColumn>
     </RadzenRow>
     <div class="hint" style="margin-top: 8px;">API-Keys koennen nur direkt in appsettings.json geaendert werden.</div>
@@ -160,10 +190,22 @@
     private string MultiTimeframeHigherTf { get; set; } = "4H";
     private int MultiTimeframeEmaPeriod { get; set; } = 200;
 
+    // News Settings
+    private bool NewsEnabled { get; set; }
+    private string NewsApiKey { get; set; } = string.Empty;
+    private int NewsMaxHeadlines { get; set; } = 5;
+    private int NewsRefreshInterval { get; set; } = 60;
+
     private string _llmProvider = string.Empty;
     private string _anthropicKeyMasked = string.Empty;
+    private string _anthropicModel = string.Empty;
+    private int _anthropicMaxTokens;
     private string _geminiKeyMasked = string.Empty;
+    private string _geminiModel = string.Empty;
+    private int _geminiMaxTokens;
     private string _openAIKeyMasked = string.Empty;
+    private string _openAIModel = string.Empty;
+    private int _openAIMaxTokens;
     private string _tradeLockerEmail = string.Empty;
 
     private bool _saveSuccess;
@@ -206,6 +248,16 @@
             };
             await SettingsRepo.SaveMultiTimeframeSettingsAsync(mtf);
 
+            // NewsSettings in DB speichern
+            var news = new NewsSettings
+            {
+                Enabled = NewsEnabled,
+                FinnhubApiKey = NewsApiKey,
+                MaxHeadlinesPerSymbol = NewsMaxHeadlines,
+                RefreshIntervalMinutes = NewsRefreshInterval
+            };
+            await SettingsRepo.SaveNewsSettingsAsync(news);
+
             _saveSuccess = true;
             await LoadCurrentValuesAsync();
         }
@@ -227,11 +279,27 @@
         MultiTimeframeHigherTf = mtf.HigherTimeframe;
         MultiTimeframeEmaPeriod = mtf.EmaPeriod;
 
+        // NewsSettings aus DB
+        var news = await SettingsRepo.GetNewsSettingsAsync();
+        NewsEnabled = news.Enabled;
+        NewsApiKey = news.FinnhubApiKey;
+        NewsMaxHeadlines = news.MaxHeadlinesPerSymbol;
+        NewsRefreshInterval = news.RefreshIntervalMinutes;
+
         // API-Config bleibt in appsettings.json (readonly)
         _llmProvider = Configuration.GetValue<string>("Llm:Provider") ?? "Gemini";
         _anthropicKeyMasked = MaskKey(Configuration.GetValue<string>("Anthropic:ApiKey"));
+        _anthropicModel = Configuration.GetValue<string>("Anthropic:Model") ?? "claude-sonnet-4-20250514";
+        _anthropicMaxTokens = Configuration.GetValue<int>("Anthropic:MaxTokens", 2048);
+
         _geminiKeyMasked = MaskKey(Configuration.GetValue<string>("Gemini:ApiKey"));
+        _geminiModel = Configuration.GetValue<string>("Gemini:Model") ?? "gemini-2.0-flash-lite";
+        _geminiMaxTokens = Configuration.GetValue<int>("Gemini:MaxTokens", 2048);
+
         _openAIKeyMasked = MaskKey(Configuration.GetValue<string>("OpenAICompatible:ApiKey"));
+        _openAIModel = Configuration.GetValue<string>("OpenAICompatible:Model") ?? "qwen2.5:7b";
+        _openAIMaxTokens = Configuration.GetValue<int>("OpenAICompatible:MaxTokens", 2048);
+
         _tradeLockerEmail = Configuration.GetValue<string>("TradeLocker:Email") ?? string.Empty;
     }
 

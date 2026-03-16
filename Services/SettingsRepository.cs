@@ -15,6 +15,8 @@ public interface ISettingsRepository
     Task SaveGlobalWatchListAsync(List<string> symbols);
     Task<MultiTimeframeSettings> GetMultiTimeframeSettingsAsync();
     Task SaveMultiTimeframeSettingsAsync(MultiTimeframeSettings settings);
+    Task<NewsSettings> GetNewsSettingsAsync();
+    Task SaveNewsSettingsAsync(NewsSettings settings);
     Task<bool> HasAnySettingsAsync();
     Task SeedFromConfigurationAsync(IConfiguration configuration);
 }
@@ -31,6 +33,7 @@ public class SettingsRepository : ISettingsRepository
     {
         public const string DefaultWatchList = "DefaultWatchList";
         public const string MultiTimeframe = "MultiTimeframe";
+        public const string NewsSettings = "NewsSettings";
     }
 
     private readonly IDbContextFactory<TradingDbContext> _dbFactory;
@@ -143,6 +146,31 @@ public class SettingsRepository : ISettingsRepository
         if (entity == null)
         {
             entity = new GlobalSettingsEntity { Key = Keys.MultiTimeframe };
+            db.GlobalSettings.Add(entity);
+        }
+
+        entity.ValueJson = JsonSerializer.Serialize(settings, JsonOpts);
+        entity.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+    }
+
+    public async Task<NewsSettings> GetNewsSettingsAsync()
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var entity = await db.GlobalSettings.FindAsync(Keys.NewsSettings);
+        if (entity == null)
+            return new NewsSettings();
+        return SafeDeserialize<NewsSettings>(entity.ValueJson) ?? new NewsSettings();
+    }
+
+    public async Task SaveNewsSettingsAsync(NewsSettings settings)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var entity = await db.GlobalSettings.FindAsync(Keys.NewsSettings);
+
+        if (entity == null)
+        {
+            entity = new GlobalSettingsEntity { Key = Keys.NewsSettings };
             db.GlobalSettings.Add(entity);
         }
 

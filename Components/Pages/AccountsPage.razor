@@ -220,6 +220,46 @@
                         <RadzenNumeric TValue="double" @bind-Value="_editConfidenceWinRateThreshold" ShowUpDown="false" Min="0" Max="1" Step="0.1" Style="width: 100%;" />
                         <div class="hint" style="margin-top: 4px;">Win-Rate-Schwelle fuer dynamische Confidence</div>
                     </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Max. Pyramid Levels" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="int" @bind-Value="_editMaxPyramidLevels" ShowUpDown="false" Min="0" Max="5" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">0 = deaktiviert</div>
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Pyramid Min. Confidence" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="double" @bind-Value="_editPyramidMinConfidence" ShowUpDown="false" Min="0" Max="1" Step="0.05" Style="width: 100%;" />
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Pending Order Max. Age (Min.)" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="int" @bind-Value="_editPendingOrderMaxAge" ShowUpDown="false" Min="1" Style="width: 100%;" />
+                    </RadzenColumn>
+                    <RadzenColumn Size="8">
+                        <RadzenLabel Text="Erlaubte Sessions (komma-separiert)" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenTextBox @bind-Value="_editAllowedSessions" Placeholder="London, NewYork" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">Leer = alle Sessions erlaubt (gesteuert durch TradingSessionService)</div>
+                    </RadzenColumn>
+                </RadzenRow>
+            </details>
+
+            @* Schritt 4d: Portfolio & Allokation *@
+            <details>
+                <summary style="cursor: pointer; font-weight: 600; margin-bottom: 12px;">Portfolio & Allokation</summary>
+                <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
+                    <RadzenColumn Size="4">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px">
+                            <RadzenCheckBox @bind-Value="_editPortfolioEnabled" />
+                            <RadzenLabel Text="Portfolio-Allokation aktivieren" />
+                        </RadzenStack>
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Default Max. % pro Symbol" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="double" @bind-Value="_editPortfolioDefaultMax" ShowUpDown="false" Min="1" Max="100" Step="1" Style="width: 100%;" />
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Rebalance Trigger (+%)" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="double" @bind-Value="_editPortfolioRebalance" ShowUpDown="false" Min="0.1" Step="0.1" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">Toleranz ueber Max. %, bevor reduziert wird</div>
+                    </RadzenColumn>
                 </RadzenRow>
             </details>
 
@@ -333,6 +373,11 @@
                         <RadzenLabel Text="Grid-Deaktivierung Min. Confidence" Style="display: block; margin-bottom: 4px;" />
                         <RadzenNumeric TValue="double" @bind-Value="_editGridDeactivationMinConfidence" ShowUpDown="false" Min="0" Max="1" Step="0.05" Style="width: 100%;" />
                         <div class="hint" style="margin-top: 4px;">Min. Confidence um Grid bei buy/sell zu deaktivieren</div>
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Min. Grid-Dauer (Min.)" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="int" @bind-Value="_editMinGridDuration" ShowUpDown="false" Min="1" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">Mindestlaufzeit bevor Grid deaktiviert werden kann</div>
                     </RadzenColumn>
                 </RadzenRow>
             </details>
@@ -552,6 +597,14 @@
     private double _editConfidenceDrawdownFactor = 0.02;
     private double _editConfidenceLossStreakFactor = 0.05;
     private double _editMaxDynamicConfidence = 0.85;
+    private int _editMaxPyramidLevels = 0;
+    private double _editPyramidMinConfidence = 0.75;
+    private string _editAllowedSessions = string.Empty;
+    private int _editPendingOrderMaxAge = 240;
+    // Portfolio
+    private bool _editPortfolioEnabled;
+    private double _editPortfolioDefaultMax = 20.0;
+    private double _editPortfolioRebalance = 2.0;
     // Grid-Trading
     private bool _editGridEnabled;
     private double _editGridSpacing = 20;
@@ -561,6 +614,7 @@
     private int _editGridMaxActive = 3;
     private int _editGridMaxPerCycle = 2;
     private double _editGridDeactivationMinConfidence = 0.8;
+    private int _editMinGridDuration = 60;
     // Watchlist
     private string _editWatchList = string.Empty;
     private List<string> _brokerSymbols = new();
@@ -650,6 +704,13 @@
         _editConfidenceDrawdownFactor = acc.RiskManagement.ConfidenceDrawdownFactor;
         _editConfidenceLossStreakFactor = acc.RiskManagement.ConfidenceLossStreakFactor;
         _editMaxDynamicConfidence = acc.RiskManagement.MaxDynamicConfidence;
+        _editMaxPyramidLevels = acc.RiskManagement.MaxPyramidLevels;
+        _editPyramidMinConfidence = acc.RiskManagement.PyramidMinConfidence;
+        _editAllowedSessions = string.Join(", ", acc.RiskManagement.AllowedSessions);
+        _editPendingOrderMaxAge = acc.RiskManagement.PendingOrderMaxAgeMinutes;
+        _editPortfolioEnabled = acc.RiskManagement.Allocation.Enabled;
+        _editPortfolioDefaultMax = acc.RiskManagement.Allocation.DefaultMaxPercent;
+        _editPortfolioRebalance = acc.RiskManagement.Allocation.RebalanceTriggerOverPercent;
         _editGridEnabled = acc.RiskManagement.Grid.Enabled;
         _editGridSpacing = acc.RiskManagement.Grid.GridSpacingPips;
         _editGridLotSize = acc.RiskManagement.Grid.LotSizePerLevel;
@@ -658,6 +719,7 @@
         _editGridMaxActive = acc.RiskManagement.Grid.MaxActiveGrids;
         _editGridMaxPerCycle = acc.RiskManagement.Grid.MaxLevelsPerCycle;
         _editGridDeactivationMinConfidence = acc.RiskManagement.GridDeactivationMinConfidence;
+        _editMinGridDuration = acc.RiskManagement.Grid.MinGridDurationMinutes;
         _editWatchList = acc.WatchList.Count > 0 ? string.Join(", ", acc.WatchList) : string.Empty;
         _editWatchSymbols = acc.WatchList.ToHashSet(StringComparer.OrdinalIgnoreCase);
         _brokerSymbols = new();
@@ -711,6 +773,13 @@
         _editConfidenceDrawdownFactor = 0.02;
         _editConfidenceLossStreakFactor = 0.05;
         _editMaxDynamicConfidence = 0.85;
+        _editMaxPyramidLevels = 0;
+        _editPyramidMinConfidence = 0.75;
+        _editAllowedSessions = string.Empty;
+        _editPendingOrderMaxAge = 240;
+        _editPortfolioEnabled = false;
+        _editPortfolioDefaultMax = 20.0;
+        _editPortfolioRebalance = 2.0;
         _editGridEnabled = false;
         _editGridSpacing = 20;
         _editGridLotSize = 0.01m;
@@ -719,6 +788,7 @@
         _editGridMaxActive = 3;
         _editGridMaxPerCycle = 2;
         _editGridDeactivationMinConfidence = 0.8;
+        _editMinGridDuration = 60;
         _editWatchList = string.Empty;
         _editWatchSymbols = new(StringComparer.OrdinalIgnoreCase);
         _brokerSymbols = new();
@@ -809,6 +879,15 @@
         acc.RiskManagement.ConfidenceDrawdownFactor = _editConfidenceDrawdownFactor;
         acc.RiskManagement.ConfidenceLossStreakFactor = _editConfidenceLossStreakFactor;
         acc.RiskManagement.MaxDynamicConfidence = _editMaxDynamicConfidence;
+        acc.RiskManagement.MaxPyramidLevels = _editMaxPyramidLevels;
+        acc.RiskManagement.PyramidMinConfidence = _editPyramidMinConfidence;
+        acc.RiskManagement.AllowedSessions = _editAllowedSessions
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+        acc.RiskManagement.PendingOrderMaxAgeMinutes = _editPendingOrderMaxAge;
+        acc.RiskManagement.Allocation.Enabled = _editPortfolioEnabled;
+        acc.RiskManagement.Allocation.DefaultMaxPercent = _editPortfolioDefaultMax;
+        acc.RiskManagement.Allocation.RebalanceTriggerOverPercent = _editPortfolioRebalance;
         acc.RiskManagement.GridDeactivationMinConfidence = _editGridDeactivationMinConfidence;
         acc.RiskManagement.Grid.Enabled = _editGridEnabled;
         acc.RiskManagement.Grid.GridSpacingPips = _editGridSpacing;
@@ -817,6 +896,7 @@
         acc.RiskManagement.Grid.GridLevelsBelow = _editGridLevelsBelow;
         acc.RiskManagement.Grid.MaxActiveGrids = _editGridMaxActive;
         acc.RiskManagement.Grid.MaxLevelsPerCycle = _editGridMaxPerCycle;
+        acc.RiskManagement.Grid.MinGridDurationMinutes = _editMinGridDuration;
         acc.WatchList = _editWatchList
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .ToList();
