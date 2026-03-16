@@ -166,6 +166,31 @@
                         <RadzenNumeric TValue="int" @bind-Value="_editLlmRetryCount" ShowUpDown="false" Min="0" Step="1" Style="width: 100%;" />
                         <div class="hint" style="margin-top: 4px;">Retries bei null-Response (0 = kein Retry)</div>
                     </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Indikator-Candles" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="int" @bind-Value="_editIndicatorCandleCount" ShowUpDown="false" Min="50" Step="50" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">Candles fuer Indikatoren (z.B. EMA200)</div>
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Recent Prices" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="int" @bind-Value="_editRecentPricesCount" ShowUpDown="false" Min="5" Step="5" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">Anzahl Recent Prices fuer die Analyse</div>
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Gegenrichtung Min. Confidence" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="double" @bind-Value="_editOppositeDirectionMinConfidence" ShowUpDown="false" Min="0" Max="1" Step="0.05" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">Min. Confidence um Gegenrichtungs-Positionen zu schliessen. 0 = MinConfidence nutzen</div>
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Korrelations-Schwelle" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="double" @bind-Value="_editCorrelationThreshold" ShowUpDown="false" Min="0" Max="1" Step="0.1" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">Min. Korrelation fuer Exposure-Check</div>
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Confidence Win-Rate-Schwelle" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="double" @bind-Value="_editConfidenceWinRateThreshold" ShowUpDown="false" Min="0" Max="1" Step="0.1" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">Win-Rate-Schwelle fuer dynamische Confidence</div>
+                    </RadzenColumn>
                 </RadzenRow>
             </details>
 
@@ -488,6 +513,11 @@
     private double _editMinRiskRewardRatio = 1.0;
     private bool _editRequireSlTpFromLlm;
     private int _editLlmRetryCount = 1;
+    private int _editIndicatorCandleCount = 210;
+    private int _editRecentPricesCount = 20;
+    private double _editOppositeDirectionMinConfidence;
+    private double _editCorrelationThreshold = 0.3;
+    private double _editConfidenceWinRateThreshold = 0.5;
     // Grid-Trading
     private bool _editGridEnabled;
     private double _editGridSpacing = 20;
@@ -576,6 +606,11 @@
         _editMinRiskRewardRatio = acc.RiskManagement.MinRiskRewardRatio;
         _editRequireSlTpFromLlm = acc.RiskManagement.RequireSlTpFromLlm;
         _editLlmRetryCount = acc.RiskManagement.LlmRetryCount;
+        _editIndicatorCandleCount = acc.RiskManagement.IndicatorCandleCount;
+        _editRecentPricesCount = acc.RiskManagement.RecentPricesCount;
+        _editOppositeDirectionMinConfidence = acc.RiskManagement.OppositeDirectionMinConfidence;
+        _editCorrelationThreshold = acc.RiskManagement.CorrelationThreshold;
+        _editConfidenceWinRateThreshold = acc.RiskManagement.ConfidenceWinRateThreshold;
         _editGridEnabled = acc.RiskManagement.Grid.Enabled;
         _editGridSpacing = acc.RiskManagement.Grid.GridSpacingPips;
         _editGridLotSize = acc.RiskManagement.Grid.LotSizePerLevel;
@@ -627,6 +662,11 @@
         _editMinRiskRewardRatio = 1.0;
         _editRequireSlTpFromLlm = false;
         _editLlmRetryCount = 1;
+        _editIndicatorCandleCount = 210;
+        _editRecentPricesCount = 20;
+        _editOppositeDirectionMinConfidence = 0;
+        _editCorrelationThreshold = 0.3;
+        _editConfidenceWinRateThreshold = 0.5;
         _editGridEnabled = false;
         _editGridSpacing = 20;
         _editGridLotSize = 0.01m;
@@ -715,6 +755,11 @@
         acc.RiskManagement.MinRiskRewardRatio = _editMinRiskRewardRatio;
         acc.RiskManagement.RequireSlTpFromLlm = _editRequireSlTpFromLlm;
         acc.RiskManagement.LlmRetryCount = _editLlmRetryCount;
+        acc.RiskManagement.IndicatorCandleCount = _editIndicatorCandleCount;
+        acc.RiskManagement.RecentPricesCount = _editRecentPricesCount;
+        acc.RiskManagement.OppositeDirectionMinConfidence = _editOppositeDirectionMinConfidence;
+        acc.RiskManagement.CorrelationThreshold = _editCorrelationThreshold;
+        acc.RiskManagement.ConfidenceWinRateThreshold = _editConfidenceWinRateThreshold;
         acc.RiskManagement.GridDeactivationMinConfidence = _editGridDeactivationMinConfidence;
         acc.RiskManagement.Grid.Enabled = _editGridEnabled;
         acc.RiskManagement.Grid.GridSpacingPips = _editGridSpacing;

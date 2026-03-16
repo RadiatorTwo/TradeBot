@@ -263,7 +263,7 @@ public class TradingEngine : BackgroundService
                         await AnalyzeAndTradeAsync(symbol, cash, portfolioValue, positions, allocations, ct);
 
                         // Kurze Pause zwischen Analysen (Rate Limiting)
-                        await Task.Delay(TimeSpan.FromSeconds(2), ct);
+                        await Task.Delay(TimeSpan.FromSeconds(Settings.AnalysisDelaySeconds), ct);
                     }
                     catch (Exception ex)
                     {
@@ -300,7 +300,7 @@ public class TradingEngine : BackgroundService
         }
 
         var (bid, ask) = await _broker.GetBidAskAsync(symbol, ct);
-        var recentPrices = await _broker.GetRecentPricesAsync(symbol, 20, ct);
+        var recentPrices = await _broker.GetRecentPricesAsync(symbol, Settings.RecentPricesCount, ct);
         var candles1D = await _broker.GetPriceHistoryAsync(symbol, "1D", 30, ct);
         var candles4H = await _broker.GetPriceHistoryAsync(symbol, "4H", 30, ct);
         var candles1H = await _broker.GetPriceHistoryAsync(symbol, "1H", 30, ct);
@@ -310,7 +310,7 @@ public class TradingEngine : BackgroundService
         TechnicalIndicators? indicators = null;
         try
         {
-            var ohlcCandles = await _broker.GetCandlesAsync(symbol, "1H", 210, ct);
+            var ohlcCandles = await _broker.GetCandlesAsync(symbol, "1H", Settings.IndicatorCandleCount, ct);
             if (ohlcCandles.Count > 0)
             {
                 var closes = ohlcCandles.Select(c => c.Close).ToList();
@@ -328,7 +328,7 @@ public class TradingEngine : BackgroundService
         }
 
         // ── Feedback-Loop: Letzte geschlossene Trades fuer dieses Symbol laden ──
-        var recentTradeResults = await LoadRecentTradeResultsAsync(symbol, 10, ct);
+        var recentTradeResults = await LoadRecentTradeResultsAsync(symbol, Settings.FeedbackLoopTradeCount, ct);
 
         // Claude um Analyse bitten (Forex/CFD: Bid/Ask, Candles, Lots)
         var request = new ClaudeAnalysisRequest
@@ -405,7 +405,7 @@ public class TradingEngine : BackgroundService
             && Settings.Grid.Enabled
             && await _gridTrading.HasActiveGridAsync(symbol, ct))
         {
-            if (recommendation.Confidence >= 0.8)
+            if (recommendation.Confidence >= Settings.GridDeactivationMinConfidence)
             {
                 _logger.LogInformation(
                     "LLM empfiehlt {Action} {Symbol} mit hoher Confidence ({Conf:P0}) – deaktiviere Grid",
@@ -643,8 +643,7 @@ public class TradingEngine : BackgroundService
 
         if (!stopLoss.HasValue || stopLoss.Value <= 0)
         {
-            // Default SL: 50 Pips (anpassbar via StopLossPips-Logik) – Einstieg = executionPrice
-            var defaultSlPips = 50m;
+            var defaultSlPips = (decimal)Settings.DefaultStopLossPips;
             var slDistance = PipCalculator.PipsToPrice(symbol, defaultSlPips);
             var isBuyAction = action == TradeAction.Buy;
             stopLoss = isBuyAction ? executionPrice - slDistance : executionPrice + slDistance;
@@ -656,15 +655,14 @@ public class TradingEngine : BackgroundService
 
         if (!takeProfit.HasValue || takeProfit.Value <= 0)
         {
-            // Default TP: 1.5x SL-Distanz (Risk/Reward 1:1.5) – Einstieg = executionPrice
             var slDist = Math.Abs(executionPrice - stopLoss.Value);
-            var tpDist = slDist * 1.5m;
+            var tpDist = slDist * (decimal)Settings.DefaultTakeProfitRatio;
             var isBuyAction = action == TradeAction.Buy;
             takeProfit = isBuyAction ? executionPrice + tpDist : executionPrice - tpDist;
 
             _logger.LogWarning(
-                "LLM hat keinen TakeProfit geliefert fuer {Symbol}. Default-TP gesetzt: {TP:F5} (1.5x SL-Distanz)",
-                symbol, takeProfit.Value);
+                "LLM hat keinen TakeProfit geliefert fuer {Symbol}. Default-TP gesetzt: {TP:F5} ({Ratio}x SL-Distanz)",
+                symbol, takeProfit.Value, Settings.DefaultTakeProfitRatio);
         }
 
         // Neue Position eröffnen (Lots, StopLoss, TakeProfit)

@@ -511,7 +511,7 @@ public class RiskManager : IRiskManager
         foreach (var pos in positions)
         {
             var correlation = CorrelationMatrix.GetCorrelation(rec.Symbol, pos.Symbol);
-            if (Math.Abs(correlation) < 0.3) continue;
+            if (Math.Abs(correlation) < Settings.CorrelationThreshold) continue;
 
             var posLotSize = GetLotSize(pos.Symbol);
             var posValue = pos.Quantity * posLotSize * pos.CurrentPrice;
@@ -669,9 +669,9 @@ public class RiskManager : IRiskManager
             if (recentTrades.Count >= 3)
             {
                 var winRate = (double)recentTrades.Count(t => t.RealizedPnL > 0) / recentTrades.Count;
-                if (winRate < 0.5)
+                if (winRate < Settings.ConfidenceWinRateThreshold)
                 {
-                    winRateAdjustment = (0.5 - winRate) * Settings.ConfidenceLossStreakFactor * 2;
+                    winRateAdjustment = (Settings.ConfidenceWinRateThreshold - winRate) * Settings.ConfidenceLossStreakFactor * 2;
                 }
             }
         }
