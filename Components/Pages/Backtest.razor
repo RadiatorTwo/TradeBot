@@ -54,6 +54,16 @@
             <RadzenNumeric TValue="double" @bind-Value="_config.TakeProfitPips" ShowUpDown="false" Disabled="_isRunning" Style="width: 100%;" />
         </RadzenColumn>
     </RadzenRow>
+    <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
+        <RadzenColumn Size="4">
+            <RadzenLabel Text="Spread (Pips)" Style="display: block; margin-bottom: 4px;" />
+            <RadzenNumeric TValue="double" @bind-Value="_config.SpreadPips" ShowUpDown="false" Min="0m" Step="0.5m" Disabled="_isRunning" Style="width: 100%;" />
+        </RadzenColumn>
+        <RadzenColumn Size="4">
+            <RadzenLabel Text="Slippage (Pips)" Style="display: block; margin-bottom: 4px;" />
+            <RadzenNumeric TValue="double" @bind-Value="_config.SlippagePips" ShowUpDown="false" Min="0m" Step="0.1m" Disabled="_isRunning" Style="width: 100%;" />
+        </RadzenColumn>
+    </RadzenRow>
     <div>
         @if (_isRunning)
         {
@@ -230,6 +240,8 @@
             RiskPerTradePercent = _config.RiskPerTradePercent,
             StopLossPips = _config.StopLossPips,
             TakeProfitPips = _config.TakeProfitPips,
+            SpreadPips = _config.SpreadPips,
+            SlippagePips = _config.SlippagePips,
             Strategy = _config.Strategy
         };
 
