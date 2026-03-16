@@ -568,6 +568,40 @@ public class TradingEngine : BackgroundService
             ? (action == TradeAction.Buy ? ask : bid)
             : currentPrice;
 
+        // RequireSlTpFromLlm: Trade ablehnen wenn LLM keinen SL/TP liefert
+        if (Settings.RequireSlTpFromLlm
+            && !recommendation.Action.Equals("hold", StringComparison.OrdinalIgnoreCase)
+            && (!recommendation.StopLossPrice.HasValue || recommendation.StopLossPrice.Value <= 0
+                || !recommendation.TakeProfitPrice.HasValue || recommendation.TakeProfitPrice.Value <= 0))
+        {
+            _logger.LogInformation(
+                "Trade rejected – RequireSlTpFromLlm aktiv, LLM hat keinen gueltigen SL/TP geliefert fuer {Symbol}",
+                symbol);
+            using var rejectScope = _scopeFactory.CreateScope();
+            var rejectDb = rejectScope.ServiceProvider.GetRequiredService<TradingDbContext>();
+            rejectDb.Trades.Add(new Trade
+            {
+                AccountId = AccountId,
+                Symbol = symbol,
+                Action = action,
+                Quantity = recommendation.Quantity ?? 0.01m,
+                Price = currentPrice,
+                ClaudeReasoning = recommendation.Reasoning,
+                ClaudeConfidence = recommendation.Confidence ?? 0.0,
+                Status = TradeStatus.Rejected,
+                ErrorMessage = "Trade rejected: SL/TP vom LLM erforderlich",
+                SetupType = recommendation.SetupType
+            });
+            rejectDb.TradingLogs.Add(new TradingLog
+            {
+                AccountId = AccountId,
+                Source = "TradingEngine",
+                Message = $"{symbol}: Trade abgelehnt – LLM hat keinen SL/TP geliefert"
+            });
+            await rejectDb.SaveChangesAsync(ct);
+            return;
+        }
+
         // Risk Check (mit Spread-Daten)
         var isValid = await _risk.ValidateTradeAsync(recommendation, bid, ask, ct);
 
@@ -683,6 +717,44 @@ public class TradingEngine : BackgroundService
             _logger.LogWarning(
                 "LLM hat keinen TakeProfit geliefert fuer {Symbol}. Default-TP gesetzt: {TP:F5} ({Ratio}x SL-Distanz)",
                 symbol, takeProfit.Value, Settings.DefaultTakeProfitRatio);
+        }
+
+        // MinRiskRewardRatio: Trade ablehnen wenn TP/SL < Ratio
+        if (Settings.MinRiskRewardRatio > 0 && stopLoss.HasValue && takeProfit.HasValue)
+        {
+            var slDist = Math.Abs(executionPrice - stopLoss.Value);
+            var tpDist = Math.Abs(takeProfit.Value - executionPrice);
+            if (slDist > 0)
+            {
+                var rrRatio = (double)(tpDist / slDist);
+                if (rrRatio < Settings.MinRiskRewardRatio)
+                {
+                    _logger.LogInformation(
+                        "Trade rejected – Risk/Reward {RR:F2} < MinRiskRewardRatio {Min:F2} fuer {Symbol}",
+                        rrRatio, Settings.MinRiskRewardRatio, symbol);
+                    db.Trades.Add(new Trade
+                    {
+                        AccountId = AccountId,
+                        Symbol = symbol,
+                        Action = action,
+                        Quantity = quantity,
+                        Price = currentPrice,
+                        ClaudeReasoning = recommendation.Reasoning,
+                        ClaudeConfidence = recommendation.Confidence ?? 0.0,
+                        Status = TradeStatus.Rejected,
+                        ErrorMessage = $"Risk/Reward {rrRatio:F2} < {Settings.MinRiskRewardRatio}",
+                        SetupType = recommendation.SetupType
+                    });
+                    db.TradingLogs.Add(new TradingLog
+                    {
+                        AccountId = AccountId,
+                        Source = "TradingEngine",
+                        Message = $"{symbol}: Trade abgelehnt – R/R {rrRatio:F2} < {Settings.MinRiskRewardRatio}"
+                    });
+                    await db.SaveChangesAsync(ct);
+                    return;
+                }
+            }
         }
 
         // Neue Position eröffnen (Lots, StopLoss, TakeProfit)
