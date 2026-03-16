@@ -368,7 +368,21 @@ public class TradingEngine : BackgroundService
             recentPrices.Count, candles1D.Count, candles4H.Count, candles1H.Count);
 
         var llmTimer = System.Diagnostics.Stopwatch.StartNew();
-        var recommendation = await _claude.AnalyzeAsync(request, ct);
+        ClaudeTradeRecommendation? recommendation = null;
+        var maxAttempts = 1 + Settings.LlmRetryCount;
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            recommendation = await _claude.AnalyzeAsync(request, ct);
+            if (recommendation != null)
+                break;
+            if (attempt < maxAttempts)
+            {
+                _logger.LogWarning(
+                    "No recommendation received for {Symbol}, retry {Attempt}/{MaxAttempts} in 2 seconds...",
+                    symbol, attempt, maxAttempts);
+                await Task.Delay(TimeSpan.FromSeconds(2), ct);
+            }
+        }
         llmTimer.Stop();
         TradingMetrics.LlmAnalysisDuration.WithLabels(_config["Llm:Provider"] ?? "unknown")
             .Observe(llmTimer.Elapsed.TotalSeconds);
@@ -376,7 +390,7 @@ public class TradingEngine : BackgroundService
 
         if (recommendation == null)
         {
-            _logger.LogWarning("No recommendation received for {Symbol}", symbol);
+            _logger.LogWarning("No recommendation received for {Symbol} after {Attempts} attempts", symbol, maxAttempts);
             return;
         }
 
