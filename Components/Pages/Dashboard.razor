@@ -6,6 +6,7 @@
 @inject MarketHoursService MarketHours
 @inject EconomicCalendarService Calendar
 @inject IDbContextFactory<TradingDbContext> DbFactory
+@inject DashboardBroadcastService DashboardBroadcast
 @inject NavigationManager Navigation
 @inject DialogService DialogService
 @inject IHttpContextAccessor HttpContextAccessor
@@ -317,18 +318,12 @@ else
         var ctx = SelectedAccount;
         if (ctx == null) return;
 
-        var positions = new List<Position>();
-        decimal cash = 0, portfolioValue = 0;
-        var account = new AccountDetails();
-
-        try
+        var cachedVm = DashboardBroadcast.GetLastViewModel(_selectedAccountId);
+        if (cachedVm != null)
         {
-            positions = await ctx.EffectiveBroker.GetPositionsAsync();
-            account = await ctx.EffectiveBroker.GetAccountDetailsAsync();
-            cash = account.FreeMargin > 0 ? account.FreeMargin : account.Balance;
-            portfolioValue = account.Equity > 0 ? account.Equity : account.Balance;
+            vm = cachedVm;
+            return;
         }
-        catch { }
 
         await using var db = await DbFactory.CreateDbContextAsync();
         var aid = _selectedAccountId;
@@ -362,11 +357,6 @@ else
         {
             AccountId = aid,
             AccountDisplayName = ctx.DisplayName,
-            PortfolioValue = portfolioValue,
-            AvailableCash = cash,
-            Account = account,
-            OpenPositions = positions.Count,
-            TradesToday = tradesToday,
             IsEngineRunning = ctx.Engine.IsRunning,
             IsEnginePaused = ctx.Engine.IsPaused,
             IsKillSwitchActive = ctx.Risk.IsKillSwitchActive,
@@ -374,6 +364,7 @@ else
             IsMarketOpen = MarketHours.IsMarketOpen(),
             IsPaperTrading = ctx.PaperTrading.IsPaperTradingActive,
             MarketStatus = MarketHours.GetMarketStatus(),
+            TradesToday = tradesToday,
             UpcomingEvents = Calendar.GetUpcomingHighImpactEvents(5)
                 .Select(e => new UpcomingEventViewModel
                 {
@@ -382,7 +373,6 @@ else
                     Impact = e.Impact.ToString(),
                     Currency = e.Currency
                 }).ToList(),
-            Positions = positions,
             RecentTrades = recentTrades,
             RecentLogs = recentLogs,
             PnLHistory = pnlHistory,

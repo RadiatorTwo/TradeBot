@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>ClaudeTradingBot</RootNamespace>
     <UserSecretsId>claude-trading-bot-secrets</UserSecretsId>
+    <AllowMissingPrunePackageData>true</AllowMissingPrunePackageData>
   </PropertyGroup>
 
   <!-- Testprojekt-Unterverzeichnis vom Build ausschließen -->

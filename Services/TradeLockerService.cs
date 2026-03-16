@@ -42,16 +42,23 @@ public partial class TradeLockerService : IBrokerService
     private readonly Dictionary<int, int> _instrumentInfoRouteId = new();
     /// <summary>tradableInstrumentId → TRADE routeId (für Orders)</summary>
     private readonly Dictionary<int, int> _instrumentTradeRouteId = new();
-    private readonly SemaphoreSlim _throttle = new(1, 1);
-    private DateTime _lastRequestUtc = DateTime.MinValue;
-    private const int MinDelayMs = 500; // ~2 Req/s
+
+    // ── Globales Rate-Limit für ALLE TradeLocker-Aufrufe (prozessweit) ──
+    // Viele Services (TradingEngine, PositionSync, GridTrading, Dashboard) rufen parallel auf.
+    // Das Broker-Limit gilt aber in der Regel pro Account/API-Key, nicht pro Service-Instanz.
+    // Daher hier ein globaler Throttle über alle TradeLockerService-Instanzen.
+    private static readonly SemaphoreSlim GlobalThrottle = new(1, 1);
+    private static DateTime _globalLastRequestUtc = DateTime.MinValue;
+    // Standard-Broker-Limit (Fallback): ca. 0,3 Requests/Sekunde pro Prozess.
+    // Wird nach Login dynamisch über /trade/config angepasst, falls die API Limits liefert.
+    private static int _globalMinDelayMs = 3000;
 
     // ── Caching ────────────────────────────────────────────────────────────
     private AccountDetails? _cachedAccountDetails;
     private List<Position>? _cachedPositions;
     private DateTime _accountDetailsCacheExpiry = DateTime.MinValue;
     private DateTime _positionsCacheExpiry = DateTime.MinValue;
-    private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(15);
 
     /// <summary>true wenn /details einmal 404 geliefert hat – wird nie wieder versucht.</summary>
     private bool _detailsEndpointIs404;
@@ -290,7 +297,19 @@ public partial class TradeLockerService : IBrokerService
 
             _isConnected = true;
 
-            // Phase 2: Instrumente laden und Start-Log (Kontostand, Equity, Instrumente, Beispiel-Quote)
+            // Phase 2: Rate-Limits dynamisch aus /trade/config laden (falls verfuegbar)
+            try
+            {
+                await LoadRateLimitsAsync(ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "TradeLocker: Konnte Rate-Limits aus /trade/config nicht laden – verwende Fallback {DelayMs}ms.",
+                    _globalMinDelayMs);
+            }
+
+            // Phase 3: Instrumente laden und Start-Log (Kontostand, Equity, Instrumente, Beispiel-Quote)
             if (!string.IsNullOrEmpty(_accountId))
             {
                 await LoadInstrumentsAsync(ct);
@@ -306,7 +325,7 @@ public partial class TradeLockerService : IBrokerService
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "TradeLocker Phase-2 Start-Log (Konto/Quote) fehlgeschlagen.");
+                    _logger.LogWarning(ex, "TradeLocker Phase-3 Start-Log (Konto/Quote) fehlgeschlagen.");
                 }
             }
         }
@@ -462,11 +481,11 @@ public partial class TradeLockerService : IBrokerService
         }
     }
 
-    // ── Rate Limit (~2 Req/s) ─────────────────────────────────────────────
+    // ── Rate Limit (aus /trade/config, Fallback ~0,3 Req/s) ───────────────
 
     private async Task ThrottleAsync(CancellationToken ct)
     {
-        await _throttle.WaitAsync(ct);
+        await GlobalThrottle.WaitAsync(ct);
         try
         {
             await RefreshTokenIfNeededAsync(ct);
@@ -475,14 +494,148 @@ public partial class TradeLockerService : IBrokerService
             if (!_isConnected)
                 await EnsureConnectedAsync(ct);
 
-            var elapsed = (DateTime.UtcNow - _lastRequestUtc).TotalMilliseconds;
-            if (elapsed < MinDelayMs)
-                await Task.Delay((int)(MinDelayMs - elapsed), ct);
-            _lastRequestUtc = DateTime.UtcNow;
+            var now = DateTime.UtcNow;
+            var elapsed = (now - _globalLastRequestUtc).TotalMilliseconds;
+            var minDelayMs = _globalMinDelayMs;
+            if (elapsed < minDelayMs)
+            {
+                var delayMs = (int)(minDelayMs - elapsed);
+                if (delayMs > 0)
+                    await Task.Delay(delayMs, ct);
+            }
+            _globalLastRequestUtc = DateTime.UtcNow;
         }
         finally
         {
-            _throttle.Release();
+            GlobalThrottle.Release();
+        }
+    }
+
+    /// <summary>
+    /// Liest die offiziellen Rate-Limits aus /trade/config und passt den globalen Delay
+    /// fuer alle TradeLocker-Aufrufe dynamisch an. Fallback bleibt konservativ (3000ms),
+    /// wenn die API keine verwertbaren Daten liefert.
+    /// </summary>
+    private async Task LoadRateLimitsAsync(CancellationToken ct)
+    {
+        var baseUrl = _settings.BaseUrl?.TrimEnd('/') ?? "";
+        var configUrl = string.IsNullOrEmpty(baseUrl) ? "trade/config" : $"{baseUrl}/trade/config";
+
+        using var client = GetHttpClient();
+        using var response = await client.GetAsync(configUrl, ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(ct);
+            _logger.LogDebug("TradeLocker /trade/config nicht erfolgreich ({Status}): {Body}",
+                (int)response.StatusCode, Truncate(body, 400));
+            return;
+        }
+
+        var json = await response.Content.ReadAsStringAsync(ct);
+        if (string.IsNullOrWhiteSpace(json) || json.TrimStart().StartsWith('<'))
+        {
+            _logger.LogDebug("TradeLocker /trade/config Antwort ist leer oder HTML – ignoriere.");
+            return;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            if (!root.TryGetProperty("rateLimits", out var rateLimitsElement))
+            {
+                _logger.LogDebug("TradeLocker /trade/config enthaelt kein rateLimits-Objekt – verwende Fallback {DelayMs}ms.",
+                    _globalMinDelayMs);
+                return;
+            }
+
+            JsonElement selectedLimit = default;
+            var hasSelected = false;
+
+            // rateLimits kann z.B. ein Objekt mit Routen-Namen sein; bevorzugt "quotes", sonst erstes
+            if (rateLimitsElement.ValueKind == JsonValueKind.Object)
+            {
+                if (rateLimitsElement.TryGetProperty("quotes", out var quotesLimit))
+                {
+                    selectedLimit = quotesLimit;
+                    hasSelected = true;
+                }
+                else
+                {
+                    foreach (var prop in rateLimitsElement.EnumerateObject())
+                    {
+                        selectedLimit = prop.Value;
+                        hasSelected = true;
+                        break;
+                    }
+                }
+            }
+            else if (rateLimitsElement.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in rateLimitsElement.EnumerateArray())
+                {
+                    selectedLimit = item;
+                    hasSelected = true;
+                    break;
+                }
+            }
+
+            if (!hasSelected || selectedLimit.ValueKind != JsonValueKind.Object)
+            {
+                _logger.LogDebug("TradeLocker /trade/config rateLimits nicht verstaendlich – verwende Fallback {DelayMs}ms.",
+                    _globalMinDelayMs);
+                return;
+            }
+
+            if (!selectedLimit.TryGetProperty("limit", out var limitElement) ||
+                !selectedLimit.TryGetProperty("intervalNum", out var intervalNumElement))
+            {
+                _logger.LogDebug("TradeLocker /trade/config rateLimits ohne limit/intervalNum – verwende Fallback {DelayMs}ms.",
+                    _globalMinDelayMs);
+                return;
+            }
+
+            if (!limitElement.TryGetInt32(out var limit) ||
+                !intervalNumElement.TryGetInt32(out var intervalNum) ||
+                limit <= 0 || intervalNum <= 0)
+            {
+                _logger.LogDebug("TradeLocker /trade/config rateLimits mit ungueltigen Werten – verwende Fallback {DelayMs}ms.",
+                    _globalMinDelayMs);
+                return;
+            }
+
+            // Einheit bestimmen: default Sekunden, optional "intervalUnit": "SECONDS" | "MINUTES"
+            var intervalMs = intervalNum * 1000;
+            if (selectedLimit.TryGetProperty("intervalUnit", out var unitElement) &&
+                unitElement.ValueKind == JsonValueKind.String)
+            {
+                var unit = unitElement.GetString();
+                if (unit != null && unit.Contains("MINUTE", StringComparison.OrdinalIgnoreCase))
+                {
+                    intervalMs = intervalNum * 60 * 1000;
+                }
+            }
+
+            // minDelay = Intervall / limit (z.B. 1 Sekunde / 2 = 500ms)
+            var computedDelay = intervalMs / Math.Max(limit, 1);
+
+            // Sicherheitskorridor: nicht < 200ms, nicht > 5000ms
+            computedDelay = Math.Clamp(computedDelay, 200, 5000);
+
+            var oldDelay = _globalMinDelayMs;
+            _globalMinDelayMs = computedDelay;
+
+            _logger.LogInformation(
+                "TradeLocker Rate-Limit konfiguriert: limit={Limit}, interval={IntervalMs}ms → minDelay={DelayMs}ms (alt={OldDelayMs}ms)",
+                limit, intervalMs, computedDelay, oldDelay);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "TradeLocker: Fehler beim Parsen von /trade/config – verwende Fallback {DelayMs}ms.",
+                _globalMinDelayMs);
         }
     }
 }

@@ -347,10 +347,14 @@ static void ConfigureLlmResilience(Microsoft.Extensions.Http.Resilience.HttpStan
 
 static void ConfigureBrokerResilience(Microsoft.Extensions.Http.Resilience.HttpStandardResilienceOptions o)
 {
-    // Broker-Aufrufe: schnellere Timeouts, kein automatisches Retry fuer Orders
+    // Broker-Aufrufe: schnellere Timeouts, sehr konservatives Retry.
+    // Konkrete Fehlerauswahl (welche Statuscodes retried werden) wird hier
+    // nicht überschrieben, da die verwendete Version von
+    // Microsoft.Extensions.Http.Resilience die detaillierten Prädikate
+    // (HttpRetryArguments / HttpClientResiliencePredicates) noch nicht kennt.
     o.AttemptTimeout.Timeout = TimeSpan.FromSeconds(15);
     o.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(30);
-    o.Retry.MaxRetryAttempts = 1;
+    o.Retry.MaxRetryAttempts = 1; // Validator verlangt >= 1 – genau ein vorsichtiger Retry
     o.Retry.Delay = TimeSpan.FromSeconds(2);
     // Circuit Breaker: nach 5 Fehlern 30s offen
     o.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(30);

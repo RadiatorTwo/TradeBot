@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using ClaudeTradingBot.Data;
 using ClaudeTradingBot.Hubs;
 using ClaudeTradingBot.Models;
@@ -16,10 +17,19 @@ public class DashboardBroadcastService : BackgroundService
     private readonly EconomicCalendarService _calendar;
     private readonly ILogger<DashboardBroadcastService> _logger;
 
-    private static readonly TimeSpan ActiveInterval = TimeSpan.FromSeconds(3);
-    private static readonly TimeSpan IdleInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan BroadcastInterval = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan IdleBroadcastInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan BrokerRefreshInterval = TimeSpan.FromSeconds(10);
 
-    private readonly Dictionary<string, DashboardViewModel?> _lastViewModels = new();
+    private readonly ConcurrentDictionary<string, DashboardViewModel> _lastViewModels = new();
+    private readonly ConcurrentDictionary<string, BrokerDataSnapshot> _brokerData = new();
+
+    private record BrokerDataSnapshot(
+        List<Position> Positions,
+        AccountDetails Account,
+        decimal Cash,
+        decimal PortfolioValue,
+        DateTime FetchedAt);
 
     public DashboardBroadcastService(
         IHubContext<TradingHub> hubContext,
@@ -37,9 +47,22 @@ public class DashboardBroadcastService : BackgroundService
         _logger = logger;
     }
 
+    /// <summary>
+    /// Gibt das zuletzt gebaute DashboardViewModel fuer einen Account zurueck.
+    /// Wird von Dashboard.razor genutzt, damit beim Accountwechsel sofort Daten
+    /// angezeigt werden (ohne auf Broker-Calls warten zu muessen).
+    /// </summary>
+    public DashboardViewModel? GetLastViewModel(string accountId)
+    {
+        _lastViewModels.TryGetValue(accountId, out var vm);
+        return vm;
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+
+        _ = RefreshBrokerDataLoopAsync(stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -47,29 +70,10 @@ public class DashboardBroadcastService : BackgroundService
             {
                 foreach (var ctx in _accountMgr.Accounts)
                 {
-                    var isIdle = ctx.Engine.IsPaused || ctx.Risk.IsKillSwitchActive;
-                    _lastViewModels.TryGetValue(ctx.AccountId, out var lastVm);
-
-                    if (isIdle && lastVm != null)
-                    {
-                        var idleUpdate = lastVm with
-                        {
-                            IsEngineRunning = ctx.Engine.IsRunning,
-                            IsEnginePaused = ctx.Engine.IsPaused,
-                            IsKillSwitchActive = ctx.Risk.IsKillSwitchActive,
-                            IsMarketOpen = _marketHours.IsMarketOpen(),
-                            MarketStatus = _marketHours.GetMarketStatus()
-                        };
-                        await _hubContext.Clients.All.SendAsync(
-                            TradingHub.DashboardUpdate, idleUpdate, stoppingToken);
-                    }
-                    else
-                    {
-                        var viewModel = await BuildDashboardViewModelAsync(ctx, stoppingToken);
-                        _lastViewModels[ctx.AccountId] = viewModel;
-                        await _hubContext.Clients.All.SendAsync(
-                            TradingHub.DashboardUpdate, viewModel, stoppingToken);
-                    }
+                    var viewModel = await BuildDashboardViewModelAsync(ctx, stoppingToken);
+                    _lastViewModels[ctx.AccountId] = viewModel;
+                    await _hubContext.Clients.All.SendAsync(
+                        TradingHub.DashboardUpdate, viewModel, stoppingToken);
                 }
             }
             catch (OperationCanceledException)
@@ -81,35 +85,69 @@ public class DashboardBroadcastService : BackgroundService
                 _logger.LogDebug(ex, "DashboardBroadcast: Fehler beim Senden");
             }
 
-            // Interval basierend auf einem beliebigen aktiven Account
             var anyActive = _accountMgr.Accounts.Any(a => !a.Engine.IsPaused && !a.Risk.IsKillSwitchActive);
-            var interval = anyActive ? ActiveInterval : IdleInterval;
+            var interval = anyActive ? BroadcastInterval : IdleBroadcastInterval;
             await Task.Delay(interval, stoppingToken);
         }
     }
 
+    /// <summary>
+    /// Separater Hintergrund-Loop der Broker-Daten (Positionen, Kontodetails) abruft.
+    /// Laeuft unabhaengig vom Broadcast-Loop, damit der Broadcast nie auf den
+    /// globalen Broker-Throttle warten muss.
+    /// </summary>
+    private async Task RefreshBrokerDataLoopAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            foreach (var ctx in _accountMgr.Accounts)
+            {
+                if (ct.IsCancellationRequested) break;
+                if (!ctx.EffectiveBroker.IsConnected) continue;
+
+                try
+                {
+                    var positions = await ctx.EffectiveBroker.GetPositionsAsync(ct);
+                    var account = await ctx.EffectiveBroker.GetAccountDetailsAsync(ct);
+                    var cash = account.FreeMargin > 0 ? account.FreeMargin : account.Balance;
+                    var portfolioValue = account.Equity > 0 ? account.Equity : account.Balance;
+
+                    _brokerData[ctx.AccountId] = new BrokerDataSnapshot(
+                        positions, account, cash, portfolioValue, DateTime.UtcNow);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "DashboardBroadcast: Broker-Refresh fuer {AccountId} fehlgeschlagen", ctx.AccountId);
+                }
+            }
+
+            try { await Task.Delay(BrokerRefreshInterval, ct); }
+            catch (OperationCanceledException) { break; }
+        }
+    }
+
+    /// <summary>
+    /// Baut das ViewModel aus gecachten Broker-Daten + frischen DB-Daten.
+    /// Blockiert NICHT auf den Broker-Throttle – nutzt immer nur vorhandene Daten.
+    /// </summary>
     private async Task<DashboardViewModel> BuildDashboardViewModelAsync(AccountContext ctx, CancellationToken ct)
     {
         var positions = new List<Position>();
         decimal cash = 0, portfolioValue = 0;
         var account = new AccountDetails();
 
-        if (ctx.EffectiveBroker.IsConnected)
+        if (_brokerData.TryGetValue(ctx.AccountId, out var snapshot))
         {
-            try
-            {
-                positions = await ctx.EffectiveBroker.GetPositionsAsync(ct);
-                account = await ctx.EffectiveBroker.GetAccountDetailsAsync(ct);
-                cash = account.FreeMargin > 0 ? account.FreeMargin : account.Balance;
-                portfolioValue = account.Equity > 0 ? account.Equity : account.Balance;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex, "DashboardBroadcast: Broker-Daten nicht verfuegbar fuer {AccountId}", ctx.AccountId);
-            }
+            positions = snapshot.Positions;
+            account = snapshot.Account;
+            cash = snapshot.Cash;
+            portfolioValue = snapshot.PortfolioValue;
         }
 
-        // Prometheus-Gauges aktualisieren
         TradingMetrics.PortfolioEquity.WithLabels(ctx.AccountId).Set((double)portfolioValue);
         TradingMetrics.OpenPositionCount.WithLabels(ctx.AccountId).Set(positions.Count);
         TradingMetrics.KillSwitchActive.WithLabels(ctx.AccountId).Set(ctx.Risk.IsKillSwitchActive ? 1 : 0);

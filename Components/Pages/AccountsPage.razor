@@ -107,6 +107,35 @@
                         <div class="hint" style="margin-top: 4px;">Minimale KI-Confidence (0-1)</div>
                     </RadzenColumn>
                     <RadzenColumn Size="4">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px" Style="margin-top: 28px;">
+                            <RadzenCheckBox @bind-Value="_editDynamicConfidenceEnabled" Name="DynamicConfidence" />
+                            <RadzenLabel Text="Dynamische Confidence" Component="DynamicConfidence" />
+                        </RadzenStack>
+                        <div class="hint" style="margin-top: 4px;">Passt Min. Confidence an Volatilität an</div>
+                    </RadzenColumn>
+                    @if (_editDynamicConfidenceEnabled)
+                    {
+                        <RadzenColumn Size="4">
+                            <RadzenLabel Text="Max. Dynamic Confidence" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenNumeric TValue="double" @bind-Value="_editMaxDynamicConfidence" ShowUpDown="false" Min="0" Max="1" Step="0.05" Style="width: 100%;" />
+                        </RadzenColumn>
+                        <RadzenColumn Size="4">
+                            <RadzenLabel Text="Confidence ATR Faktor" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenNumeric TValue="double" @bind-Value="_editConfidenceAtrFactor" ShowUpDown="false" Min="0" Max="1" Step="0.01" Style="width: 100%;" />
+                            <div class="hint" style="margin-top: 4px;">Erhöht Min. Confidence bei hoher Volatilität</div>
+                        </RadzenColumn>
+                        <RadzenColumn Size="4">
+                            <RadzenLabel Text="Confidence Drawdown Faktor" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenNumeric TValue="double" @bind-Value="_editConfidenceDrawdownFactor" ShowUpDown="false" Min="0" Max="1" Step="0.01" Style="width: 100%;" />
+                            <div class="hint" style="margin-top: 4px;">Erhöht Min. Confidence bei Drawdown</div>
+                        </RadzenColumn>
+                        <RadzenColumn Size="4">
+                            <RadzenLabel Text="Confidence Loss Streak Faktor" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenNumeric TValue="double" @bind-Value="_editConfidenceLossStreakFactor" ShowUpDown="false" Min="0" Max="1" Step="0.01" Style="width: 100%;" />
+                            <div class="hint" style="margin-top: 4px;">Erhöht Min. Confidence bei Verlustserie</div>
+                        </RadzenColumn>
+                    }
+                    <RadzenColumn Size="4">
                         <RadzenLabel Text="Risiko pro Trade (%)" Style="display: block; margin-bottom: 4px;" />
                         <RadzenNumeric TValue="double" @bind-Value="_editRiskPerTrade" ShowUpDown="false" Min="0" Max="10" Step="0.5" Style="width: 100%;" />
                         <div class="hint" style="margin-top: 4px;">Position Sizing basierend auf SL-Distanz. 0 = LLM entscheidet Lotgroesse</div>
@@ -490,6 +519,7 @@
     private bool _editPaperEnabled;
     private decimal _editPaperBalance = 25000m;
     private double _editMinConfidence = 0.65;
+    private bool _editDynamicConfidenceEnabled;
     private double _editMaxPosSize = 10.0;
     private int _editMaxOpenPos = 10;
     private double _editMaxDailyLossPercent = 3.0;
@@ -518,6 +548,10 @@
     private double _editOppositeDirectionMinConfidence;
     private double _editCorrelationThreshold = 0.3;
     private double _editConfidenceWinRateThreshold = 0.5;
+    private double _editConfidenceAtrFactor = 0.05;
+    private double _editConfidenceDrawdownFactor = 0.02;
+    private double _editConfidenceLossStreakFactor = 0.05;
+    private double _editMaxDynamicConfidence = 0.85;
     // Grid-Trading
     private bool _editGridEnabled;
     private double _editGridSpacing = 20;
@@ -583,6 +617,7 @@
         _editPaperEnabled = acc.PaperTrading.Enabled;
         _editPaperBalance = acc.PaperTrading.InitialBalance;
         _editMinConfidence = acc.RiskManagement.MinConfidence;
+        _editDynamicConfidenceEnabled = acc.RiskManagement.DynamicConfidenceEnabled;
         _editMaxPosSize = acc.RiskManagement.MaxPositionSizePercent;
         _editMaxOpenPos = acc.RiskManagement.MaxOpenPositions;
         _editMaxDailyLossPercent = acc.RiskManagement.MaxDailyLossPercent;
@@ -611,6 +646,10 @@
         _editOppositeDirectionMinConfidence = acc.RiskManagement.OppositeDirectionMinConfidence;
         _editCorrelationThreshold = acc.RiskManagement.CorrelationThreshold;
         _editConfidenceWinRateThreshold = acc.RiskManagement.ConfidenceWinRateThreshold;
+        _editConfidenceAtrFactor = acc.RiskManagement.ConfidenceAtrFactor;
+        _editConfidenceDrawdownFactor = acc.RiskManagement.ConfidenceDrawdownFactor;
+        _editConfidenceLossStreakFactor = acc.RiskManagement.ConfidenceLossStreakFactor;
+        _editMaxDynamicConfidence = acc.RiskManagement.MaxDynamicConfidence;
         _editGridEnabled = acc.RiskManagement.Grid.Enabled;
         _editGridSpacing = acc.RiskManagement.Grid.GridSpacingPips;
         _editGridLotSize = acc.RiskManagement.Grid.LotSizePerLevel;
@@ -639,6 +678,7 @@
         _editPaperEnabled = false;
         _editPaperBalance = 25000m;
         _editMinConfidence = 0.65;
+        _editDynamicConfidenceEnabled = false;
         _editMaxPosSize = 10.0;
         _editMaxOpenPos = 10;
         _editMaxDailyLossPercent = 3.0;
@@ -667,6 +707,10 @@
         _editOppositeDirectionMinConfidence = 0;
         _editCorrelationThreshold = 0.3;
         _editConfidenceWinRateThreshold = 0.5;
+        _editConfidenceAtrFactor = 0.05;
+        _editConfidenceDrawdownFactor = 0.02;
+        _editConfidenceLossStreakFactor = 0.05;
+        _editMaxDynamicConfidence = 0.85;
         _editGridEnabled = false;
         _editGridSpacing = 20;
         _editGridLotSize = 0.01m;
@@ -732,6 +776,7 @@
             RiskManagement = existingAccount?.RiskManagement ?? new RiskSettings()
         };
         acc.RiskManagement.MinConfidence = _editMinConfidence;
+        acc.RiskManagement.DynamicConfidenceEnabled = _editDynamicConfidenceEnabled;
         acc.RiskManagement.MaxPositionSizePercent = _editMaxPosSize;
         acc.RiskManagement.MaxOpenPositions = _editMaxOpenPos;
         acc.RiskManagement.MaxDailyLossPercent = _editMaxDailyLossPercent;
@@ -760,6 +805,10 @@
         acc.RiskManagement.OppositeDirectionMinConfidence = _editOppositeDirectionMinConfidence;
         acc.RiskManagement.CorrelationThreshold = _editCorrelationThreshold;
         acc.RiskManagement.ConfidenceWinRateThreshold = _editConfidenceWinRateThreshold;
+        acc.RiskManagement.ConfidenceAtrFactor = _editConfidenceAtrFactor;
+        acc.RiskManagement.ConfidenceDrawdownFactor = _editConfidenceDrawdownFactor;
+        acc.RiskManagement.ConfidenceLossStreakFactor = _editConfidenceLossStreakFactor;
+        acc.RiskManagement.MaxDynamicConfidence = _editMaxDynamicConfidence;
         acc.RiskManagement.GridDeactivationMinConfidence = _editGridDeactivationMinConfidence;
         acc.RiskManagement.Grid.Enabled = _editGridEnabled;
         acc.RiskManagement.Grid.GridSpacingPips = _editGridSpacing;

@@ -394,6 +394,23 @@ public class TradingEngine : BackgroundService
             return;
         }
 
+        // Confidence normalisieren: 0.0–1.0, Prozentwerte (z.B. 80) auf 0.xx abbilden
+        if (!recommendation.Confidence.HasValue)
+        {
+            recommendation.Confidence = 0.0;
+        }
+        else
+        {
+            var c = recommendation.Confidence.Value;
+            if (c > 1.0)
+                c /= 100.0;
+            if (c < 0.0)
+                c = 0.0;
+            if (c > 1.0)
+                c = 1.0;
+            recommendation.Confidence = c;
+        }
+
         // ── Grid-Trading (Phase 10.1) ─────────────────────────────────────
         if (recommendation.Action.Equals("grid", StringComparison.OrdinalIgnoreCase))
         {
