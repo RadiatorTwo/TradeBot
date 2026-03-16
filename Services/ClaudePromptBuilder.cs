@@ -42,6 +42,14 @@ public static class ClaudePromptBuilder
         - Setze IMMER stopLossPrice und takeProfitPrice wenn action != "hold" und action != "grid".
         - Bei Limit/Stop-Orders: setze IMMER entryPrice.
 
+        RISK/REWARD:
+        - Empfiehl nur Trades mit mindestens 1:1.5 Risk/Reward (TP-Distanz >= 1.5× SL-Distanz).
+        - Bei unsicheren Setups: hold oder kleinere quantity.
+
+        FEEDBACK-LOOP:
+        - Analysiere die letzten Trades im Feedback-Loop: Welche Setups (setupType) hatten negative PnL?
+        - Vermeide ähnliche Setups oder reduziere quantity/confidence.
+
         LIMIT/STOP-ORDERS:
         - buy_limit: Kaufen unterhalb des aktuellen Preises (Preis soll erst fallen, dann steigen).
         - sell_limit: Verkaufen oberhalb des aktuellen Preises (Preis soll erst steigen, dann fallen).
