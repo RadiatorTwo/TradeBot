@@ -139,7 +139,10 @@ public class PaperTradingBrokerDecorator : IBrokerService
         if (!_settings.CurrentValue.Enabled)
             return await _inner.PlaceOrderAsync(symbol, action, quantityLots, stopLoss, takeProfit, orderType, entryPrice, ct);
 
-        var price = await _inner.GetCurrentPriceAsync(symbol, ct);
+        var (bid, ask) = await _inner.GetBidAskAsync(symbol, ct);
+        var price = (bid > 0 && ask > 0)
+            ? (action == TradeAction.Buy ? ask : bid)
+            : await _inner.GetCurrentPriceAsync(symbol, ct);
         if (price <= 0)
         {
             _logger.LogWarning("[PAPER] Preis fuer {Symbol} ist 0 – Order abgelehnt", symbol);
@@ -230,16 +233,19 @@ public class PaperTradingBrokerDecorator : IBrokerService
             return false;
         }
 
-        var currentPrice = await _inner.GetCurrentPriceAsync(pp.Symbol, ct);
+        var (bid, ask) = await _inner.GetBidAskAsync(pp.Symbol, ct);
+        var exitPrice = (bid > 0 && ask > 0)
+            ? (pp.Side.Equals("buy", StringComparison.OrdinalIgnoreCase) ? bid : ask)
+            : await _inner.GetCurrentPriceAsync(pp.Symbol, ct);
         var direction = pp.Side.Equals("sell", StringComparison.OrdinalIgnoreCase) ? -1 : 1;
-        var pnl = (currentPrice - pp.EntryPrice) * pp.Quantity * direction;
+        var pnl = (exitPrice - pp.EntryPrice) * pp.Quantity * direction;
 
         lock (_balanceLock) { _paperBalance += pnl; }
         _paperPositions.TryRemove(key, out _);
 
         _logger.LogInformation(
             "[PAPER] Close {Side} {Qty:F2} Lots {Symbol} @ {Price:F5} (Entry={Entry:F5}, PnL={PnL:+0.00;-0.00})",
-            pp.Side.ToUpper(), pp.Quantity, pp.Symbol, currentPrice, pp.EntryPrice, pnl);
+            pp.Side.ToUpper(), pp.Quantity, pp.Symbol, exitPrice, pp.EntryPrice, pnl);
 
         return true;
     }

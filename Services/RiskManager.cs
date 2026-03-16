@@ -204,6 +204,12 @@ public class RiskManager : IRiskManager
             var currentPrice = await _broker.GetCurrentPriceAsync(pos.Symbol, ct);
             if (currentPrice == 0) continue;
 
+            var (bid, ask) = await _broker.GetBidAskAsync(pos.Symbol, ct);
+            // Exit-Preis bei Close: Buy-Position schliessen = Verkauf an Bid; Sell-Position schliessen = Kauf an Ask
+            var exitPrice = (bid > 0 && ask > 0)
+                ? (pos.Side.Equals("buy", StringComparison.OrdinalIgnoreCase) ? bid : ask)
+                : currentPrice;
+
             var isBuy = pos.Side.Equals("buy", StringComparison.OrdinalIgnoreCase);
 
             // Gewinn/Verlust in Pips berechnen (richtungsabhaengig)
@@ -267,7 +273,7 @@ public class RiskManager : IRiskManager
                             Status = TradeStatus.Executed,
                             Quantity = closeQty,
                             Price = currentPrice,
-                            ExecutedPrice = currentPrice,
+                            ExecutedPrice = exitPrice,
                             ExecutedAt = DateTime.UtcNow,
                             ClaudeReasoning = $"Partial Close ({Settings.PartialClosePercent:P0}) bei {gainPips:F1} Pips Gewinn",
                             ClaudeConfidence = 1.0,
@@ -276,7 +282,7 @@ public class RiskManager : IRiskManager
                         db.TradingLogs.Add(new TradingLog
                         {
                             Source = "RiskManager",
-                            Message = $"Partial Close: {closeQty:F2} Lots {pos.Symbol} @ {currentPrice:F4} ({gainPips:F1} Pips Gewinn)"
+                            Message = $"Partial Close: {closeQty:F2} Lots {pos.Symbol} @ {exitPrice:F4} ({gainPips:F1} Pips Gewinn)"
                         });
                         await db.SaveChangesAsync(ct);
                     }
@@ -329,7 +335,7 @@ public class RiskManager : IRiskManager
                     Status = success ? TradeStatus.Executed : TradeStatus.Failed,
                     Quantity = pos.Quantity,
                     Price = currentPrice,
-                    ExecutedPrice = success ? currentPrice : null,
+                    ExecutedPrice = success ? exitPrice : null,
                     ClaudeReasoning = $"Automatischer Stop-Loss bei {lossPercent:F1}% Verlust ({gainPips:F1} Pips)",
                     ClaudeConfidence = 1.0,
                     ExecutedAt = success ? DateTime.UtcNow : null,
@@ -340,7 +346,7 @@ public class RiskManager : IRiskManager
                 {
                     Level = "Warning",
                     Source = "RiskManager",
-                    Message = $"Stop-Loss: Close {pos.Quantity:F2} Lots {pos.Symbol} @ {currentPrice:F5} (Verlust: {lossPercent:F1}%)"
+                    Message = $"Stop-Loss: Close {pos.Quantity:F2} Lots {pos.Symbol} @ {exitPrice:F5} (Verlust: {lossPercent:F1}%)"
                 });
 
                 await db.SaveChangesAsync(ct);

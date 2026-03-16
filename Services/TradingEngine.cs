@@ -485,6 +485,11 @@ public class TradingEngine : BackgroundService
 
                 var closeSuccess = await _broker.ClosePositionAsync(posId, null, ct);
 
+                // Exit-Preis: Buy-Position schliessen = Verkauf an Bid; Sell-Position schliessen = Kauf an Ask
+                var closeExitPrice = (bid > 0 && ask > 0)
+                    ? (pos.Side.Equals("buy", StringComparison.OrdinalIgnoreCase) ? bid : ask)
+                    : currentPrice;
+
                 db.Trades.Add(new Trade
                 {
                     AccountId = AccountId,
@@ -492,7 +497,7 @@ public class TradingEngine : BackgroundService
                     Action = pos.Side == "buy" ? TradeAction.Sell : TradeAction.Buy,
                     Quantity = pos.Quantity,
                     Price = currentPrice,
-                    ExecutedPrice = closeSuccess ? currentPrice : null,
+                    ExecutedPrice = closeSuccess ? closeExitPrice : null,
                     ExecutedAt = closeSuccess ? DateTime.UtcNow : null,
                     Status = closeSuccess ? TradeStatus.Executed : TradeStatus.Failed,
                     ClaudeReasoning = $"Position geschlossen: LLM empfiehlt {recommendation.Action.ToUpper()} (Confidence: {recommendation.Confidence:P0}). {recommendation.Reasoning}",
@@ -507,7 +512,7 @@ public class TradingEngine : BackgroundService
                     AccountId = AccountId,
                     Level = closeSuccess ? "Info" : "Error",
                     Source = "TradingEngine",
-                    Message = $"{(closeSuccess ? "✅" : "❌")} Close {pos.Side.ToUpper()} {pos.Quantity:F2} Lots {symbol} @ {currentPrice:F4} (LLM: {recommendation.Action.ToUpper()})"
+                    Message = $"{(closeSuccess ? "✅" : "❌")} Close {pos.Side.ToUpper()} {pos.Quantity:F2} Lots {symbol} @ {closeExitPrice:F4} (LLM: {recommendation.Action.ToUpper()})"
                 });
             }
 
@@ -523,6 +528,11 @@ public class TradingEngine : BackgroundService
         var spreadPips = (bid > 0 && ask > 0)
             ? PipCalculator.PriceToPips(symbol, ask - bid)
             : 0m;
+
+        // Ausfuehrungspreis: Buy = Ask, Sell = Bid (Fallback: currentPrice wenn bid/ask = 0)
+        var executionPrice = (bid > 0 && ask > 0)
+            ? (action == TradeAction.Buy ? ask : bid)
+            : currentPrice;
 
         // Risk Check (mit Spread-Daten)
         var isValid = await _risk.ValidateTradeAsync(recommendation, bid, ask, ct);
@@ -594,12 +604,12 @@ public class TradingEngine : BackgroundService
                 sameDirectionPositions.Count + 1, maxPyramid, recommendation.Confidence);
         }
 
-        // Risk-based Position Sizing: Lot-Größe aus SL-Distanz berechnen
+        // Risk-based Position Sizing: Lot-Größe aus SL-Distanz berechnen (Einstieg = executionPrice)
         var quantity = recommendation.Quantity ?? 0.01m;
         if (Settings.RiskPerTradePercent > 0 && recommendation.StopLossPrice.HasValue && recommendation.StopLossPrice.Value > 0)
         {
             var calculatedLots = CalculatePositionSize(
-                symbol, currentPrice, recommendation.StopLossPrice.Value, portfolioValue);
+                symbol, executionPrice, recommendation.StopLossPrice.Value, portfolioValue);
 
             if (calculatedLots.HasValue)
             {
@@ -608,7 +618,7 @@ public class TradingEngine : BackgroundService
                     "(Risk={Risk}%, SL-Distanz={SlDist:F1} Pips)",
                     symbol, recommendation.Quantity, calculatedLots.Value,
                     Settings.RiskPerTradePercent,
-                    PipCalculator.PriceToPips(symbol, Math.Abs(currentPrice - recommendation.StopLossPrice.Value)));
+                    PipCalculator.PriceToPips(symbol, Math.Abs(executionPrice - recommendation.StopLossPrice.Value)));
                 quantity = calculatedLots.Value;
             }
         }
@@ -619,11 +629,11 @@ public class TradingEngine : BackgroundService
 
         if (!stopLoss.HasValue || stopLoss.Value <= 0)
         {
-            // Default SL: 50 Pips (anpassbar via StopLossPips-Logik)
+            // Default SL: 50 Pips (anpassbar via StopLossPips-Logik) – Einstieg = executionPrice
             var defaultSlPips = 50m;
             var slDistance = PipCalculator.PipsToPrice(symbol, defaultSlPips);
             var isBuyAction = action == TradeAction.Buy;
-            stopLoss = isBuyAction ? currentPrice - slDistance : currentPrice + slDistance;
+            stopLoss = isBuyAction ? executionPrice - slDistance : executionPrice + slDistance;
 
             _logger.LogWarning(
                 "LLM hat keinen StopLoss geliefert fuer {Symbol}. Default-SL gesetzt: {SL:F5} ({Pips} Pips)",
@@ -632,11 +642,11 @@ public class TradingEngine : BackgroundService
 
         if (!takeProfit.HasValue || takeProfit.Value <= 0)
         {
-            // Default TP: 1.5x SL-Distanz (Risk/Reward 1:1.5)
-            var slDist = Math.Abs(currentPrice - stopLoss.Value);
+            // Default TP: 1.5x SL-Distanz (Risk/Reward 1:1.5) – Einstieg = executionPrice
+            var slDist = Math.Abs(executionPrice - stopLoss.Value);
             var tpDist = slDist * 1.5m;
             var isBuyAction = action == TradeAction.Buy;
-            takeProfit = isBuyAction ? currentPrice + tpDist : currentPrice - tpDist;
+            takeProfit = isBuyAction ? executionPrice + tpDist : executionPrice - tpDist;
 
             _logger.LogWarning(
                 "LLM hat keinen TakeProfit geliefert fuer {Symbol}. Default-TP gesetzt: {TP:F5} (1.5x SL-Distanz)",
@@ -671,7 +681,7 @@ public class TradingEngine : BackgroundService
         if (orderType == OrderType.Market)
         {
             trade.Status = result.Success ? TradeStatus.Executed : TradeStatus.Failed;
-            trade.ExecutedPrice = result.Success ? currentPrice : null;
+            trade.ExecutedPrice = result.Success ? executionPrice : null;
             trade.ExecutedAt = result.Success ? DateTime.UtcNow : null;
         }
         else
@@ -699,7 +709,7 @@ public class TradingEngine : BackgroundService
             AccountId = AccountId,
             Level = result.Success ? "Info" : "Error",
             Source = "TradingEngine",
-            Message = $"{(result.Success ? "✅" : "❌")} {orderLabel} {quantity:F2} Lots {symbol} @ {currentPrice:F4}",
+            Message = $"{(result.Success ? "✅" : "❌")} {orderLabel} {quantity:F2} Lots {symbol} @ {executionPrice:F4}",
             Details = recommendation.Reasoning
         });
 
