@@ -151,7 +151,14 @@ public static class ClaudePromptBuilder
             }
 
             if (req.Indicators.ATR14.HasValue)
-                sb.AppendLine($"**ATR(14):** {req.Indicators.ATR14:F4} (Volatilitaet)");
+            {
+                var atr = req.Indicators.ATR14.Value;
+                var atrPercent = req.CurrentPrice > 0 ? (double)(atr / req.CurrentPrice * 100) : 0;
+                var volLabel = atrPercent > 1 ? "hohe Volatilitaet" : "niedrige Volatilitaet";
+                sb.AppendLine($"**ATR(14):** {atr:F4} ({atrPercent:F2}% des Preises – {volLabel})");
+                if (atrPercent > 1)
+                    sb.AppendLine("  - Bei hoher Volatilitaet (>1%): kleinere Lots oder hoehere Confidence.");
+            }
 
             if (req.Indicators.BollingerUpper.HasValue)
             {
