@@ -38,23 +38,23 @@
         <h3 style="margin-top: 0;">@(_editMode ? $"\"{_editDisplayName}\" bearbeiten" : "Neuen Account anlegen")</h3>
 
         <EditForm Model="this" OnValidSubmit="SaveAccount" FormName="account-form">
-            @* Schritt 1: Grunddaten *@
-            <RadzenRow Gap="16px" Style="margin-bottom: 20px;">
-                <RadzenColumn Size="6">
-                    <RadzenLabel Text="Kurzname (ID)" Style="display: block; margin-bottom: 4px;" />
-                    <RadzenTextBox @bind-Value="_editId" Placeholder="Demo1" Style="width: 100%;" />
-                    <div class="hint" style="margin-top: 4px;">Wird intern als Bezeichner verwendet. @(_editMode ? "Aendern erfordert Neustart." : "")</div>
-                </RadzenColumn>
-                <RadzenColumn Size="6">
-                    <RadzenLabel Text="Anzeigename" Style="display: block; margin-bottom: 4px;" />
-                    <RadzenTextBox @bind-Value="_editDisplayName" Placeholder="Mein Demo-Konto" Style="width: 100%;" />
-                </RadzenColumn>
-            </RadzenRow>
-
-            @* Schritt 2: Broker-Verbindung *@
-            <details open="@(!_editMode)">
-                <summary style="cursor: pointer; font-weight: 600; margin-bottom: 12px;">Broker-Verbindung (TradeLocker)</summary>
-                <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
+            <RadzenTabs>
+                <Tabs>
+                <RadzenTabsItem Text="Allgemein" Value="allgemein">
+                    <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
+                        <RadzenColumn Size="6">
+                            <RadzenLabel Text="Kurzname (ID)" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenTextBox @bind-Value="_editId" Placeholder="Demo1" Style="width: 100%;" />
+                            <div class="hint" style="margin-top: 4px;">Wird intern als Bezeichner verwendet. @(_editMode ? "Aendern erfordert Neustart." : "")</div>
+                        </RadzenColumn>
+                        <RadzenColumn Size="6">
+                            <RadzenLabel Text="Anzeigename" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenTextBox @bind-Value="_editDisplayName" Placeholder="Mein Demo-Konto" Style="width: 100%;" />
+                        </RadzenColumn>
+                    </RadzenRow>
+                </RadzenTabsItem>
+                <RadzenTabsItem Text="Broker" Value="broker">
+                    <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
                     <RadzenColumn Size="6">
                         <RadzenLabel Text="Server-URL" Style="display: block; margin-bottom: 4px;" />
                         <RadzenDropDown @bind-Value="_editBaseUrl" Data="_serverUrlOptions" TextProperty="Text" ValueProperty="Value" Style="width: 100%;" />
@@ -77,30 +77,22 @@
                         <div class="hint" style="margin-top: 4px;">Falls mehrere Broker-Accounts existieren, hier die gewuenschte Account-ID angeben. Leer = erster Account wird verwendet.</div>
                     </RadzenColumn>
                 </RadzenRow>
-            </details>
-
-            @* Schritt 3: Paper-Trading *@
-            <details>
-                <summary style="cursor: pointer; font-weight: 600; margin-bottom: 12px;">Paper-Trading</summary>
-                <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
-                    <RadzenColumn Size="4">
-                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px">
-                            <RadzenCheckBox @bind-Value="_editPaperEnabled" />
-                            <RadzenLabel Text="Paper-Trading (kein echtes Geld)" />
-                        </RadzenStack>
-                        <div class="hint" style="margin-top: 4px;">Wenn aktiv werden keine echten Orders platziert.</div>
-                    </RadzenColumn>
-                    <RadzenColumn Size="4">
-                        <RadzenLabel Text="Paper-Startkapital ($)" Style="display: block; margin-bottom: 4px;" />
-                        <RadzenNumeric TValue="decimal" @bind-Value="_editPaperBalance" ShowUpDown="false" Min="100" Step="1000" Style="width: 100%;" />
-                    </RadzenColumn>
-                </RadzenRow>
-            </details>
-
-            @* Schritt 4: Risiko-Parameter *@
-            <details>
-                <summary style="cursor: pointer; font-weight: 600; margin-bottom: 12px;">Risiko-Parameter</summary>
-                <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
+                </RadzenTabsItem>
+                <RadzenTabsItem Text="Paper & Risiko" Value="paper-risiko">
+                    <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
+                        <RadzenColumn Size="4">
+                            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px">
+                                <RadzenCheckBox @bind-Value="_editPaperEnabled" />
+                                <RadzenLabel Text="Paper-Trading (kein echtes Geld)" />
+                            </RadzenStack>
+                            <div class="hint" style="margin-top: 4px;">Wenn aktiv werden keine echten Orders platziert.</div>
+                        </RadzenColumn>
+                        <RadzenColumn Size="4">
+                            <RadzenLabel Text="Paper-Startkapital ($)" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenNumeric TValue="decimal" @bind-Value="_editPaperBalance" ShowUpDown="false" Min="100" Step="1000" Style="width: 100%;" />
+                        </RadzenColumn>
+                    </RadzenRow>
+                    <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
                     <RadzenColumn Size="4">
                         <RadzenLabel Text="Min. Confidence" Style="display: block; margin-bottom: 4px;" />
                         <RadzenNumeric TValue="double" @bind-Value="_editMinConfidence" ShowUpDown="false" Min="0" Max="1" Step="0.05" Style="width: 100%;" />
@@ -165,7 +157,7 @@
                     </RadzenColumn>
                     <RadzenColumn Size="4">
                         <RadzenLabel Text="Default TP-Ratio" Style="display: block; margin-bottom: 4px;" />
-                        <RadzenNumeric TValue="double" @bind-Value="_editDefaultTakeProfitRatio" ShowUpDown="false" Min="0.5m" Step="0.25m" Style="width: 100%;" />
+                        <RadzenNumeric TValue="double" @bind-Value="_editDefaultTakeProfitRatio" ShowUpDown="false" Style="width: 100%;" />
                         <div class="hint" style="margin-top: 4px;">TP = Ratio × SL-Distanz</div>
                     </RadzenColumn>
                     <RadzenColumn Size="4">
@@ -180,7 +172,7 @@
                     </RadzenColumn>
                     <RadzenColumn Size="4">
                         <RadzenLabel Text="Min. Risk/Reward" Style="display: block; margin-bottom: 4px;" />
-                        <RadzenNumeric TValue="double" @bind-Value="_editMinRiskRewardRatio" ShowUpDown="false" Min="0.5m" Step="0.25m" Style="width: 100%;" />
+                        <RadzenNumeric TValue="double" @bind-Value="_editMinRiskRewardRatio" ShowUpDown="false" Style="width: 100%;" />
                         <div class="hint" style="margin-top: 4px;">Trade ablehnen wenn TP/SL &lt; Ratio</div>
                     </RadzenColumn>
                     <RadzenColumn Size="4">
@@ -239,153 +231,134 @@
                         <div class="hint" style="margin-top: 4px;">Leer = alle Sessions erlaubt (gesteuert durch TradingSessionService)</div>
                     </RadzenColumn>
                 </RadzenRow>
-            </details>
-
-            @* Schritt 4d: Portfolio & Allokation *@
-            <details>
-                <summary style="cursor: pointer; font-weight: 600; margin-bottom: 12px;">Portfolio & Allokation</summary>
-                <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
-                    <RadzenColumn Size="4">
-                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px">
-                            <RadzenCheckBox @bind-Value="_editPortfolioEnabled" />
-                            <RadzenLabel Text="Portfolio-Allokation aktivieren" />
-                        </RadzenStack>
-                    </RadzenColumn>
-                    <RadzenColumn Size="4">
-                        <RadzenLabel Text="Default Max. % pro Symbol" Style="display: block; margin-bottom: 4px;" />
-                        <RadzenNumeric TValue="double" @bind-Value="_editPortfolioDefaultMax" ShowUpDown="false" Min="1" Max="100" Step="1" Style="width: 100%;" />
-                    </RadzenColumn>
-                    <RadzenColumn Size="4">
-                        <RadzenLabel Text="Rebalance Trigger (+%)" Style="display: block; margin-bottom: 4px;" />
-                        <RadzenNumeric TValue="double" @bind-Value="_editPortfolioRebalance" ShowUpDown="false" Min="0.1" Step="0.1" Style="width: 100%;" />
-                        <div class="hint" style="margin-top: 4px;">Toleranz ueber Max. %, bevor reduziert wird</div>
-                    </RadzenColumn>
-                </RadzenRow>
-            </details>
-
-            @* Schritt 4b: Verlustlimits *@
-            <details>
-                <summary style="cursor: pointer; font-weight: 600; margin-bottom: 12px;">Verlustlimits</summary>
-                <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
-                    <RadzenColumn Size="4">
-                        <RadzenLabel Text="Stop-Loss (%)" Style="display: block; margin-bottom: 4px;" />
-                        <RadzenNumeric TValue="double" @bind-Value="_editStopLossPercent" ShowUpDown="false" Min="0" Step="0.5" Style="width: 100%;" />
-                        <div class="hint" style="margin-top: 4px;">Lokaler Stop-Loss pro Position (% vom Einstiegspreis)</div>
-                    </RadzenColumn>
-                    <RadzenColumn Size="4">
-                        <RadzenLabel Text="Max. Tagesverlust (%)" Style="display: block; margin-bottom: 4px;" />
-                        <RadzenNumeric TValue="double" @bind-Value="_editMaxDailyLossPercent" ShowUpDown="false" Min="0" Step="0.5" Style="width: 100%;" />
-                    </RadzenColumn>
-                    <RadzenColumn Size="4">
-                        <RadzenLabel Text="Max. Tagesverlust ($)" Style="display: block; margin-bottom: 4px;" />
-                        <RadzenNumeric TValue="decimal" @bind-Value="_editMaxDailyLossAbsolute" ShowUpDown="false" Min="0" Step="50" Style="width: 100%;" />
-                    </RadzenColumn>
-                    <RadzenColumn Size="4">
-                        <RadzenLabel Text="Max. Wochenverlust (%)" Style="display: block; margin-bottom: 4px;" />
-                        <RadzenNumeric TValue="double" @bind-Value="_editMaxWeeklyLoss" ShowUpDown="false" Min="0" Step="1" Style="width: 100%;" />
-                        <div class="hint" style="margin-top: 4px;">0 = deaktiviert</div>
-                    </RadzenColumn>
-                    <RadzenColumn Size="4">
-                        <RadzenLabel Text="Max. Monatsverlust (%)" Style="display: block; margin-bottom: 4px;" />
-                        <RadzenNumeric TValue="double" @bind-Value="_editMaxMonthlyLoss" ShowUpDown="false" Min="0" Step="1" Style="width: 100%;" />
-                        <div class="hint" style="margin-top: 4px;">0 = deaktiviert</div>
-                    </RadzenColumn>
-                    <RadzenColumn Size="4">
-                        <RadzenLabel Text="Max. Drawdown vom Peak (%)" Style="display: block; margin-bottom: 4px;" />
-                        <RadzenNumeric TValue="double" @bind-Value="_editMaxDrawdown" ShowUpDown="false" Min="0" Step="1" Style="width: 100%;" />
-                        <div class="hint" style="margin-top: 4px;">Kill Switch bei Ueberschreitung. 0 = deaktiviert</div>
-                    </RadzenColumn>
-                    <RadzenColumn Size="4">
-                        <RadzenLabel Text="Max. korrelierte Exposure (%)" Style="display: block; margin-bottom: 4px;" />
-                        <RadzenNumeric TValue="double" @bind-Value="_editMaxCorrelatedExposure" ShowUpDown="false" Min="0" Step="5" Style="width: 100%;" />
-                        <div class="hint" style="margin-top: 4px;">Blockiert Trades bei hoher Korrelation. 0 = deaktiviert</div>
-                    </RadzenColumn>
-                </RadzenRow>
-            </details>
-
-            @* Schritt 4c: Gewinnschutz *@
-            <details>
-                <summary style="cursor: pointer; font-weight: 600; margin-bottom: 12px;">Gewinnschutz</summary>
-                <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
-                    <RadzenColumn Size="4">
-                        <RadzenLabel Text="Trailing Stop (Pips)" Style="display: block; margin-bottom: 4px;" />
-                        <RadzenNumeric TValue="double" @bind-Value="_editTrailingStop" ShowUpDown="false" Min="0" Step="5" Style="width: 100%;" />
-                        <div class="hint" style="margin-top: 4px;">SL folgt dem Kurs im Gewinn. 0 = deaktiviert</div>
-                    </RadzenColumn>
-                    <RadzenColumn Size="4">
-                        <RadzenLabel Text="Breakeven ab (Pips)" Style="display: block; margin-bottom: 4px;" />
-                        <RadzenNumeric TValue="double" @bind-Value="_editBreakevenTrigger" ShowUpDown="false" Min="0" Step="5" Style="width: 100%;" />
-                        <div class="hint" style="margin-top: 4px;">SL auf Einstiegspreis bei X Pips Gewinn. 0 = deaktiviert</div>
-                    </RadzenColumn>
-                    <RadzenColumn Size="4">
-                        <RadzenLabel Text="Partial Close (%)" Style="display: block; margin-bottom: 4px;" />
-                        <RadzenNumeric TValue="double" @bind-Value="_editPartialClosePercent" ShowUpDown="false" Min="0" Max="1" Step="0.1" Style="width: 100%;" />
-                        <div class="hint" style="margin-top: 4px;">Anteil der Position der bei TP1 geschlossen wird (0-1). 0 = deaktiviert</div>
-                    </RadzenColumn>
-                    <RadzenColumn Size="4">
-                        <RadzenLabel Text="Partial Close ab (Pips)" Style="display: block; margin-bottom: 4px;" />
-                        <RadzenNumeric TValue="double" @bind-Value="_editPartialCloseTrigger" ShowUpDown="false" Min="0" Step="5" Style="width: 100%;" />
-                        <div class="hint" style="margin-top: 4px;">Gewinn in Pips ab dem Partial Close ausgeloest wird</div>
-                    </RadzenColumn>
-                </RadzenRow>
-            </details>
-
-            @* Schritt 5: Grid-Trading *@
-            <details>
-                <summary style="cursor: pointer; font-weight: 600; margin-bottom: 12px;">Grid-Trading</summary>
-                <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
-                    <RadzenColumn Size="4">
-                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px">
-                            <RadzenCheckBox @bind-Value="_editGridEnabled" />
-                            <RadzenLabel Text="Grid-Trading aktivieren" />
-                        </RadzenStack>
-                        <div class="hint" style="margin-top: 4px;">Automatische Grid-Orders bei Seitwaertsmaerkten</div>
-                    </RadzenColumn>
-                    <RadzenColumn Size="4">
-                        <RadzenLabel Text="Grid-Spacing (Pips)" Style="display: block; margin-bottom: 4px;" />
-                        <RadzenNumeric TValue="double" @bind-Value="_editGridSpacing" ShowUpDown="false" Min="1" Step="5" Style="width: 100%;" />
-                        <div class="hint" style="margin-top: 4px;">Abstand zwischen Grid-Levels</div>
-                    </RadzenColumn>
-                    <RadzenColumn Size="4">
-                        <RadzenLabel Text="Lot pro Level" Style="display: block; margin-bottom: 4px;" />
-                        <RadzenNumeric TValue="decimal" @bind-Value="_editGridLotSize" ShowUpDown="false" Min="0.01m" Step="0.01m" Style="width: 100%;" />
-                    </RadzenColumn>
-                    <RadzenColumn Size="4">
-                        <RadzenLabel Text="Levels oberhalb" Style="display: block; margin-bottom: 4px;" />
-                        <RadzenNumeric TValue="int" @bind-Value="_editGridLevelsAbove" ShowUpDown="false" Min="1" Max="20" Style="width: 100%;" />
-                        <div class="hint" style="margin-top: 4px;">Sell-Levels ueber dem Center</div>
-                    </RadzenColumn>
-                    <RadzenColumn Size="4">
-                        <RadzenLabel Text="Levels unterhalb" Style="display: block; margin-bottom: 4px;" />
-                        <RadzenNumeric TValue="int" @bind-Value="_editGridLevelsBelow" ShowUpDown="false" Min="1" Max="20" Style="width: 100%;" />
-                        <div class="hint" style="margin-top: 4px;">Buy-Levels unter dem Center</div>
-                    </RadzenColumn>
-                    <RadzenColumn Size="4">
-                        <RadzenLabel Text="Max. aktive Grids" Style="display: block; margin-bottom: 4px;" />
-                        <RadzenNumeric TValue="int" @bind-Value="_editGridMaxActive" ShowUpDown="false" Min="1" Max="10" Style="width: 100%;" />
-                    </RadzenColumn>
-                    <RadzenColumn Size="4">
-                        <RadzenLabel Text="Max. Levels pro Zyklus" Style="display: block; margin-bottom: 4px;" />
-                        <RadzenNumeric TValue="int" @bind-Value="_editGridMaxPerCycle" ShowUpDown="false" Min="1" Max="10" Style="width: 100%;" />
-                        <div class="hint" style="margin-top: 4px;">Schutz vor Gaps</div>
-                    </RadzenColumn>
-                    <RadzenColumn Size="4">
-                        <RadzenLabel Text="Grid-Deaktivierung Min. Confidence" Style="display: block; margin-bottom: 4px;" />
-                        <RadzenNumeric TValue="double" @bind-Value="_editGridDeactivationMinConfidence" ShowUpDown="false" Min="0" Max="1" Step="0.05" Style="width: 100%;" />
-                        <div class="hint" style="margin-top: 4px;">Min. Confidence um Grid bei buy/sell zu deaktivieren</div>
-                    </RadzenColumn>
-                    <RadzenColumn Size="4">
-                        <RadzenLabel Text="Min. Grid-Dauer (Min.)" Style="display: block; margin-bottom: 4px;" />
-                        <RadzenNumeric TValue="int" @bind-Value="_editMinGridDuration" ShowUpDown="false" Min="1" Style="width: 100%;" />
-                        <div class="hint" style="margin-top: 4px;">Mindestlaufzeit bevor Grid deaktiviert werden kann</div>
-                    </RadzenColumn>
-                </RadzenRow>
-            </details>
-
-            @* Schritt 6: Watchlist (Symbole) *@
-            <details>
-                <summary style="cursor: pointer; font-weight: 600; margin-bottom: 12px;">Watchlist (Symbole)</summary>
-                <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
+                </RadzenTabsItem>
+                <RadzenTabsItem Text="Verlust & Gewinn" Value="verlust-gewinn">
+                    <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
+                        <RadzenColumn Size="4">
+                            <RadzenLabel Text="Stop-Loss (%)" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenNumeric TValue="double" @bind-Value="_editStopLossPercent" ShowUpDown="false" Min="0" Step="0.5" Style="width: 100%;" />
+                            <div class="hint" style="margin-top: 4px;">Lokaler Stop-Loss pro Position (% vom Einstiegspreis)</div>
+                        </RadzenColumn>
+                        <RadzenColumn Size="4">
+                            <RadzenLabel Text="Max. Tagesverlust (%)" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenNumeric TValue="double" @bind-Value="_editMaxDailyLossPercent" ShowUpDown="false" Min="0" Step="0.5" Style="width: 100%;" />
+                        </RadzenColumn>
+                        <RadzenColumn Size="4">
+                            <RadzenLabel Text="Max. Tagesverlust ($)" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenNumeric TValue="decimal" @bind-Value="_editMaxDailyLossAbsolute" ShowUpDown="false" Min="0" Step="50" Style="width: 100%;" />
+                        </RadzenColumn>
+                        <RadzenColumn Size="4">
+                            <RadzenLabel Text="Max. Wochenverlust (%)" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenNumeric TValue="double" @bind-Value="_editMaxWeeklyLoss" ShowUpDown="false" Min="0" Step="1" Style="width: 100%;" />
+                            <div class="hint" style="margin-top: 4px;">0 = deaktiviert</div>
+                        </RadzenColumn>
+                        <RadzenColumn Size="4">
+                            <RadzenLabel Text="Max. Monatsverlust (%)" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenNumeric TValue="double" @bind-Value="_editMaxMonthlyLoss" ShowUpDown="false" Min="0" Step="1" Style="width: 100%;" />
+                            <div class="hint" style="margin-top: 4px;">0 = deaktiviert</div>
+                        </RadzenColumn>
+                        <RadzenColumn Size="4">
+                            <RadzenLabel Text="Max. Drawdown vom Peak (%)" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenNumeric TValue="double" @bind-Value="_editMaxDrawdown" ShowUpDown="false" Min="0" Step="1" Style="width: 100%;" />
+                            <div class="hint" style="margin-top: 4px;">Kill Switch bei Ueberschreitung. 0 = deaktiviert</div>
+                        </RadzenColumn>
+                        <RadzenColumn Size="4">
+                            <RadzenLabel Text="Max. korrelierte Exposure (%)" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenNumeric TValue="double" @bind-Value="_editMaxCorrelatedExposure" ShowUpDown="false" Min="0" Step="5" Style="width: 100%;" />
+                            <div class="hint" style="margin-top: 4px;">Blockiert Trades bei hoher Korrelation. 0 = deaktiviert</div>
+                        </RadzenColumn>
+                    </RadzenRow>
+                    <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
+                        <RadzenColumn Size="4">
+                            <RadzenLabel Text="Trailing Stop (Pips)" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenNumeric TValue="double" @bind-Value="_editTrailingStop" ShowUpDown="false" Min="0" Step="5" Style="width: 100%;" />
+                            <div class="hint" style="margin-top: 4px;">SL folgt dem Kurs im Gewinn. 0 = deaktiviert</div>
+                        </RadzenColumn>
+                        <RadzenColumn Size="4">
+                            <RadzenLabel Text="Breakeven ab (Pips)" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenNumeric TValue="double" @bind-Value="_editBreakevenTrigger" ShowUpDown="false" Min="0" Step="5" Style="width: 100%;" />
+                            <div class="hint" style="margin-top: 4px;">SL auf Einstiegspreis bei X Pips Gewinn. 0 = deaktiviert</div>
+                        </RadzenColumn>
+                        <RadzenColumn Size="4">
+                            <RadzenLabel Text="Partial Close (%)" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenNumeric TValue="double" @bind-Value="_editPartialClosePercent" ShowUpDown="false" Min="0" Max="1" Step="0.1" Style="width: 100%;" />
+                            <div class="hint" style="margin-top: 4px;">Anteil der Position der bei TP1 geschlossen wird (0-1). 0 = deaktiviert</div>
+                        </RadzenColumn>
+                        <RadzenColumn Size="4">
+                            <RadzenLabel Text="Partial Close ab (Pips)" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenNumeric TValue="double" @bind-Value="_editPartialCloseTrigger" ShowUpDown="false" Min="0" Step="5" Style="width: 100%;" />
+                            <div class="hint" style="margin-top: 4px;">Gewinn in Pips ab dem Partial Close ausgeloest wird</div>
+                        </RadzenColumn>
+                    </RadzenRow>
+                </RadzenTabsItem>
+                <RadzenTabsItem Text="Portfolio & Grid" Value="portfolio-grid">
+                    <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
+                        <RadzenColumn Size="4">
+                            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px">
+                                <RadzenCheckBox @bind-Value="_editPortfolioEnabled" />
+                                <RadzenLabel Text="Portfolio-Allokation aktivieren" />
+                            </RadzenStack>
+                        </RadzenColumn>
+                        <RadzenColumn Size="4">
+                            <RadzenLabel Text="Default Max. % pro Symbol" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenNumeric TValue="double" @bind-Value="_editPortfolioDefaultMax" ShowUpDown="false" Min="1" Max="100" Step="1" Style="width: 100%;" />
+                        </RadzenColumn>
+                        <RadzenColumn Size="4">
+                            <RadzenLabel Text="Rebalance Trigger (+%)" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenNumeric TValue="double" @bind-Value="_editPortfolioRebalance" ShowUpDown="false" Style="width: 100%;" />
+                            <div class="hint" style="margin-top: 4px;">Toleranz ueber Max. %, bevor reduziert wird</div>
+                        </RadzenColumn>
+                    </RadzenRow>
+                    <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
+                        <RadzenColumn Size="4">
+                            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px">
+                                <RadzenCheckBox @bind-Value="_editGridEnabled" />
+                                <RadzenLabel Text="Grid-Trading aktivieren" />
+                            </RadzenStack>
+                            <div class="hint" style="margin-top: 4px;">Automatische Grid-Orders bei Seitwaertsmaerkten</div>
+                        </RadzenColumn>
+                        <RadzenColumn Size="4">
+                            <RadzenLabel Text="Grid-Spacing (Pips)" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenNumeric TValue="double" @bind-Value="_editGridSpacing" ShowUpDown="false" Min="1" Step="5" Style="width: 100%;" />
+                            <div class="hint" style="margin-top: 4px;">Abstand zwischen Grid-Levels</div>
+                        </RadzenColumn>
+                        <RadzenColumn Size="4">
+                            <RadzenLabel Text="Lot pro Level" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenNumeric TValue="decimal" @bind-Value="_editGridLotSize" ShowUpDown="false" Min="0.01m" Step="0.01m" Style="width: 100%;" />
+                        </RadzenColumn>
+                        <RadzenColumn Size="4">
+                            <RadzenLabel Text="Levels oberhalb" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenNumeric TValue="int" @bind-Value="_editGridLevelsAbove" ShowUpDown="false" Min="1" Max="20" Style="width: 100%;" />
+                            <div class="hint" style="margin-top: 4px;">Sell-Levels ueber dem Center</div>
+                        </RadzenColumn>
+                        <RadzenColumn Size="4">
+                            <RadzenLabel Text="Levels unterhalb" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenNumeric TValue="int" @bind-Value="_editGridLevelsBelow" ShowUpDown="false" Min="1" Max="20" Style="width: 100%;" />
+                            <div class="hint" style="margin-top: 4px;">Buy-Levels unter dem Center</div>
+                        </RadzenColumn>
+                        <RadzenColumn Size="4">
+                            <RadzenLabel Text="Max. aktive Grids" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenNumeric TValue="int" @bind-Value="_editGridMaxActive" ShowUpDown="false" Min="1" Max="10" Style="width: 100%;" />
+                        </RadzenColumn>
+                        <RadzenColumn Size="4">
+                            <RadzenLabel Text="Max. Levels pro Zyklus" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenNumeric TValue="int" @bind-Value="_editGridMaxPerCycle" ShowUpDown="false" Min="1" Max="10" Style="width: 100%;" />
+                            <div class="hint" style="margin-top: 4px;">Schutz vor Gaps</div>
+                        </RadzenColumn>
+                        <RadzenColumn Size="4">
+                            <RadzenLabel Text="Grid-Deaktivierung Min. Confidence" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenNumeric TValue="double" @bind-Value="_editGridDeactivationMinConfidence" ShowUpDown="false" Min="0" Max="1" Step="0.05" Style="width: 100%;" />
+                            <div class="hint" style="margin-top: 4px;">Min. Confidence um Grid bei buy/sell zu deaktivieren</div>
+                        </RadzenColumn>
+                        <RadzenColumn Size="4">
+                            <RadzenLabel Text="Min. Grid-Dauer (Min.)" Style="display: block; margin-bottom: 4px;" />
+                            <RadzenNumeric TValue="int" @bind-Value="_editMinGridDuration" ShowUpDown="false" Min="1" Style="width: 100%;" />
+                            <div class="hint" style="margin-top: 4px;">Mindestlaufzeit bevor Grid deaktiviert werden kann</div>
+                        </RadzenColumn>
+                    </RadzenRow>
+                </RadzenTabsItem>
+                <RadzenTabsItem Text="Watchlist" Value="watchlist">
+                    <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
                     <RadzenColumn Size="12">
                         <RadzenLabel Text="Symbole (komma-separiert)" Style="display: block; margin-bottom: 4px;" />
                         <RadzenTextArea @bind-Value="_editWatchList" Rows="3" Style="width: 100%;" />
@@ -416,7 +389,7 @@
                                         <RadzenButton Text="@sym" Size="ButtonSize.ExtraSmall"
                                                       ButtonStyle="@(isSelected ? ButtonStyle.Primary : ButtonStyle.Light)"
                                                       Variant="@(isSelected ? Variant.Filled : Variant.Outlined)"
-                                                      Click="@(() => ToggleWatchSymbol(sym))"
+                                                      Click="@(new Action(() => ToggleWatchSymbol(sym)))"
                                                       Style="font-size: 0.75rem; padding: 2px 8px;" />
                                     }
                                 </RadzenStack>
@@ -424,12 +397,9 @@
                         </RadzenColumn>
                     }
                 </RadzenRow>
-            </details>
-
-            @* Schritt 7: Strategie / LLM-Prompt *@
-            <details>
-                <summary style="cursor: pointer; font-weight: 600; margin-bottom: 12px;">Strategie / LLM-Prompt</summary>
-                <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
+                </RadzenTabsItem>
+                <RadzenTabsItem Text="Strategie" Value="strategie">
+                    <RadzenRow Gap="16px" Style="margin-bottom: 16px;">
                     <RadzenColumn Size="6">
                         <RadzenLabel Text="Strategie-Label" Style="display: block; margin-bottom: 4px;" />
                         <RadzenTextBox @bind-Value="_editStrategyLabel" Placeholder="z.B. Konservativ, Aggressiv" Style="width: 100%;" />
@@ -447,7 +417,9 @@
                         </details>
                     </RadzenColumn>
                 </RadzenRow>
-            </details>
+                </RadzenTabsItem>
+                </Tabs>
+            </RadzenTabs>
 
             <RadzenStack Orientation="Orientation.Horizontal" Gap="8px" Style="margin-top: 8px;">
                 <RadzenButton Text="@(_editMode ? "Speichern" : "Account anlegen")" ButtonStyle="ButtonStyle.Primary" ButtonType="ButtonType.Submit" />
