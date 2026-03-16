@@ -87,6 +87,30 @@ public class RiskSettings
     public double PyramidMinConfidence { get; set; } = 0.75;
     /// <summary>Min. Confidence um Gegenrichtungs-Positionen zu schließen. 0 = MinConfidence nutzen.</summary>
     public double OppositeDirectionMinConfidence { get; set; }
+    /// <summary>Fallback-SL in Pips wenn LLM keinen liefert.</summary>
+    public double DefaultStopLossPips { get; set; } = 50;
+    /// <summary>TP = Ratio × SL-Distanz.</summary>
+    public double DefaultTakeProfitRatio { get; set; } = 1.5;
+    /// <summary>Pause in Sekunden zwischen Symbol-Analysen.</summary>
+    public int AnalysisDelaySeconds { get; set; } = 2;
+    /// <summary>Candles für Indikatoren (z. B. EMA200).</summary>
+    public int IndicatorCandleCount { get; set; } = 210;
+    /// <summary>Anzahl Recent Prices für die Analyse.</summary>
+    public int RecentPricesCount { get; set; } = 20;
+    /// <summary>Anzahl Trades im Feedback-Loop.</summary>
+    public int FeedbackLoopTradeCount { get; set; } = 10;
+    /// <summary>Min. Confidence um Grid bei buy/sell zu deaktivieren.</summary>
+    public double GridDeactivationMinConfidence { get; set; } = 0.8;
+    /// <summary>Min. Korrelation für Exposure-Check.</summary>
+    public double CorrelationThreshold { get; set; } = 0.3;
+    /// <summary>Win-Rate-Schwelle für dynamische Confidence.</summary>
+    public double ConfidenceWinRateThreshold { get; set; } = 0.5;
+    /// <summary>Min. Risk/Reward – Trade ablehnen wenn TP/SL &lt; Ratio.</summary>
+    public double MinRiskRewardRatio { get; set; } = 1.0;
+    /// <summary>Trade ablehnen wenn LLM keinen SL/TP liefert.</summary>
+    public bool RequireSlTpFromLlm { get; set; }
+    /// <summary>Retries bei null-Response (0 = kein Retry).</summary>
+    public int LlmRetryCount { get; set; } = 1;
 }
 
 /// <summary>Portfolio-Allokation: max. Gewichtung pro Symbol oder Asset-Klasse.</summary>

@@ -129,6 +129,43 @@
                         <RadzenNumeric TValue="double" @bind-Value="_editMaxSpreadPips" ShowUpDown="false" Min="0" Step="0.5" Style="width: 100%;" />
                         <div class="hint" style="margin-top: 4px;">Trade wird abgelehnt bei hoeherem Spread. 0 = deaktiviert</div>
                     </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Default SL (Pips)" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="double" @bind-Value="_editDefaultStopLossPips" ShowUpDown="false" Min="1" Step="5" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">Fallback-SL wenn LLM keinen liefert</div>
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Default TP-Ratio" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="double" @bind-Value="_editDefaultTakeProfitRatio" ShowUpDown="false" Min="0.5m" Step="0.25m" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">TP = Ratio × SL-Distanz</div>
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Analyse-Pause (Sek.)" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="int" @bind-Value="_editAnalysisDelaySeconds" ShowUpDown="false" Min="0" Step="1" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">Pause zwischen Symbol-Analysen</div>
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Feedback-Loop Trades" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="int" @bind-Value="_editFeedbackLoopTradeCount" ShowUpDown="false" Min="1" Step="5" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">Anzahl Trades im Feedback-Loop</div>
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Min. Risk/Reward" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="double" @bind-Value="_editMinRiskRewardRatio" ShowUpDown="false" Min="0.5m" Step="0.25m" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">Trade ablehnen wenn TP/SL &lt; Ratio</div>
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px">
+                            <RadzenCheckBox @bind-Value="_editRequireSlTpFromLlm" />
+                            <RadzenLabel Text="SL/TP vom LLM erforderlich" />
+                        </RadzenStack>
+                        <div class="hint" style="margin-top: 4px;">Trade ablehnen wenn kein SL/TP</div>
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="LLM-Retries" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="int" @bind-Value="_editLlmRetryCount" ShowUpDown="false" Min="0" Step="1" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">Retries bei null-Response (0 = kein Retry)</div>
+                    </RadzenColumn>
                 </RadzenRow>
             </details>
 
@@ -237,6 +274,11 @@
                         <RadzenLabel Text="Max. Levels pro Zyklus" Style="display: block; margin-bottom: 4px;" />
                         <RadzenNumeric TValue="int" @bind-Value="_editGridMaxPerCycle" ShowUpDown="false" Min="1" Max="10" Style="width: 100%;" />
                         <div class="hint" style="margin-top: 4px;">Schutz vor Gaps</div>
+                    </RadzenColumn>
+                    <RadzenColumn Size="4">
+                        <RadzenLabel Text="Grid-Deaktivierung Min. Confidence" Style="display: block; margin-bottom: 4px;" />
+                        <RadzenNumeric TValue="double" @bind-Value="_editGridDeactivationMinConfidence" ShowUpDown="false" Min="0" Max="1" Step="0.05" Style="width: 100%;" />
+                        <div class="hint" style="margin-top: 4px;">Min. Confidence um Grid bei buy/sell zu deaktivieren</div>
                     </RadzenColumn>
                 </RadzenRow>
             </details>
@@ -439,6 +481,13 @@
     private double _editBreakevenTrigger = 0;
     private double _editPartialClosePercent = 0;
     private double _editPartialCloseTrigger = 30;
+    private double _editDefaultStopLossPips = 50;
+    private double _editDefaultTakeProfitRatio = 1.5;
+    private int _editAnalysisDelaySeconds = 2;
+    private int _editFeedbackLoopTradeCount = 10;
+    private double _editMinRiskRewardRatio = 1.0;
+    private bool _editRequireSlTpFromLlm;
+    private int _editLlmRetryCount = 1;
     // Grid-Trading
     private bool _editGridEnabled;
     private double _editGridSpacing = 20;
@@ -447,6 +496,7 @@
     private int _editGridLevelsBelow = 5;
     private int _editGridMaxActive = 3;
     private int _editGridMaxPerCycle = 2;
+    private double _editGridDeactivationMinConfidence = 0.8;
     // Watchlist
     private string _editWatchList = string.Empty;
     private List<string> _brokerSymbols = new();
@@ -519,6 +569,13 @@
         _editBreakevenTrigger = acc.RiskManagement.BreakevenTriggerPips;
         _editPartialClosePercent = acc.RiskManagement.PartialClosePercent;
         _editPartialCloseTrigger = acc.RiskManagement.PartialCloseTriggerPips;
+        _editDefaultStopLossPips = acc.RiskManagement.DefaultStopLossPips;
+        _editDefaultTakeProfitRatio = acc.RiskManagement.DefaultTakeProfitRatio;
+        _editAnalysisDelaySeconds = acc.RiskManagement.AnalysisDelaySeconds;
+        _editFeedbackLoopTradeCount = acc.RiskManagement.FeedbackLoopTradeCount;
+        _editMinRiskRewardRatio = acc.RiskManagement.MinRiskRewardRatio;
+        _editRequireSlTpFromLlm = acc.RiskManagement.RequireSlTpFromLlm;
+        _editLlmRetryCount = acc.RiskManagement.LlmRetryCount;
         _editGridEnabled = acc.RiskManagement.Grid.Enabled;
         _editGridSpacing = acc.RiskManagement.Grid.GridSpacingPips;
         _editGridLotSize = acc.RiskManagement.Grid.LotSizePerLevel;
@@ -526,6 +583,7 @@
         _editGridLevelsBelow = acc.RiskManagement.Grid.GridLevelsBelow;
         _editGridMaxActive = acc.RiskManagement.Grid.MaxActiveGrids;
         _editGridMaxPerCycle = acc.RiskManagement.Grid.MaxLevelsPerCycle;
+        _editGridDeactivationMinConfidence = acc.RiskManagement.GridDeactivationMinConfidence;
         _editWatchList = acc.WatchList.Count > 0 ? string.Join(", ", acc.WatchList) : string.Empty;
         _editWatchSymbols = acc.WatchList.ToHashSet(StringComparer.OrdinalIgnoreCase);
         _brokerSymbols = new();
@@ -562,6 +620,13 @@
         _editBreakevenTrigger = 0;
         _editPartialClosePercent = 0;
         _editPartialCloseTrigger = 30;
+        _editDefaultStopLossPips = 50;
+        _editDefaultTakeProfitRatio = 1.5;
+        _editAnalysisDelaySeconds = 2;
+        _editFeedbackLoopTradeCount = 10;
+        _editMinRiskRewardRatio = 1.0;
+        _editRequireSlTpFromLlm = false;
+        _editLlmRetryCount = 1;
         _editGridEnabled = false;
         _editGridSpacing = 20;
         _editGridLotSize = 0.01m;
@@ -569,6 +634,7 @@
         _editGridLevelsBelow = 5;
         _editGridMaxActive = 3;
         _editGridMaxPerCycle = 2;
+        _editGridDeactivationMinConfidence = 0.8;
         _editWatchList = string.Empty;
         _editWatchSymbols = new(StringComparer.OrdinalIgnoreCase);
         _brokerSymbols = new();
@@ -642,6 +708,14 @@
         acc.RiskManagement.BreakevenTriggerPips = _editBreakevenTrigger;
         acc.RiskManagement.PartialClosePercent = _editPartialClosePercent;
         acc.RiskManagement.PartialCloseTriggerPips = _editPartialCloseTrigger;
+        acc.RiskManagement.DefaultStopLossPips = _editDefaultStopLossPips;
+        acc.RiskManagement.DefaultTakeProfitRatio = _editDefaultTakeProfitRatio;
+        acc.RiskManagement.AnalysisDelaySeconds = _editAnalysisDelaySeconds;
+        acc.RiskManagement.FeedbackLoopTradeCount = _editFeedbackLoopTradeCount;
+        acc.RiskManagement.MinRiskRewardRatio = _editMinRiskRewardRatio;
+        acc.RiskManagement.RequireSlTpFromLlm = _editRequireSlTpFromLlm;
+        acc.RiskManagement.LlmRetryCount = _editLlmRetryCount;
+        acc.RiskManagement.GridDeactivationMinConfidence = _editGridDeactivationMinConfidence;
         acc.RiskManagement.Grid.Enabled = _editGridEnabled;
         acc.RiskManagement.Grid.GridSpacingPips = _editGridSpacing;
         acc.RiskManagement.Grid.LotSizePerLevel = _editGridLotSize;
