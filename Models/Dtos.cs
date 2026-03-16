@@ -20,9 +20,13 @@ public class ClaudeAnalysisRequest
     public TechnicalIndicators? Indicators { get; set; }
     public List<RecentTradeResult> RecentTradeResults { get; set; } = new();
     public List<string> NewsHeadlines { get; set; } = new();
+    public List<EconomicEventSummary> UpcomingEvents { get; set; } = new();
     public string StrategyPrompt { get; set; } = string.Empty;
     public List<SymbolAllocation> PortfolioAllocations { get; set; } = new();
 }
+
+/// <summary>Zusammenfassung eines Wirtschaftskalender-Events fuer den LLM-Prompt.</summary>
+public record EconomicEventSummary(string Title, DateTime EventTime, string Impact, string Currency);
 
 /// <summary>Zusammenfassung eines geschlossenen Trades fuer den LLM-Feedback-Loop.</summary>
 public record RecentTradeResult

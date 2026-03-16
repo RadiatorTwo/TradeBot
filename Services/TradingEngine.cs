@@ -330,6 +330,11 @@ public class TradingEngine : BackgroundService
         // ── Feedback-Loop: Letzte geschlossene Trades fuer dieses Symbol laden ──
         var recentTradeResults = await LoadRecentTradeResultsAsync(symbol, Settings.FeedbackLoopTradeCount, ct);
 
+        // Wirtschaftskalender: Events fuer Symbol-Waehrungen laden
+        var upcomingEvents = _calendar.GetUpcomingEventsForSymbol(symbol, 10)
+            .Select(e => new EconomicEventSummary(e.Title, e.EventTime, e.Impact.ToString(), e.Currency))
+            .ToList();
+
         // Claude um Analyse bitten (Forex/CFD: Bid/Ask, Candles, Lots)
         var request = new ClaudeAnalysisRequest
         {
@@ -351,6 +356,7 @@ public class TradingEngine : BackgroundService
             PortfolioValue = portfolioValue,
             RecentTradeResults = recentTradeResults,
             NewsHeadlines = _news.GetHeadlines(symbol),
+            UpcomingEvents = upcomingEvents,
             StrategyPrompt = StrategyPrompt,
             PortfolioAllocations = allocations
         };

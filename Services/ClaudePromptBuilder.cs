@@ -225,6 +225,20 @@ public static class ClaudePromptBuilder
             sb.AppendLine("Beruecksichtige die Portfolio-Allokation. Vermeide uebergewichtete Positionen weiter auszubauen.");
         }
 
+        // ── Wirtschaftskalender ────────────────────────────────────────────
+        if (req.UpcomingEvents.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("## Wirtschaftskalender");
+            sb.AppendLine();
+            foreach (var ev in req.UpcomingEvents)
+            {
+                sb.AppendLine($"- {ev.EventTime:dd.MM.yyyy HH:mm} UTC | {ev.Title} ({ev.Impact}) | {ev.Currency}");
+            }
+            sb.AppendLine();
+            sb.AppendLine("Beruecksichtige diese Events bei deiner Analyse. Bei High-Impact-Events kurz vor oder waehrend der Publikation: hold oder kleinere quantity.");
+        }
+
         // ── News-Headlines (Sentiment-Kontext) ─────────────────────────────
         if (req.NewsHeadlines.Count > 0)
         {

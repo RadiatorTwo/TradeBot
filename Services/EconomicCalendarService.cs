@@ -93,6 +93,21 @@ public class EconomicCalendarService : BackgroundService
             .ToList();
     }
 
+    /// <summary>Gibt die naechsten Events fuer ein Symbol zurueck (gefiltert nach Waehrungen des Symbols).</summary>
+    public List<EconomicEvent> GetUpcomingEventsForSymbol(string symbol, int count = 10)
+    {
+        var currencies = ExtractCurrencies(symbol);
+        if (currencies.Count == 0)
+            return new List<EconomicEvent>();
+
+        var now = DateTime.UtcNow;
+        return _cachedEvents
+            .Where(e => e.EventTime >= now.AddHours(-1) && currencies.Any(c => e.AffectsCurrency(c)))
+            .OrderBy(e => e.EventTime)
+            .Take(count)
+            .ToList();
+    }
+
     private async Task RefreshEventsAsync(CancellationToken ct)
     {
         if (!await _fetchLock.WaitAsync(0, ct))
