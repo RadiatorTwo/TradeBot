@@ -118,13 +118,16 @@ public class TradingEngine : BackgroundService
 
                     _isRunning = true;
 
+                    // Tages-PnL zuerst aufzeichnen (StartOfDayEquity fuer Daily-Loss-Check)
+                    await _risk.RecordDailyPnLAsync(stoppingToken);
+
                     // Haupt-Trading-Zyklus
                     await RunTradingCycleAsync(stoppingToken);
 
                     // Stop-Losses prüfen
                     await _risk.CheckStopLossesAsync(stoppingToken);
 
-                    // Tages-PnL aufzeichnen
+                    // Tages-PnL aktualisieren
                     await _risk.RecordDailyPnLAsync(stoppingToken);
 
                     _logger.LogInformation("Cycle complete. Next run in {Min} minutes.", Settings.TradingIntervalMinutes);

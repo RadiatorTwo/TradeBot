@@ -128,6 +128,10 @@ public class DailyPnL
     /// <summary>Hoechster Equity-Wert bis zu diesem Tag (fuer Drawdown-Berechnung).</summary>
     [Column(TypeName = "decimal(18,4)")]
     public decimal PeakEquity { get; set; }
+
+    /// <summary>Portfolio-Wert zu Tagesbeginn (erster Eintrag des Tages). Referenz fuer Daily-Loss-Limit.</summary>
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal? StartOfDayEquity { get; set; }
 }
 
 public class TradingLog

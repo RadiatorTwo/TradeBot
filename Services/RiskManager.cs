@@ -369,27 +369,30 @@ public class RiskManager : IRiskManager
         // PeakEquity: Maximum aus bisherigem Peak und aktuellem Wert
         var previousPeak = await db.DailyPnLs
             .OrderByDescending(d => d.Date)
-            .Where(d => d.Date < today)
+            .Where(d => d.Date < today && d.AccountId == AccountId)
             .Select(d => d.PeakEquity)
             .FirstOrDefaultAsync(ct);
         var currentPeak = Math.Max(previousPeak, portfolioValue);
 
-        var existing = await db.DailyPnLs.FirstOrDefaultAsync(d => d.Date == today, ct);
+        var existing = await db.DailyPnLs.FirstOrDefaultAsync(d => d.Date == today && d.AccountId == AccountId, ct);
 
         if (existing != null)
         {
             existing.PortfolioValue = portfolioValue;
             existing.TradeCount = todayTrades;
             existing.PeakEquity = currentPeak;
+            // StartOfDayEquity nicht ändern – nur beim ersten Eintrag des Tages gesetzt
         }
         else
         {
             db.DailyPnLs.Add(new DailyPnL
             {
+                AccountId = AccountId,
                 Date = today,
                 PortfolioValue = portfolioValue,
                 TradeCount = todayTrades,
-                PeakEquity = currentPeak
+                PeakEquity = currentPeak,
+                StartOfDayEquity = portfolioValue
             });
         }
 
@@ -420,14 +423,18 @@ public class RiskManager : IRiskManager
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
 
-        var yesterday = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1));
-        var yesterdayRecord = await db.DailyPnLs
-            .FirstOrDefaultAsync(d => d.Date == yesterday, ct);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var todayRecord = await db.DailyPnLs
+            .FirstOrDefaultAsync(d => d.Date == today && d.AccountId == AccountId, ct);
 
-        if (yesterdayRecord == null)
+        if (todayRecord == null)
             return false;
 
-        var dailyLoss = yesterdayRecord.PortfolioValue - currentValue;
+        var referenceEquity = todayRecord.StartOfDayEquity ?? todayRecord.PortfolioValue;
+        if (referenceEquity <= 0)
+            return false;
+
+        var dailyLoss = referenceEquity - currentValue;
 
         // Absoluter Verlust-Check
         if (dailyLoss >= Settings.MaxDailyLossAbsolute)
@@ -438,9 +445,7 @@ public class RiskManager : IRiskManager
         }
 
         // Prozentualer Verlust-Check
-        var lossPercent = yesterdayRecord.PortfolioValue > 0
-            ? (double)(dailyLoss / yesterdayRecord.PortfolioValue) * 100.0
-            : 0.0;
+        var lossPercent = (double)(dailyLoss / referenceEquity) * 100.0;
 
         if (lossPercent >= Settings.MaxDailyLossPercent)
         {
