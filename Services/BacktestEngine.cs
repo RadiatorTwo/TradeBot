@@ -210,7 +210,7 @@ public class BacktestEngine
                             && (config.MaxLlmCalls <= 0 || llmCallCount < config.MaxLlmCalls))
                         {
                             llmRec = await GenerateLlmSignalAsync(
-                                config.Symbol, candle, closesUpToNow, highsUpToNow, lowsUpToNow,
+                                config, candle, closesUpToNow, highsUpToNow, lowsUpToNow,
                                 balance, ct);
                             llmCallCount++;
 
@@ -227,6 +227,16 @@ public class BacktestEngine
 
                     if (signal != null)
                     {
+                        // Entry-Preis mit Spread und Slippage
+                        var spreadHalf = PipCalculator.PipsToPrice(config.Symbol, (decimal)config.SpreadPips / 2);
+                        var slippagePrice = PipCalculator.PipsToPrice(config.Symbol, (decimal)config.SlippagePips);
+                        var bid = candle.Close - spreadHalf;
+                        var ask = candle.Close + spreadHalf;
+                        var isBuySignal = signal == "buy";
+                        var entryPrice = isBuySignal
+                            ? ask + slippagePrice
+                            : bid - slippagePrice;
+
                         // Position Sizing
                         var riskAmount = balance * (decimal)(config.RiskPerTradePercent / 100.0);
                         var pipValue = PipCalculator.GetPipValuePerLot(config.Symbol, candle.Close);
@@ -236,20 +246,19 @@ public class BacktestEngine
 
                         if (llmRec != null && llmRec.StopLossPrice.HasValue && llmRec.TakeProfitPrice.HasValue)
                         {
-                            // LLM-definierte SL/TP verwenden
+                            // LLM-definierte SL/TP verwenden (relativ zum Entry-Preis)
                             actualSl = llmRec.StopLossPrice.Value;
                             actualTp = llmRec.TakeProfitPrice.Value;
-                            var slDistPips = PipCalculator.PriceToPips(config.Symbol, Math.Abs(candle.Close - actualSl));
+                            var slDistPips = PipCalculator.PriceToPips(config.Symbol, Math.Abs(entryPrice - actualSl));
                             lots = pipValue > 0 && slDistPips > 0
                                 ? riskAmount / (slDistPips * pipValue)
                                 : (llmRec.Quantity ?? 0m) > 0 ? (llmRec.Quantity ?? 0.01m) : 0.01m;
                         }
                         else
                         {
-                            // Standard SL/TP
-                            var isBuySignal = signal == "buy";
-                            actualSl = isBuySignal ? candle.Close - slDistance : candle.Close + slDistance;
-                            actualTp = isBuySignal ? candle.Close + tpDistance : candle.Close - tpDistance;
+                            // Standard SL/TP (relativ zum Entry-Preis)
+                            actualSl = isBuySignal ? entryPrice - slDistance : entryPrice + slDistance;
+                            actualTp = isBuySignal ? entryPrice + tpDistance : entryPrice - tpDistance;
                             lots = pipValue > 0 && config.StopLossPips > 0
                                 ? riskAmount / ((decimal)config.StopLossPips * pipValue)
                                 : 0.01m;
@@ -260,7 +269,7 @@ public class BacktestEngine
                         openPosition = new BacktestPosition
                         {
                             Side = signal,
-                            EntryPrice = candle.Close,
+                            EntryPrice = entryPrice,
                             EntryTime = candleTime,
                             Quantity = lots,
                             StopLoss = actualSl,
@@ -416,7 +425,7 @@ public class BacktestEngine
     /// Baut einen reduzierten Prompt mit den letzten Candles und Indikatoren.
     /// </summary>
     private async Task<ClaudeTradeRecommendation?> GenerateLlmSignalAsync(
-        string symbol, OhlcCandle currentCandle,
+        BacktestConfig config, OhlcCandle currentCandle,
         List<decimal> closes, List<decimal> highs, List<decimal> lows,
         decimal balance, CancellationToken ct)
     {
@@ -437,12 +446,16 @@ public class BacktestEngine
             for (int j = Math.Max(0, closes.Count - 720); j < closes.Count; j += 24)
                 candles1D.Add(closes[j]);
 
+            var spreadHalf = PipCalculator.PipsToPrice(config.Symbol, (decimal)config.SpreadPips / 2);
+            var bid = currentCandle.Close - spreadHalf;
+            var ask = currentCandle.Close + spreadHalf;
+
             var request = new ClaudeAnalysisRequest
             {
-                Symbol = symbol,
+                Symbol = config.Symbol,
                 CurrentPrice = currentCandle.Close,
-                Bid = currentCandle.Close,
-                Ask = currentCandle.Close,
+                Bid = bid,
+                Ask = ask,
                 DayChange = recentCloses.Count > 1 && recentCloses[0] != 0
                     ? ((currentCandle.Close - recentCloses[0]) / recentCloses[0]) * 100
                     : 0,
@@ -461,7 +474,7 @@ public class BacktestEngine
             {
                 _logger.LogDebug(
                     "Backtest LLM: {Symbol} @ {Price:F5} → {Action} (Conf: {Conf:P0})",
-                    symbol, currentCandle.Close, rec.Action, rec.Confidence);
+                    config.Symbol, currentCandle.Close, rec.Action, rec.Confidence);
             }
 
             // Rate Limiting: kurze Pause zwischen LLM-Aufrufen

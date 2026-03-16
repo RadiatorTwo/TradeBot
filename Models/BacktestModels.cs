@@ -19,6 +19,12 @@ public class BacktestConfig
 
     /// <summary>LLM-Strategie: Nur jede N-te Candle analysieren (Batch/Sampling). 1 = jede Candle.</summary>
     public int LlmSampleEveryN { get; set; } = 4;
+
+    /// <summary>Simulierter Spread im Backtest (Pips).</summary>
+    public double SpreadPips { get; set; } = 1.0;
+
+    /// <summary>Slippage bei Market-Orders (Pips).</summary>
+    public double SlippagePips { get; set; } = 0.5;
 }
 
 /// <summary>Ergebnis eines Backtest-Laufs.</summary>
