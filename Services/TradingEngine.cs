@@ -479,6 +479,17 @@ public class TradingEngine : BackgroundService
 
         if (oppositePositions.Count > 0 && !recommendation.Action.Equals("hold", StringComparison.OrdinalIgnoreCase))
         {
+            var minConfForClose = Settings.OppositeDirectionMinConfidence > 0
+                ? Settings.OppositeDirectionMinConfidence
+                : Settings.MinConfidence;
+            if ((recommendation.Confidence ?? 0) < minConfForClose)
+            {
+                _logger.LogInformation(
+                    "Gegenrichtungs-Positionen nicht geschlossen: Confidence {Conf:P0} < {Min:P0}",
+                    recommendation.Confidence ?? 0, minConfForClose);
+                return;
+            }
+
             foreach (var pos in oppositePositions)
             {
                 var posId = pos.BrokerPositionId ?? pos.Symbol;

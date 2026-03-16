@@ -85,6 +85,8 @@ public class RiskSettings
     public double PartialCloseTriggerPips { get; set; } = 30;
     public int MaxPyramidLevels { get; set; } = 0;
     public double PyramidMinConfidence { get; set; } = 0.75;
+    /// <summary>Min. Confidence um Gegenrichtungs-Positionen zu schließen. 0 = MinConfidence nutzen.</summary>
+    public double OppositeDirectionMinConfidence { get; set; }
 }
 
 /// <summary>Portfolio-Allokation: max. Gewichtung pro Symbol oder Asset-Klasse.</summary>
